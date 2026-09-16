@@ -5,6 +5,11 @@ descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek en
 Git worktrees aislados, revisa el resultado y deja el trabajo en una branch
 Git aislada.
 
+> **No necesitas contratar tokens ni una API de pago aparte.** Codex y Claude
+> usan tu **suscripción normal** de ChatGPT / Claude (Plus, Pro, etc.). Y si un
+> proveedor agota su cuota o alcanza su límite, el motor **pasa automáticamente
+> al siguiente modelo configurado** (cadena de fallback).
+
 ## Requisitos previos
 
 Básicos:
