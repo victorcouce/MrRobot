@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "./api";
-import { subscribeProjectsChanged } from "./project-store";
+import { api, ApiError } from "./api";
+import {
+  notifyProjectsChanged,
+  subscribeProjectsChanged,
+} from "./project-store";
 import { subscribeProject } from "./sse";
 import type {
   AppInfo,
@@ -61,6 +64,16 @@ export function useProjects() {
     });
   }, [refresh]);
 
+  useEffect(() => {
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refresh]);
+
   return { projects, error, loading, refresh };
 }
 
@@ -97,6 +110,7 @@ export interface ProjectState {
   chats: ChatSummary[];
   loading: boolean;
   error: string | null;
+  notFound: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -108,6 +122,7 @@ export function useProject(id: string): ProjectState {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -126,7 +141,12 @@ export function useProject(id: string): ProjectState {
       setSupervisorRuns(supervisorRuns);
       setChats(chats);
       setError(null);
+      setNotFound(false);
     } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setNotFound(true);
+        notifyProjectsChanged();
+      }
       setError(errorMessage(error));
     } finally {
       setLoading(false);
@@ -158,6 +178,7 @@ export function useProject(id: string): ProjectState {
     chats,
     loading,
     error,
+    notFound,
     refresh: load,
   };
 }

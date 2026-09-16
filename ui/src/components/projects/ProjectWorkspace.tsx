@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { choiceToAgent } from "../../lib/agents";
@@ -32,7 +32,7 @@ type EditorState =
   | null;
 
 export function ProjectWorkspace({ id }: { id: string }) {
-  const { project, events, reviews, supervisorRuns, chats, loading, error, refresh } =
+  const { project, events, reviews, supervisorRuns, chats, loading, error, notFound, refresh } =
     useProject(id);
   const router = useRouter();
 
@@ -45,6 +45,12 @@ export function ProjectWorkspace({ id }: { id: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("board");
+
+  useEffect(() => {
+    if (notFound) {
+      router.replace("/");
+    }
+  }, [notFound, router]);
 
   async function run(action: string, fn: () => Promise<unknown>) {
     setBusy(action);
