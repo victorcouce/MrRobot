@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runTask } from "../tasks/runner.js";
 import type { Task, TaskComplexity, TaskType } from "../tasks/types.js";
+import type { WorkspaceManager } from "../workspace/types.js";
 import {
   getFallbackChain,
   isRetryableError,
@@ -26,6 +27,27 @@ function keyOf(agent: AgentCandidate): string {
   return agent.provider === "codex"
     ? "codex"
     : `${agent.provider}:${agent.model}`;
+}
+
+function fakeWorkspace(): WorkspaceManager {
+  let commits = 0;
+
+  return {
+    getRepoRoot: async () => "/fake/repo",
+    resolveBaseRef: async () => "fakesha",
+    isDirty: async () => false,
+    create: async (taskId, attempt, baseRef) => ({
+      taskId,
+      branchName: `agent/${taskId}-attempt-${attempt}`,
+      path: `/fake/repo/.worktrees/${taskId}-attempt-${attempt}`,
+      baseRef,
+    }),
+    commit: async () => {
+      commits += 1;
+      return `fakecommit-${commits}`;
+    },
+    remove: async () => {},
+  };
 }
 
 const TASK_TYPES: TaskType[] = [
@@ -141,7 +163,7 @@ test("Caso 1: Codex success -> 1 intento, DONE, executedBy Codex", async () => {
 
   const result = await runTask(
     makeTask({ type: "coding", complexity: "high" }),
-    execute,
+    { execute, workspace: fakeWorkspace() },
   );
 
   assert.equal(result.status, "done");
@@ -164,7 +186,7 @@ test("Caso 2: codex falla, retry falla, sonnet completa -> 3 intentos", async ()
 
   const result = await runTask(
     makeTask({ type: "coding", complexity: "high" }),
-    execute,
+    { execute, workspace: fakeWorkspace() },
   );
 
   assert.equal(result.status, "done");
@@ -191,7 +213,7 @@ test("Caso 3: todos fallan -> FAILED con historial completo", async () => {
 
   const result = await runTask(
     makeTask({ type: "coding", complexity: "high" }),
-    execute,
+    { execute, workspace: fakeWorkspace() },
   );
 
   assert.equal(result.status, "failed");
@@ -217,7 +239,7 @@ test("Caso 4: error no reintentable pasa al fallback sin repetir", async () => {
 
   const result = await runTask(
     makeTask({ type: "coding", complexity: "high" }),
-    execute,
+    { execute, workspace: fakeWorkspace() },
   );
 
   assert.equal(result.status, "done");

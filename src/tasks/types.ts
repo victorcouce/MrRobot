@@ -23,6 +23,11 @@ export interface TaskAttempt {
   status: "success" | "failed";
 
   error?: string;
+
+  workspacePath?: string;
+  branchName?: string;
+  baseRef?: string;
+  commitSha?: string;
 }
 
 export interface Task {
@@ -38,6 +43,7 @@ export interface Task {
   executedBy?: AgentSpec;
 
   attempts?: TaskAttempt[];
+  resultCommit?: string;
 
   output?: string;
   error?: string;

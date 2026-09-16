@@ -1,0 +1,265 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test } from "node:test";
+import type { AgentCandidate } from "../agents/types.js";
+import type { RunOptions } from "../providers/types.js";
+import { runTask } from "../tasks/runner.js";
+import type { Task } from "../tasks/types.js";
+import {
+  commitTaskWorkspace,
+  createGitWorkspaceManager,
+  createTaskWorkspace,
+  removeTaskWorkspace,
+  resolveBaseRef,
+  sanitizeTaskId,
+} from "./manager.js";
+
+function git(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "git",
+      args,
+      { cwd, encoding: "utf8" },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr.trim() || error.message));
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
+  });
+}
+
+async function createTempRepo(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "mrrobot-wt-"));
+
+  await git(["init", "-b", "main"], dir);
+  await git(["config", "user.email", "test@example.com"], dir);
+  await git(["config", "user.name", "Test"], dir);
+  await writeFile(join(dir, "README.md"), "# temp\n", "utf8");
+  await git(["add", "-A"], dir);
+  await git(["commit", "-m", "initial"], dir);
+
+  return dir;
+}
+
+function makeTask(overrides: Partial<Task>): Task {
+  return {
+    id: "T-TEST",
+    title: "tarea de prueba",
+    description: "descripción de prueba",
+    status: "ready",
+    type: "coding",
+    complexity: "high",
+    ...overrides,
+  };
+}
+
+function cwdOf(options?: RunOptions): string {
+  const cwd = options?.cwd;
+
+  if (!cwd) {
+    throw new Error("el ejecutor esperaba un cwd aislado");
+  }
+
+  return cwd;
+}
+
+test("sanitizeTaskId elimina caracteres inválidos para Git", () => {
+  assert.equal(sanitizeTaskId("TASK-021"), "TASK-021");
+  assert.equal(sanitizeTaskId("task/021 con espacios"), "task-021-con-espacios");
+  assert.equal(sanitizeTaskId(".."), "task");
+});
+
+test("Caso 1: createTaskWorkspace crea worktree y branch desde HEAD", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const workspace = await createTaskWorkspace("TASK-100", 1, base, repo);
+
+    assert.equal(existsSync(workspace.path), true);
+    assert.equal(workspace.baseRef, base);
+    assert.match(workspace.branchName, /agent\/TASK-100-attempt-1/);
+
+    const worktrees = await git(["worktree", "list", "--porcelain"], repo);
+    assert.match(worktrees, /TASK-100-attempt-1/);
+
+    const branches = await git(
+      ["branch", "--list", "agent/TASK-100-attempt-1"],
+      repo,
+    );
+    assert.match(branches, /agent\/TASK-100-attempt-1/);
+
+    await removeTaskWorkspace(workspace, { deleteBranch: true }, repo);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("Caso 2: commitTaskWorkspace devuelve SHA y no toca el repo principal", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const workspace = await createTaskWorkspace("TASK-101", 1, base, repo);
+
+    await writeFile(join(workspace.path, "nuevo.txt"), "hola\n", "utf8");
+
+    const sha = await commitTaskWorkspace(workspace, "agent(TASK-101): test");
+
+    assert.ok(sha);
+    assert.equal(await git(["rev-parse", "HEAD"], workspace.path), sha);
+    assert.equal(await git(["rev-parse", "HEAD"], repo), base);
+
+    await removeTaskWorkspace(workspace, { deleteBranch: false }, repo);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("Caso 3: removeTaskWorkspace elimina worktree y branch", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const workspace = await createTaskWorkspace("TASK-102", 1, base, repo);
+
+    await removeTaskWorkspace(workspace, { deleteBranch: true }, repo);
+
+    assert.equal(existsSync(workspace.path), false);
+
+    const worktrees = await git(["worktree", "list", "--porcelain"], repo);
+    assert.doesNotMatch(worktrees, /TASK-102-attempt-1/);
+
+    const branches = await git(
+      ["branch", "--list", "agent/TASK-102-attempt-1"],
+      repo,
+    );
+    assert.equal(branches, "");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("Caso 4: un intento fallido no modifica el repo principal", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const execute = async (
+      _prompt: string,
+      _agent: AgentCandidate,
+      options?: RunOptions,
+    ): Promise<string> => {
+      await writeFile(join(cwdOf(options), "basura.txt"), "x\n", "utf8");
+      throw new Error("boom");
+    };
+
+    const result = await runTask(makeTask({ id: "TASK-200" }), {
+      execute,
+      workspace: manager,
+    });
+
+    assert.equal(result.status, "failed");
+    assert.equal(await git(["rev-parse", "HEAD"], repo), base);
+    assert.equal(await git(["status", "--porcelain"], repo), "");
+
+    const worktrees = await git(["worktree", "list", "--porcelain"], repo);
+    assert.doesNotMatch(worktrees, /TASK-200/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("Caso 5: el fallback parte de un workspace limpio", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const manager = createGitWorkspaceManager(repo);
+
+    const execute = async (
+      _prompt: string,
+      agent: AgentCandidate,
+      options?: RunOptions,
+    ): Promise<string> => {
+      const cwd = cwdOf(options);
+
+      if (agent.provider === "codex") {
+        await writeFile(join(cwd, "parcial.txt"), "codex\n", "utf8");
+        throw new Error("boom");
+      }
+
+      await writeFile(join(cwd, "resultado.txt"), "ok\n", "utf8");
+      return "ok";
+    };
+
+    const result = await runTask(makeTask({ id: "TASK-201" }), {
+      execute,
+      workspace: manager,
+    });
+
+    assert.equal(result.status, "done");
+    assert.equal(result.executedBy?.provider, "claude");
+    assert.ok(result.resultCommit);
+    assert.equal(result.attempts?.length, 2);
+    assert.notEqual(
+      result.attempts?.[0]?.workspacePath,
+      result.attempts?.[1]?.workspacePath,
+    );
+
+    const files = await git(
+      ["show", "--name-only", "--format=", result.resultCommit ?? "HEAD"],
+      repo,
+    );
+    assert.match(files, /resultado\.txt/);
+    assert.doesNotMatch(files, /parcial\.txt/);
+
+    assert.equal(await git(["status", "--porcelain"], repo), "");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("Caso 6: todos los intentos parten del mismo baseRef", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const execute = async (
+      _prompt: string,
+      agent: AgentCandidate,
+      options?: RunOptions,
+    ): Promise<string> => {
+      if (agent.provider === "codex") {
+        throw new Error("429 rate limit");
+      }
+
+      await writeFile(join(cwdOf(options), "resultado.txt"), "ok\n", "utf8");
+      return "ok";
+    };
+
+    const result = await runTask(makeTask({ id: "TASK-202" }), {
+      execute,
+      workspace: manager,
+    });
+
+    assert.equal(result.status, "done");
+    assert.equal(result.attempts?.length, 3);
+
+    const bases = new Set(result.attempts?.map((attempt) => attempt.baseRef));
+    assert.equal(bases.size, 1);
+    assert.equal([...bases][0], base);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { RunOptions } from "./types.js";
 
 const MAX_BUFFER = 10 * 1024 * 1024;
 
@@ -6,12 +7,17 @@ export function execCli(
   provider: string,
   command: string,
   args: string[],
+  options: RunOptions = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       command,
       args,
-      { cwd: process.cwd(), maxBuffer: MAX_BUFFER, encoding: "utf8" },
+      {
+        cwd: options.cwd ?? process.cwd(),
+        maxBuffer: MAX_BUFFER,
+        encoding: "utf8",
+      },
       (error, stdout, stderr) => {
         if (!error) {
           resolve(stdout.trim());
