@@ -204,5 +204,5 @@ export function agentLabel(agent: AgentSpec | undefined): string {
   if (agent.provider === "claude") {
     return agent.model === "opus" ? "Claude Opus" : "Claude Sonnet";
   }
-  return "DeepSeek";
+  return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
 }

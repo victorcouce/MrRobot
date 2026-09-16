@@ -41,6 +41,8 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
         return { provider: "claude", model: "opus" };
       case "deepseek":
         return { provider: "deepseek", model: "deepseek-flash" };
+      case "deepseek-v4-pro":
+        return { provider: "deepseek", model: "deepseek-v4-pro" };
       default:
         throw new Error(`Valor de agente desconocido: ${value}`);
     }

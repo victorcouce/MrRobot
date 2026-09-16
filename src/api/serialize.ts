@@ -38,7 +38,7 @@ export function describeAgent(agent: DomainAgentSpec): string {
     return agent.model === "opus" ? "Claude Opus" : "Claude Sonnet";
   }
 
-  return "DeepSeek";
+  return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
 }
 
 export function serializeAgent(agent: DomainAgentSpec) {

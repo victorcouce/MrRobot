@@ -233,7 +233,8 @@ export type AgentChoice =
   | "codex"
   | "claude-sonnet"
   | "claude-opus"
-  | "deepseek";
+  | "deepseek"
+  | "deepseek-v4-pro";
 
 export interface AgentAvailability {
   provider: AgentProvider;
