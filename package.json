@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx --env-file=.env src/index.ts",
-    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts"
+    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts"
   },
   "keywords": [],
   "author": "",

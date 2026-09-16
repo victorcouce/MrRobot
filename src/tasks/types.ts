@@ -1,6 +1,12 @@
 import type { AgentCandidate, AgentSpec } from "../agents/types.js";
 
-export type TaskStatus = "todo" | "ready" | "running" | "done" | "failed";
+export type TaskStatus =
+  | "todo"
+  | "blocked"
+  | "ready"
+  | "running"
+  | "done"
+  | "failed";
 
 export type TaskType =
   | "planning"
@@ -38,6 +44,9 @@ export interface Task {
 
   type: TaskType;
   complexity: TaskComplexity;
+
+  dependsOn?: string[];
+  blockedReason?: string;
 
   agent?: AgentSpec;
   executedBy?: AgentSpec;
