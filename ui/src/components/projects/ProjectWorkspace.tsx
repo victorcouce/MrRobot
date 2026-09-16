@@ -45,12 +45,19 @@ export function ProjectWorkspace({ id }: { id: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("board");
+  const [pauseRequested, setPauseRequested] = useState(false);
 
   useEffect(() => {
     if (notFound) {
       router.replace("/");
     }
   }, [notFound, router]);
+
+  useEffect(() => {
+    if (project?.status !== "running") {
+      setPauseRequested(false);
+    }
+  }, [project?.status]);
 
   async function run(action: string, fn: () => Promise<unknown>) {
     setBusy(action);
@@ -59,6 +66,21 @@ export function ProjectWorkspace({ id }: { id: string }) {
       await fn();
       await refresh();
     } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function requestPause() {
+    setPauseRequested(true);
+    setBusy("pause");
+    setActionError(null);
+    try {
+      await api.pause(id);
+      await refresh();
+    } catch (error) {
+      setPauseRequested(false);
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(null);
@@ -202,10 +224,10 @@ export function ProjectWorkspace({ id }: { id: string }) {
             )}
             {project.status === "running" && (
               <Button
-                onClick={() => run("pause", () => api.pause(id))}
-                loading={busy === "pause"}
+                onClick={() => void requestPause()}
+                loading={busy === "pause" || pauseRequested}
               >
-                Pause
+                {pauseRequested ? "Pausing…" : "Pause"}
               </Button>
             )}
             {project.status === "paused" && (
