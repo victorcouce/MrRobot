@@ -5,9 +5,35 @@ descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek en
 Git worktrees aislados, revisa el resultado y deja el trabajo en una branch
 Git aislada.
 
-## Inicio rápido
+## Requisitos previos
 
-Necesitas **Node.js 20+**, **npm** y **git**.
+Básicos:
+
+- **Node.js 20+** y **npm**
+- **git**
+
+Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
+`codex` y `claude` directamente, así que deben estar instalados y en el
+`PATH`, y autenticados una vez:
+
+- **Codex CLI** — provider `codex` (tareas de código complejas):
+  ```bash
+  npm install -g @openai/codex
+  codex login
+  ```
+- **Claude Code CLI** — provider `claude` (planner, reviewer, supervisor y
+  tareas):
+  ```bash
+  npm install -g @anthropic-ai/claude-code
+  claude          # la primera vez abre el flujo de autenticación
+  ```
+- **DeepSeek** — provider `deepseek` vía HTTP; no necesita CLI, sólo la
+  variable `DEEPSEEK_API_KEY` (ver [Configurar las claves](#configurar-las-claves-solo-para-uso-real)).
+
+Si sólo quieres probar la app sin gastar tokens, usa el **modo mock** (paso 3)
+y no necesitas instalar ni autenticar ninguno de estos.
+
+## Inicio rápido
 
 ### 1. Instalar dependencias
 
@@ -48,9 +74,10 @@ DEEPSEEK_API_KEY=tu_clave
 GITHUB_TOKEN=tu_token      # opcional, para repos de GitHub
 ```
 
-Sin `MRROBOT_MOCK=1` necesitas al menos `DEEPSEEK_API_KEY` para que los agentes
-funcionen. Consulta la sección [Variables de entorno](#variables-de-entorno)
-para más opciones.
+Sin `MRROBOT_MOCK=1` necesitas `DEEPSEEK_API_KEY` y los CLIs `codex`/`claude`
+instalados y autenticados (ver [Requisitos previos](#requisitos-previos)) para
+que todos los agentes funcionen. Consulta la sección
+[Variables de entorno](#variables-de-entorno) para más opciones.
 
 ## Arquitectura
 
