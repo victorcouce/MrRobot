@@ -47,6 +47,8 @@ export interface Task {
   type: TaskType;
   complexity: TaskComplexity;
 
+  chatId?: string;
+
   dependsOn?: string[];
   blockedReason?: string;
 

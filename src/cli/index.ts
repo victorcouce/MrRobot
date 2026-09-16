@@ -3,6 +3,7 @@ import { loadConfig } from "../config/index.js";
 import {
   buildProjectResult,
   createProject,
+  deleteProject,
   pauseProject,
   resumeProject,
   runProject,
@@ -10,6 +11,10 @@ import {
   type ProjectDeps,
 } from "../projects/service.js";
 import type { Project } from "../projects/types.js";
+import {
+  importCompletedProject,
+  type ImportProjectInput,
+} from "../projects/import.js";
 import { createPgliteStorage } from "../storage/pglite.js";
 import type { Storage } from "../storage/types.js";
 import {
@@ -25,12 +30,15 @@ function usage(): void {
 Comandos:
   create "<objetivo>" [--folder <ruta>] [--remote <url>]
                         Crea un proyecto (planner + DAG)
+  import [--folder <ruta>] [--branch <rama>] [--name <nombre>]
+                        Importa un proyecto completado desde una rama final
   plan <project-id>     Lista las tareas del plan
   run <project-id>      Ejecuta el proyecto
   status <project-id>   Muestra el estado
   tasks <project-id>    Lista las tareas
   pause <project-id>    Pausa el proyecto
   resume <project-id>   Reanuda el proyecto
+  delete <project-id>   Borra el proyecto de la app (no toca el disco)
 
 Opciones de create:
   --folder <ruta>   Carpeta del proyecto (se crea/inicializa si no existe)
@@ -79,6 +87,42 @@ function parseCreateArgs(args: string[]): CreateProjectInput {
   if (repoPath) input.repoPath = repoPath;
   if (remoteUrl) input.remoteUrl = remoteUrl;
   return input;
+}
+
+function parseImportArgs(args: string[]): ImportProjectInput {
+  const options: ImportProjectInput = { repoPath: process.cwd() };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--folder" || arg === "--repo") {
+      options.repoPath = args[index + 1] ?? options.repoPath;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--branch") {
+      const branch = args[index + 1];
+      if (branch) options.branch = branch;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--name") {
+      const name = args[index + 1];
+      if (name) options.name = name;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--goal") {
+      const goal = args[index + 1];
+      if (goal) options.goal = goal;
+      index += 1;
+    }
+  }
+
+  return options;
 }
 
 function depsForProject(project: Project, storage: Storage): ProjectDeps {
@@ -152,6 +196,15 @@ async function main(): Promise<void> {
         break;
       }
 
+      case "import": {
+        const project = await importCompletedProject(parseImportArgs(args), {
+          storage,
+        });
+        console.log(`Proyecto importado: ${project.id}`);
+        printProject(project);
+        break;
+      }
+
       case "plan":
       case "tasks": {
         const id = requireArg(args, "project-id");
@@ -210,6 +263,14 @@ async function main(): Promise<void> {
 
         const project = await resumeProject(id, depsForProject(existing, storage));
         printProject(project);
+        break;
+      }
+
+      case "delete": {
+        const project = await deleteProject(requireArg(args, "project-id"), deps);
+        console.log(
+          `Proyecto ${project.id} borrado de la app (el directorio no se ha tocado).`,
+        );
         break;
       }
 

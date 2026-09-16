@@ -9,7 +9,7 @@
     "demo": "tsx --env-file=.env src/index.ts",
     "mrrobot": "tsx --env-file=.env src/cli/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/planner/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/graph/*.test.ts src/api/*.test.ts"
+    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/planner/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/chats/*.test.ts src/graph/*.test.ts src/api/*.test.ts src/preview/*.test.ts"
   },
   "keywords": [],
   "author": "",

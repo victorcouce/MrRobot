@@ -1,9 +1,12 @@
 import type {
   AgentSpec,
   AppInfo,
+  ChatDetail,
+  ChatSummary,
   ConfigInfo,
   Project,
   ProjectEvent,
+  ProjectPreview,
   ProjectSummary,
   StoredReview,
   SupervisorRun,
@@ -74,7 +77,28 @@ export const api = {
   pickFolder: () =>
     request<{ path: string | null }>("/api/fs/pick-folder", { method: "POST" }),
 
+  importProject: (input: {
+    repoPath: string;
+    branch?: string;
+    name?: string;
+    goal?: string;
+  }) =>
+    request<Project>("/api/projects/import", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  listFinalBranches: (repoPath: string) =>
+    request<{ branches: string[] }>(
+      `/api/projects/import/branches?repoPath=${encodeURIComponent(repoPath)}`,
+    ),
+
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
+
+  deleteProject: (id: string) =>
+    request<{ id: string; deleted: boolean }>(`/api/projects/${id}`, {
+      method: "DELETE",
+    }),
 
   updateProjectConfig: (id: string, config: Record<string, unknown>) =>
     request<Project>(`/api/projects/${id}/config`, {
@@ -96,6 +120,17 @@ export const api = {
 
   cancel: (id: string) =>
     request<Project>(`/api/projects/${id}/cancel`, { method: "POST" }),
+
+  startPreview: (id: string) =>
+    request<ProjectPreview>(`/api/projects/${id}/preview`, { method: "POST" }),
+
+  getPreview: (id: string) =>
+    request<ProjectPreview>(`/api/projects/${id}/preview`),
+
+  stopPreview: (id: string) =>
+    request<ProjectPreview>(`/api/projects/${id}/preview`, {
+      method: "DELETE",
+    }),
 
   getTasks: (id: string) =>
     request<Task[]>(`/api/projects/${id}/tasks`),
@@ -124,6 +159,30 @@ export const api = {
   removeTask: (id: string, taskId: string) =>
     request<Project>(`/api/projects/${id}/tasks/${taskId}`, {
       method: "DELETE",
+    }),
+
+  listChats: (id: string) =>
+    request<ChatSummary[]>(`/api/projects/${id}/chats`),
+
+  createChat: (id: string, input: { title?: string; message?: string }) =>
+    request<ChatDetail>(`/api/projects/${id}/chats`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  getChat: (id: string, chatId: string) =>
+    request<ChatDetail>(`/api/projects/${id}/chats/${chatId}`),
+
+  deleteChat: (id: string, chatId: string) =>
+    request<{ id: string; deleted: boolean }>(
+      `/api/projects/${id}/chats/${chatId}`,
+      { method: "DELETE" },
+    ),
+
+  sendChatMessage: (id: string, chatId: string, content: string) =>
+    request<ChatDetail>(`/api/projects/${id}/chats/${chatId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
     }),
 
   activity: (limit = 100) =>

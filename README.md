@@ -5,6 +5,53 @@ descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek en
 Git worktrees aislados, revisa el resultado y deja el trabajo en una branch
 Git aislada.
 
+## Inicio rápido
+
+Necesitas **Node.js 20+**, **npm** y **git**.
+
+### 1. Instalar dependencias
+
+```bash
+npm install        # backend
+cd ui && npm install && cd ..   # interfaz gráfica
+```
+
+### 2. Arrancar la app
+
+Abre **dos terminales** desde la raíz del repo:
+
+```bash
+# Terminal 1 — backend (API en http://127.0.0.1:4000)
+npm run api
+
+# Terminal 2 — interfaz (http://localhost:3000)
+cd ui && npm run dev
+```
+
+Luego abre **http://localhost:3000** en el navegador.
+
+### 3. (Opcional) Probar sin gastar tokens
+
+Si no quieres usar modelos reales ni tocar Git, arranca el backend en modo mock:
+
+```bash
+MRROBOT_MOCK=1 npm run api   # Terminal 1
+cd ui && npm run dev         # Terminal 2
+```
+
+### Configurar las claves (solo para uso real)
+
+Crea un archivo `.env` en la raíz con tus claves:
+
+```env
+DEEPSEEK_API_KEY=tu_clave
+GITHUB_TOKEN=tu_token      # opcional, para repos de GitHub
+```
+
+Sin `MRROBOT_MOCK=1` necesitas al menos `DEEPSEEK_API_KEY` para que los agentes
+funcionen. Consulta la sección [Variables de entorno](#variables-de-entorno)
+para más opciones.
+
 ## Arquitectura
 
 ```text
@@ -43,50 +90,25 @@ servicios existentes. Los tipos del wire se comparten en `shared/types.ts`.
 - `workspace/`: worktrees, commits, cherry-pick de dependencias y branch final.
 - `planner/`, `reviewer/`, `supervisor/`: agentes LLM con salida validada por Zod.
 - `projects/`: entidad Project y orquestación (crear/ejecutar/pausar/reanudar).
+- `chats/`: hilos de conversación por proyecto; cada mensaje pasa por el planner
+  y añade/ajusta tareas asociadas al chat.
 - `storage/`: persistencia (PGlite) + event log.
 - `graph/`: grafo LangGraph que orquesta planner/scheduler/supervisor.
 
-## Cómo iniciar
+## Comandos útiles
 
 ```bash
-npm install
-npm test          # tests del motor
-npm run mrrobot help
-```
-
-### Backend (API HTTP)
-
-```bash
-npm run api       # levanta la API en http://127.0.0.1:4000
-```
-
-### Interfaz gráfica (UI)
-
-```bash
-cd ui
-npm install
-npm run dev       # Next.js en http://localhost:3000
+npm test              # tests del motor
+npm run typecheck     # chequeo de tipos del backend
+npm run mrrobot help  # ayuda del CLI
 ```
 
 La UI habla con la API a través de `NEXT_PUBLIC_API_URL` (por defecto
-`http://127.0.0.1:4000`). Para desarrollo, arranca ambos procesos:
+`http://127.0.0.1:4000`).
 
-```bash
-npm run api            # terminal 1
-cd ui && npm run dev   # terminal 2
-```
-
-### Modo mock (sin modelos reales ni Git)
-
-Para probar el flujo completo sin gastar tokens ni tocar Git:
-
-```bash
-MRROBOT_MOCK=1 npm run api
-```
-
-Los agentes, el planner, el reviewer, el supervisor y los worktrees se
-simulan de forma determinista. Escenarios disponibles vía
-`MRROBOT_MOCK_SCENARIO`: `success` (por defecto), `replan` y `fail`.
+El modo mock simula agentes, planner, reviewer, supervisor y worktrees de
+forma determinista. Escenarios disponibles vía `MRROBOT_MOCK_SCENARIO`:
+`success` (por defecto), `replan` y `fail`.
 
 ## Configuración
 
@@ -129,7 +151,8 @@ MRROBOT_MOCK_DELAY_MS=0    # retardo artificial por ejecución de agente
 La persistencia usa **PGlite** (Postgres embebido en WASM) a través de un
 `SqlExecutor` genérico, por lo que el mismo SQL funciona sobre `pg`. El esquema
 (`src/storage/sql.ts`) define: `projects`, `tasks`, `task_dependencies`,
-`task_attempts`, `agent_runs`, `reviews`, `supervisor_runs`, `events`.
+`task_attempts`, `agent_runs`, `reviews`, `supervisor_runs`, `events`, `chats`,
+`chat_messages`.
 
 Para Postgres real basta añadir un `SqlExecutor` con `pg` y usar `SqlStorage`.
 
@@ -144,6 +167,7 @@ npm run mrrobot -- status <project-id>
 npm run mrrobot -- tasks <project-id>
 npm run mrrobot -- pause <project-id>
 npm run mrrobot -- resume <project-id>
+npm run mrrobot -- delete <project-id>
 ```
 
 ## Carpeta del proyecto y remoto
@@ -162,6 +186,10 @@ Cada proyecto puede tener su propia carpeta y un remoto de GitHub:
 
 Los worktrees de cada proyecto se crean bajo `<carpeta>/.worktrees/`, que se
 añade a `.git/info/exclude` del repo para no ensuciar el working tree.
+
+Borrar un proyecto (`DELETE /api/projects/:id`, `mrrobot delete` o el botón
+*Delete* de la UI) lo elimina de la app junto con sus tareas, eventos y reviews.
+No borra su carpeta ni los worktrees del disco.
 
 ## Estados de Project
 
@@ -195,6 +223,30 @@ Tras cada ronda, el supervisor decide `continue | replan | pause | fail`. Con
 motivo, y devuelve un DAG nuevo validado; las tareas `done` se conservan y las
 restantes se reintentan.
 
+## Chats por proyecto
+
+Un proyecto puede tener varios **chats** (hilos de conversación independientes).
+Cada chat guarda su historial (`chats` + `chat_messages` en storage) y las
+tareas que genera. Al enviar un mensaje:
+
+1. Se persiste el mensaje del usuario y se emite `chat.message`.
+2. El planner recibe el objetivo del proyecto, el plan actual del chat y la
+   conversación, y devuelve un plan.
+3. Los IDs del plan se prefijan por chat (`C1-TASK-001`, `C2-TASK-001`, …) para
+   que no colisionen entre chats, y las tareas se asocian al chat (`task.chatId`).
+4. Las tareas `done` del chat se conservan; el resto se reemplaza por el plan
+   nuevo. Las tareas de otros chats no se tocan.
+5. Se guarda el mensaje del asistente (resumen + IDs) y se emite `chat.message` y
+   `plan.updated`.
+
+Si el proyecto estaba `draft` o en estado terminal (`completed`/`failed`/
+`cancelled`) y el chat añade tareas pendientes, el proyecto vuelve a `ready` para
+poder lanzar una nueva ejecución. Borrar un chat elimina sus tareas y mensajes.
+
+Los chats se exponen en la UI como pestaña **Chats** (disponible en todos los
+estados salvo `running`); el backend es la fuente de verdad y el SSE refresca el
+hilo en vivo.
+
 ## Git
 
 - Cada intento: branch `agent/<task>-attempt-N` y worktree `.worktrees/...`.
@@ -210,7 +262,8 @@ restantes se reintentan.
 `project.config_updated`,
 `task.started`, `task.completed`, `task.failed`, `task.review_passed`,
 `task.review_failed`, `git.conflict`, `supervisor.replan`, `project.paused`,
-`project.resumed`, `project.completed`, `project.cancelled`, `project.error`.
+`project.resumed`, `project.completed`, `project.cancelled`, `project.error`,
+`project.deleted`, `chat.created`, `chat.message`, `chat.deleted`.
 
 ## API HTTP
 
@@ -222,6 +275,7 @@ PUT    /api/config                     actualiza la config global
 GET    /api/projects                   lista proyectos (resumen)
 POST   /api/projects                   crea un proyecto (draft)
 GET    /api/projects/:id               proyecto completo + stats
+DELETE /api/projects/:id               borra el proyecto de la app (no toca el disco)
 PATCH  /api/projects/:id/config        actualiza settings/modelos (draft|ready|paused)
 POST   /api/projects/:id/plan          genera el plan (asíncrono)
 POST   /api/projects/:id/run           inicia la ejecución (asíncrono)
@@ -236,6 +290,11 @@ GET    /api/projects/:id/stream        SSE de eventos del proyecto
 POST   /api/projects/:id/tasks         añade tarea (antes de ejecutar)
 PATCH  /api/projects/:id/tasks/:taskId edita tarea (antes de ejecutar)
 DELETE /api/projects/:id/tasks/:taskId elimina tarea (antes de ejecutar)
+GET    /api/projects/:id/chats         lista los chats del proyecto
+POST   /api/projects/:id/chats         crea un chat (opcional `message`)
+GET    /api/projects/:id/chats/:chatId detalle del chat + mensajes
+DELETE /api/projects/:id/chats/:chatId borra el chat y sus tareas
+POST   /api/projects/:id/chats/:chatId/messages envía un mensaje (planner → tareas)
 GET    /api/activity                   actividad global reciente
 ```
 

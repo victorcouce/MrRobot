@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentSpec } from "../agents/types.js";
+import type { Chat, ChatMessage } from "../chats/types.js";
 import type { Project } from "../projects/types.js";
 import type { Task, TaskAttempt, TaskStatus } from "../tasks/types.js";
 import type { IntegrationError } from "../workspace/types.js";
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   status TEXT NOT NULL,
   type TEXT NOT NULL,
   complexity TEXT NOT NULL,
+  chat_id TEXT,
   blocked_reason TEXT,
   agent JSONB,
   executed_by JSONB,
@@ -123,6 +125,27 @@ CREATE TABLE IF NOT EXISTS events (
   payload JSONB,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS chats (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  task_ids JSONB NOT NULL DEFAULT '[]',
+  agent JSONB,
+  error TEXT,
+  created_at TEXT NOT NULL
+);
 `;
 
 function toJson(value: unknown): string | null {
@@ -173,6 +196,7 @@ interface TaskRow {
   status: TaskStatus;
   type: Task["type"];
   complexity: Task["complexity"];
+  chat_id: string | null;
   blocked_reason: string | null;
   agent: unknown;
   executed_by: unknown;
@@ -208,6 +232,7 @@ export class SqlStorage implements Storage {
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS config JSONB");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS remote_url TEXT");
+    await this.db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS chat_id TEXT");
   }
 
   async close(): Promise<void> {}
@@ -266,10 +291,10 @@ export class SqlStorage implements Storage {
     await this.db.query(
       `INSERT INTO tasks
         (project_id, id, title, description, status, type, complexity,
-         blocked_reason, agent, executed_by, acceptance_criteria,
+         chat_id, blocked_reason, agent, executed_by, acceptance_criteria,
          integration_error, output, error, result_commit, started_at, finished_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,
-               $12::jsonb,$13,$14,$15,$16,$17)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,
+               $13::jsonb,$14,$15,$16,$17,$18)`,
       [
         projectId,
         task.id,
@@ -278,6 +303,7 @@ export class SqlStorage implements Storage {
         task.status,
         task.type,
         task.complexity,
+        task.chatId ?? null,
         task.blockedReason ?? null,
         toJson(task.agent),
         toJson(task.executedBy),
@@ -416,6 +442,23 @@ export class SqlStorage implements Storage {
     return projects;
   }
 
+  async deleteProject(id: string): Promise<void> {
+    await this.db.query(`DELETE FROM task_attempts WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM task_dependencies WHERE project_id = $1`, [
+      id,
+    ]);
+    await this.db.query(`DELETE FROM tasks WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM agent_runs WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM reviews WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM supervisor_runs WHERE project_id = $1`, [
+      id,
+    ]);
+    await this.db.query(`DELETE FROM events WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM chat_messages WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM chats WHERE project_id = $1`, [id]);
+    await this.db.query(`DELETE FROM projects WHERE id = $1`, [id]);
+  }
+
   private rowToTask(
     row: TaskRow,
     dependencies: string[],
@@ -430,6 +473,7 @@ export class SqlStorage implements Storage {
       complexity: row.complexity,
     };
 
+    if (row.chat_id) task.chatId = row.chat_id;
     if (row.blocked_reason) task.blockedReason = row.blocked_reason;
     const agent = fromJson<AgentSpec>(row.agent);
     if (agent) task.agent = agent;
@@ -623,6 +667,126 @@ export class SqlStorage implements Storage {
       };
       if (row.instructions) run.instructions = row.instructions;
       return run;
+    });
+  }
+
+  async saveChat(chat: Chat): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chats (id, project_id, title, seq, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET
+         title = EXCLUDED.title,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        chat.id,
+        chat.projectId,
+        chat.title,
+        chat.seq,
+        chat.createdAt.toISOString(),
+        chat.updatedAt.toISOString(),
+      ],
+    );
+  }
+
+  async getChat(id: string): Promise<Chat | undefined> {
+    const rows = await this.db.query<{
+      id: string;
+      project_id: string;
+      title: string;
+      seq: number;
+      created_at: string;
+      updated_at: string;
+    }>(`SELECT * FROM chats WHERE id = $1`, [id]);
+    const row = rows[0];
+    if (!row) return undefined;
+    return this.rowToChat(row);
+  }
+
+  async listChats(projectId: string): Promise<Chat[]> {
+    const rows = await this.db.query<{
+      id: string;
+      project_id: string;
+      title: string;
+      seq: number;
+      created_at: string;
+      updated_at: string;
+    }>(`SELECT * FROM chats WHERE project_id = $1 ORDER BY seq`, [projectId]);
+
+    return rows.map((row) => this.rowToChat(row));
+  }
+
+  async deleteChat(id: string): Promise<void> {
+    await this.db.query(`DELETE FROM chat_messages WHERE chat_id = $1`, [id]);
+    await this.db.query(`DELETE FROM chats WHERE id = $1`, [id]);
+  }
+
+  private rowToChat(row: {
+    id: string;
+    project_id: string;
+    title: string;
+    seq: number;
+    created_at: string;
+    updated_at: string;
+  }): Chat {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      title: row.title,
+      seq: row.seq,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  async appendChatMessage(message: ChatMessage): Promise<void> {
+    await this.db.query(
+      `INSERT INTO chat_messages
+        (id, chat_id, project_id, role, content, task_ids, agent, error, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9)`,
+      [
+        message.id,
+        message.chatId,
+        message.projectId,
+        message.role,
+        message.content,
+        toJson(message.taskIds),
+        toJson(message.agent),
+        message.error ?? null,
+        message.createdAt.toISOString(),
+      ],
+    );
+  }
+
+  async listChatMessages(chatId: string): Promise<ChatMessage[]> {
+    const rows = await this.db.query<{
+      id: string;
+      chat_id: string;
+      project_id: string;
+      role: ChatMessage["role"];
+      content: string;
+      task_ids: unknown;
+      agent: unknown;
+      error: string | null;
+      created_at: string;
+    }>(
+      `SELECT * FROM chat_messages WHERE chat_id = $1 ORDER BY created_at`,
+      [chatId],
+    );
+
+    return rows.map((row) => {
+      const message: ChatMessage = {
+        id: row.id,
+        chatId: row.chat_id,
+        projectId: row.project_id,
+        role: row.role,
+        content: row.content,
+        taskIds: fromJson<string[]>(row.task_ids) ?? [],
+        createdAt: new Date(row.created_at),
+      };
+      const agent = fromJson<AgentSpec>(row.agent);
+      if (agent) message.agent = agent;
+      if (row.error) message.error = row.error;
+      return message;
     });
   }
 }

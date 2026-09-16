@@ -1,4 +1,5 @@
 import type { Project } from "../projects/types.js";
+import type { Chat, ChatMessage } from "../chats/types.js";
 
 export type AgentRole = "planner" | "worker" | "reviewer" | "supervisor";
 
@@ -51,6 +52,7 @@ export interface Storage {
   saveProject(project: Project): Promise<void>;
   getProject(id: string): Promise<Project | undefined>;
   listProjects(): Promise<Project[]>;
+  deleteProject(id: string): Promise<void>;
 
   appendEvent(event: ProjectEvent): Promise<void>;
   listEvents(projectId: string): Promise<ProjectEvent[]>;
@@ -61,4 +63,12 @@ export interface Storage {
 
   listReviews(projectId: string): Promise<StoredReview[]>;
   listSupervisorRuns(projectId: string): Promise<StoredSupervisorRun[]>;
+
+  saveChat(chat: Chat): Promise<void>;
+  getChat(id: string): Promise<Chat | undefined>;
+  listChats(projectId: string): Promise<Chat[]>;
+  deleteChat(id: string): Promise<void>;
+
+  appendChatMessage(message: ChatMessage): Promise<void>;
+  listChatMessages(chatId: string): Promise<ChatMessage[]>;
 }

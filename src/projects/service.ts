@@ -455,9 +455,14 @@ export async function runProjectRound(
     options.signal,
   );
 
+  const persistProgress = async (tasks: Task[]): Promise<void> => {
+    await storage.saveProject({ ...project, tasks, updatedAt: new Date() });
+  };
+
   const planResult = await runPlan([...taskState.values()], {
     executeTask,
     concurrency: config.concurrency,
+    onUpdate: persistProgress,
     ...(options.shouldPause ? { shouldPause: options.shouldPause } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });
@@ -754,6 +759,20 @@ export async function cancelProject(
   await deps.storage.saveProject(cancelled);
   await emit(deps.storage, projectId, "project.cancelled");
   return cancelled;
+}
+
+export async function deleteProject(
+  projectId: string,
+  deps: ProjectDeps,
+): Promise<Project> {
+  const project = await deps.storage.getProject(projectId);
+
+  if (!project) {
+    throw new Error(`Proyecto ${projectId} no encontrado.`);
+  }
+
+  await deps.storage.deleteProject(projectId);
+  return project;
 }
 
 export async function resumeProject(

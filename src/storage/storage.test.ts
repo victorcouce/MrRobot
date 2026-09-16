@@ -59,6 +59,7 @@ function makeProject(): Project {
         id: "TASK-002",
         title: "UI",
         dependsOn: ["TASK-001"],
+        chatId: "chat-1",
         status: "blocked",
       }),
     ],
@@ -94,6 +95,7 @@ async function roundTrip(storage: Storage): Promise<void> {
   const task2 = loaded.tasks.find((task) => task.id === "TASK-002");
   assert.deepEqual(task2?.dependsOn, ["TASK-001"]);
   assert.equal(task2?.status, "blocked");
+  assert.equal(task2?.chatId, "chat-1");
 
   await storage.appendEvent({
     id: "ev-1",
@@ -136,8 +138,59 @@ async function roundTrip(storage: Storage): Promise<void> {
     finishedAt: new Date(),
   });
 
+  await storage.saveChat({
+    id: "chat-1",
+    projectId: "proj-1",
+    title: "Iterar la UI",
+    seq: 1,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:03:00Z"),
+  });
+  await storage.appendChatMessage({
+    id: "msg-1",
+    chatId: "chat-1",
+    projectId: "proj-1",
+    role: "user",
+    content: "añade tests de UI",
+    taskIds: [],
+    createdAt: new Date("2026-01-01T00:02:00Z"),
+  });
+  await storage.appendChatMessage({
+    id: "msg-2",
+    chatId: "chat-1",
+    projectId: "proj-1",
+    role: "assistant",
+    content: "he añadido TASK-002",
+    taskIds: ["TASK-002"],
+    agent: { provider: "claude", model: "opus" },
+    createdAt: new Date("2026-01-01T00:03:00Z"),
+  });
+
+  const chats = await storage.listChats("proj-1");
+  assert.equal(chats.length, 1);
+  assert.equal(chats[0]?.title, "Iterar la UI");
+  assert.equal(chats[0]?.seq, 1);
+
+  const loadedChat = await storage.getChat("chat-1");
+  assert.equal(loadedChat?.projectId, "proj-1");
+
+  const messages = await storage.listChatMessages("chat-1");
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0]?.role, "user");
+  assert.deepEqual(messages[1]?.taskIds, ["TASK-002"]);
+  assert.deepEqual(messages[1]?.agent, { provider: "claude", model: "opus" });
+
   const projects = await storage.listProjects();
   assert.equal(projects.length, 1);
+
+  await storage.deleteProject("proj-1");
+  assert.equal(await storage.getProject("proj-1"), undefined);
+  assert.equal((await storage.listProjects()).length, 0);
+  assert.equal((await storage.listEvents("proj-1")).length, 0);
+  assert.equal((await storage.listReviews("proj-1")).length, 0);
+  assert.equal((await storage.listSupervisorRuns("proj-1")).length, 0);
+  assert.equal((await storage.listChats("proj-1")).length, 0);
+  assert.equal((await storage.listChatMessages("chat-1")).length, 0);
 
   await storage.close();
 }

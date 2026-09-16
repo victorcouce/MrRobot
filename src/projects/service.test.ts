@@ -190,6 +190,45 @@ test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   assert.equal(finished.tasks[0]?.status, "done");
 });
 
+test("progreso incremental: las tareas completadas se persisten antes de terminar la ronda", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const workspace = fakeWorkspace();
+
+  let calls = 0;
+  let snapshot: string | undefined;
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace,
+    plannerExecute: async () => JSON.stringify(planA),
+    workerExecute: async () => "ok",
+    reviewerExecute: async () =>
+      JSON.stringify({ approved: true, summary: "ok", issues: [] }),
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject({ goal: "x" }, deps);
+
+  deps.workerExecute = async () => {
+    calls += 1;
+
+    if (calls === 2) {
+      const stored = await storage.getProject(project.id);
+      snapshot = stored?.tasks
+        .map((task) => `${task.id}:${task.status}`)
+        .join(",");
+    }
+
+    return "ok";
+  };
+
+  await runProject(project.id, deps);
+
+  assert.equal(snapshot, "TASK-001:done,TASK-002:running");
+});
+
 test("replanificación: el supervisor añade una tarea y el proyecto completa", async () => {
   const storage = new InMemoryStorage();
   await storage.init();

@@ -1,6 +1,7 @@
 import type { Project } from "../../lib/types";
 import { formatDuration, shortSha } from "../../lib/format";
 import { agentLabel } from "../../lib/api";
+import { PreviewPanel } from "./PreviewPanel";
 
 function Stat({
   label,
@@ -64,6 +65,8 @@ export function ResultView({ project }: { project: Project }) {
           </p>
         </div>
       )}
+
+      {project.resultCommit && <PreviewPanel project={project} />}
 
       {agentsUsed.length > 0 && (
         <section>

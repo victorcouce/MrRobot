@@ -1,8 +1,42 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { ProjectEvent } from "../storage/types.js";
 import { Runtime } from "./runtime.js";
 import { buildApiServer } from "./server.js";
+
+function git(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd, encoding: "utf8" }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr.trim() || error.message));
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+}
+
+async function createFinalRepo(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "mrrobot-api-import-"));
+
+  await git(["init", "-b", "main"], dir);
+  await git(["config", "user.email", "test@example.com"], dir);
+  await git(["config", "user.name", "Test"], dir);
+  await writeFile(join(dir, "README.md"), "# base\n", "utf8");
+  await git(["add", "-A"], dir);
+  await git(["commit", "-m", "chore: initial commit"], dir);
+
+  await git(["checkout", "-b", "agent/project-proj-999-final"], dir);
+  await writeFile(join(dir, "index.html"), "<h1>app</h1>", "utf8");
+  await git(["add", "-A"], dir);
+  await git(["commit", "-m", "agent(TASK-001): Scaffold"], dir);
+
+  return realpath(dir);
+}
 
 async function waitFor(
   runtime: Runtime,
@@ -184,6 +218,97 @@ test("api server: flujo HTTP básico con modo mock", async () => {
   await runtime.shutdown();
 });
 
+test("api server: importa un proyecto completado desde una rama final", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const repoPath = await createFinalRepo();
+
+  const branches = await (
+    await fetch(
+      `${base}/api/projects/import/branches?repoPath=${encodeURIComponent(repoPath)}`,
+    )
+  ).json();
+  assert.deepEqual(branches.branches, ["agent/project-proj-999-final"]);
+
+  const imported = await (
+    await fetch(`${base}/api/projects/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoPath, name: "Importada" }),
+    })
+  ).json();
+
+  assert.equal(imported.status, "completed");
+  assert.equal(imported.name, "Importada");
+  assert.equal(imported.resultBranch, "agent/project-proj-999-final");
+  assert.equal(imported.stats.done, 1);
+
+  const fetched = await (
+    await fetch(`${base}/api/projects/${imported.id}`)
+  ).json();
+  assert.equal(fetched.status, "completed");
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: preview expone estado y se detiene", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "web app" }),
+    })
+  ).json();
+
+  const idle = await (
+    await fetch(`${base}/api/projects/${created.id}/preview`)
+  ).json();
+  assert.equal(idle.status, "stopped");
+
+  await fetch(`${base}/api/projects/${created.id}/plan`, { method: "POST" });
+  await waitFor(runtime, created.id, (status) => status === "ready");
+  await fetch(`${base}/api/projects/${created.id}/run`, { method: "POST" });
+  await waitFor(runtime, created.id, (status) => status === "completed");
+
+  const started = await (
+    await fetch(`${base}/api/projects/${created.id}/preview`, {
+      method: "POST",
+    })
+  ).json();
+  assert.equal(started.status, "starting");
+
+  const stopped = await (
+    await fetch(`${base}/api/projects/${created.id}/preview`, {
+      method: "DELETE",
+    })
+  ).json();
+  assert.equal(stopped.status, "stopped");
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
 test("api server: stream SSE emite eventos", async () => {
   const runtime = await Runtime.create({ mock: true });
   const server = buildApiServer(runtime);
@@ -237,6 +362,43 @@ test("api server: stream SSE emite eventos", async () => {
 
   assert.ok(received.includes("plan.started"));
   assert.ok(received.includes("plan.generated"));
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: DELETE /api/projects/:id borra el proyecto", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "x" }),
+    })
+  ).json();
+
+  const response = await fetch(`${base}/api/projects/${created.id}`, {
+    method: "DELETE",
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.deleted, true);
+
+  const list = await (await fetch(`${base}/api/projects`)).json();
+  assert.equal(list.length, 0);
+
+  const missing = await fetch(`${base}/api/projects/${created.id}`);
+  assert.equal(missing.status, 404);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();
@@ -356,6 +518,74 @@ test("api server: PATCH /api/projects/:id/config actualiza los modelos", async (
     body: JSON.stringify({ plannerAgent: "auto" }),
   });
   assert.equal(invalid.status, 400);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: chats generan tareas y se pueden iterar", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "librería TS" }),
+    })
+  ).json();
+
+  const chat = await (
+    await fetch(`${base}/api/projects/${created.id}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "añade login" }),
+    })
+  ).json();
+
+  assert.equal(chat.title, "añade login");
+  assert.ok(chat.taskIds.length > 0);
+  assert.ok(chat.messages.length >= 2);
+
+  const chats = await (
+    await fetch(`${base}/api/projects/${created.id}/chats`)
+  ).json();
+  assert.equal(chats.length, 1);
+
+  const sent = await (
+    await fetch(`${base}/api/projects/${created.id}/chats/${chat.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "y también logout" }),
+    })
+  ).json();
+  assert.ok(sent.messages.length >= 3);
+
+  const project = await (
+    await fetch(`${base}/api/projects/${created.id}`)
+  ).json();
+  assert.equal(project.status, "ready");
+  assert.ok(project.tasks.every((task: { chatId?: string }) => task.chatId));
+
+  const deleted = await (
+    await fetch(`${base}/api/projects/${created.id}/chats/${chat.id}`, {
+      method: "DELETE",
+    })
+  ).json();
+  assert.equal(deleted.deleted, true);
+
+  const remaining = await (
+    await fetch(`${base}/api/projects/${created.id}/chats`)
+  ).json();
+  assert.equal(remaining.length, 0);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();

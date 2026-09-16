@@ -65,6 +65,7 @@ export interface Task {
   status: TaskStatus;
   type: TaskType;
   complexity: TaskComplexity;
+  chatId?: string;
   dependsOn?: string[];
   blockedReason?: string;
   acceptanceCriteria?: string[];
@@ -128,6 +129,52 @@ export interface Project {
   stats: ProjectStats;
   agentsUsed: AgentUsage[];
   result?: ProjectResult;
+}
+
+export type ChatMessageRole = "user" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  chatId: string;
+  projectId: string;
+  role: ChatMessageRole;
+  content: string;
+  taskIds: string[];
+  agent?: AgentSpec;
+  error?: string;
+  createdAt: string;
+}
+
+export interface ChatSummary {
+  id: string;
+  projectId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  taskIds: string[];
+}
+
+export interface ChatDetail extends ChatSummary {
+  messages: ChatMessage[];
+}
+
+export type PreviewStatus =
+  | "starting"
+  | "installing"
+  | "running"
+  | "stopped"
+  | "failed";
+
+export interface ProjectPreview {
+  projectId: string;
+  status: PreviewStatus;
+  url?: string;
+  port?: number;
+  command?: string;
+  log?: string;
+  error?: string;
+  startedAt?: string;
 }
 
 export interface ProjectSummary {

@@ -1,7 +1,9 @@
 import { isAbsolute } from "node:path";
 import type { AgentSpec } from "../agents/types.js";
+import type { CreateChatInput } from "../chats/service.js";
 import type { OrchestratorConfig } from "../config/index.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
+import type { ImportProjectInput } from "../projects/import.js";
 import type {
   TaskComplexity,
   TaskType,
@@ -193,6 +195,76 @@ export function parseRepoOptions(body: Record<string, unknown>): RepoOptions {
   }
 
   return options;
+}
+
+export function parseImportProject(
+  body: Record<string, unknown>,
+): ImportProjectInput {
+  const repoPath = body["repoPath"];
+
+  if (typeof repoPath !== "string" || !repoPath.trim()) {
+    throw new Error('El campo "repoPath" es obligatorio.');
+  }
+
+  const input: ImportProjectInput = { repoPath: repoPath.trim() };
+
+  const branch = body["branch"];
+  if (branch !== undefined && branch !== null && branch !== "") {
+    if (typeof branch !== "string" || !branch.trim()) {
+      throw new Error('El campo "branch" debe ser un texto no vacío.');
+    }
+    input.branch = branch.trim();
+  }
+
+  const name = body["name"];
+  if (name !== undefined && name !== null && name !== "") {
+    if (typeof name !== "string" || !name.trim()) {
+      throw new Error('El campo "name" debe ser un texto no vacío.');
+    }
+    input.name = name.trim();
+  }
+
+  const goal = body["goal"];
+  if (goal !== undefined && goal !== null && goal !== "") {
+    if (typeof goal !== "string" || !goal.trim()) {
+      throw new Error('El campo "goal" debe ser un texto no vacío.');
+    }
+    input.goal = goal.trim();
+  }
+
+  return input;
+}
+
+export function parseChatInput(body: Record<string, unknown>): CreateChatInput {
+  const input: CreateChatInput = {};
+
+  const title = body["title"];
+  if (title !== undefined && title !== null && title !== "") {
+    if (typeof title !== "string" || !title.trim()) {
+      throw new Error('El campo "title" debe ser un texto no vacío.');
+    }
+    input.title = title.trim();
+  }
+
+  const message = body["message"];
+  if (message !== undefined && message !== null && message !== "") {
+    if (typeof message !== "string" || !message.trim()) {
+      throw new Error('El campo "message" debe ser un texto no vacío.');
+    }
+    input.message = message.trim();
+  }
+
+  return input;
+}
+
+export function parseChatMessage(body: Record<string, unknown>): string {
+  const content = body["content"];
+
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error('El campo "content" debe ser un texto no vacío.');
+  }
+
+  return content.trim();
 }
 
 export function parseConfigOverrides(

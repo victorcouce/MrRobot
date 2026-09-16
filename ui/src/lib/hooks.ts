@@ -5,6 +5,7 @@ import { api } from "./api";
 import { subscribeProject } from "./sse";
 import type {
   AppInfo,
+  ChatSummary,
   Project,
   ProjectEvent,
   ProjectSummary,
@@ -89,6 +90,7 @@ export interface ProjectState {
   events: ProjectEvent[];
   reviews: StoredReview[];
   supervisorRuns: SupervisorRun[];
+  chats: ChatSummary[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -99,22 +101,26 @@ export function useProject(id: string): ProjectState {
   const [events, setEvents] = useState<ProjectEvent[]>([]);
   const [reviews, setReviews] = useState<StoredReview[]>([]);
   const [supervisorRuns, setSupervisorRuns] = useState<SupervisorRun[]>([]);
+  const [chats, setChats] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
-      const [project, events, reviews, supervisorRuns] = await Promise.all([
-        api.getProject(id),
-        api.getEvents(id),
-        api.getReviews(id),
-        api.getSupervisorRuns(id),
-      ]);
+      const [project, events, reviews, supervisorRuns, chats] =
+        await Promise.all([
+          api.getProject(id),
+          api.getEvents(id),
+          api.getReviews(id),
+          api.getSupervisorRuns(id),
+          api.listChats(id),
+        ]);
       setProject(project);
       setEvents(events);
       setReviews(reviews);
       setSupervisorRuns(supervisorRuns);
+      setChats(chats);
       setError(null);
     } catch (error) {
       setError(errorMessage(error));
@@ -145,6 +151,7 @@ export function useProject(id: string): ProjectState {
     events,
     reviews,
     supervisorRuns,
+    chats,
     loading,
     error,
     refresh: load,

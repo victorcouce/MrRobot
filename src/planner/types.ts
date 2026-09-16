@@ -21,4 +21,5 @@ export interface PlanContext {
   failedTaskIds?: string[];
   supervisorReason?: string;
   instructions?: string;
+  conversation?: Array<{ role: string; content: string }>;
 }

@@ -1,4 +1,8 @@
 import type { AgentSpec as DomainAgentSpec } from "../agents/types.js";
+import type {
+  Chat as DomainChat,
+  ChatMessage as DomainChatMessage,
+} from "../chats/types.js";
 import type { Project as DomainProject } from "../projects/types.js";
 import type {
   ProjectEvent as DomainEvent,
@@ -8,6 +12,9 @@ import type {
 import type { Task as DomainTask } from "../tasks/types.js";
 import type {
   AgentUsage,
+  ChatDetail,
+  ChatMessage,
+  ChatSummary,
   Project,
   ProjectEvent,
   ProjectResult,
@@ -61,6 +68,7 @@ export function serializeTask(task: DomainTask): Task {
   if (task.dependsOn && task.dependsOn.length > 0) {
     result.dependsOn = task.dependsOn;
   }
+  if (task.chatId) result.chatId = task.chatId;
   if (task.blockedReason) result.blockedReason = task.blockedReason;
   if (task.acceptanceCriteria && task.acceptanceCriteria.length > 0) {
     result.acceptanceCriteria = task.acceptanceCriteria;
@@ -297,4 +305,46 @@ export function serializeSupervisorRun(run: DomainSupervisorRun): SupervisorRun 
   };
   if (run.instructions) result.instructions = run.instructions;
   return result;
+}
+
+export function serializeChatMessage(message: DomainChatMessage): ChatMessage {
+  const result: ChatMessage = {
+    id: message.id,
+    chatId: message.chatId,
+    projectId: message.projectId,
+    role: message.role,
+    content: message.content,
+    taskIds: message.taskIds,
+    createdAt: message.createdAt.toISOString(),
+  };
+  if (message.agent) result.agent = serializeAgent(message.agent);
+  if (message.error) result.error = message.error;
+  return result;
+}
+
+export function serializeChatSummary(
+  chat: DomainChat,
+  messageCount: number,
+  taskIds: string[],
+): ChatSummary {
+  return {
+    id: chat.id,
+    projectId: chat.projectId,
+    title: chat.title,
+    createdAt: chat.createdAt.toISOString(),
+    updatedAt: chat.updatedAt.toISOString(),
+    messageCount,
+    taskIds,
+  };
+}
+
+export function serializeChatDetail(
+  chat: DomainChat,
+  messages: DomainChatMessage[],
+  taskIds: string[],
+): ChatDetail {
+  return {
+    ...serializeChatSummary(chat, messages.length, taskIds),
+    messages: messages.map(serializeChatMessage),
+  };
 }

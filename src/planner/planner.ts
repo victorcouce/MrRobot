@@ -95,6 +95,13 @@ function buildPrompt(
     );
   }
 
+  if (context.conversation?.length) {
+    parts.push("", "CONVERSACIÓN HASTA AHORA");
+    for (const message of context.conversation) {
+      parts.push(`${message.role === "user" ? "Usuario" : "Planner"}: ${message.content}`);
+    }
+  }
+
   if (context.completedTaskIds?.length) {
     parts.push(
       "",

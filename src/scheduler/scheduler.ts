@@ -11,6 +11,7 @@ export interface RunPlanOptions {
   concurrency?: number;
   shouldPause?: () => boolean | Promise<boolean>;
   signal?: AbortSignal;
+  onUpdate?: (tasks: Task[]) => void | Promise<void>;
 }
 
 const DEFAULT_CONCURRENCY = 2;
@@ -150,6 +151,7 @@ export async function runPlan(
 
   const initial = cloneTasks(tasks);
   let current = updateTaskStatuses(initial);
+  await options.onUpdate?.(current);
 
   console.log(`\nPLAN STARTED`);
   console.log(`Concurrency: ${concurrency}\n`);
@@ -197,6 +199,7 @@ export async function runPlan(
           }
         : task,
     );
+    await options.onUpdate?.(current);
 
     console.log(`\nREADY:`);
     ready.forEach((task) => console.log(task.id));
@@ -206,21 +209,23 @@ export async function runPlan(
       console.log(`→ ${task.id} [${previewAgent(task)}]`);
     });
 
-    const settled = await Promise.allSettled(
-      selected.map((task) => executeTask(task)),
-    );
-
     const results = new Map<string, Task>();
 
-    selected.forEach((task, index) => {
-      const outcome = settled[index];
+    await Promise.all(
+      selected.map(async (task) => {
+        let outcome: PromiseSettledResult<Task>;
 
-      if (outcome) {
+        try {
+          outcome = { status: "fulfilled", value: await executeTask(task) };
+        } catch (reason) {
+          outcome = { status: "rejected", reason };
+        }
+
         results.set(task.id, toResult(task, outcome, batchStartedAt));
-      }
-    });
-
-    current = current.map((task) => results.get(task.id) ?? task);
+        current = current.map((entry) => results.get(entry.id) ?? entry);
+        await options.onUpdate?.(current);
+      }),
+    );
 
     console.log();
     selected.forEach((task) => {
@@ -237,6 +242,7 @@ export async function runPlan(
 
     const beforeRecalc = current;
     current = updateTaskStatuses(current);
+    await options.onUpdate?.(current);
     logChanges(beforeRecalc, current);
   }
 }

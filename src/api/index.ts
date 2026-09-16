@@ -11,6 +11,7 @@ const scenario =
       : "success";
 const mockDelayMs = Number(process.env.MRROBOT_MOCK_DELAY_MS ?? 0);
 const repoCwd = process.env.MRROBOT_REPO;
+const dataDir = process.env.MRROBOT_DATA_DIR ?? ".mrrobot/data";
 
 const options: StartOptions = {
   port,
@@ -18,7 +19,7 @@ const options: StartOptions = {
   mock,
   scenario,
   mockDelayMs: Number.isFinite(mockDelayMs) ? mockDelayMs : 0,
-  ...(process.env.MRROBOT_DATA_DIR ? { dataDir: process.env.MRROBOT_DATA_DIR } : {}),
+  dataDir,
   ...(repoCwd ? { repoCwd } : {}),
 };
 

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { ProjectSummary } from "../../lib/types";
 import { ProjectCard } from "./ProjectCard";
 
@@ -31,5 +31,12 @@ describe("ProjectCard", () => {
     expect(screen.getByText("18 / 25 tasks")).toBeInTheDocument();
     expect(screen.getByText(/3 agents running/)).toBeInTheDocument();
     expect(screen.getByText("72%")).toBeInTheDocument();
+  });
+
+  it("invoca onDelete al pulsar el botón de borrar", () => {
+    const onDelete = vi.fn();
+    render(<ProjectCard project={project} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Borrar Poketo" }));
+    expect(onDelete).toHaveBeenCalledWith(project);
   });
 });

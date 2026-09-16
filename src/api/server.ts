@@ -1,7 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProjectEvent } from "../storage/types.js";
 import {
+  parseChatInput,
+  parseChatMessage,
   parseConfigOverrides,
+  parseImportProject,
   parseNewTask,
   parseRepoOptions,
   parseTaskPatch,
@@ -190,6 +193,27 @@ async function dispatch(
       return;
     }
 
+    // /api/projects/import
+    if (req.method === "POST" && segments.length === 3 && segments[2] === "import") {
+      const body = await readJson(req);
+      sendJson(res, 201, await runtime.importProject(parseImportProject(body)));
+      return;
+    }
+
+    // /api/projects/import/branches
+    if (
+      req.method === "GET" &&
+      segments.length === 4 &&
+      segments[2] === "import" &&
+      segments[3] === "branches"
+    ) {
+      const repoPath = query.get("repoPath");
+      sendJson(res, 200, {
+        branches: await runtime.listFinalBranches(repoPath ?? ""),
+      });
+      return;
+    }
+
     const projectId = segments[2];
     if (!projectId) {
       sendJson(res, 404, { error: "Ruta no encontrada." });
@@ -199,6 +223,12 @@ async function dispatch(
     // /api/projects/:id
     if (req.method === "GET" && segments.length === 3) {
       sendJson(res, 200, await runtime.getProject(projectId));
+      return;
+    }
+
+    // /api/projects/:id
+    if (req.method === "DELETE" && segments.length === 3) {
+      sendJson(res, 200, await runtime.deleteProject(projectId));
       return;
     }
 
@@ -266,6 +296,67 @@ async function dispatch(
     if (req.method === "GET" && segments[3] === "supervisor") {
       sendJson(res, 200, await runtime.listSupervisorRuns(projectId));
       return;
+    }
+
+    // /api/projects/:id/chats
+    if (segments[3] === "chats") {
+      if (req.method === "GET" && segments.length === 4) {
+        sendJson(res, 200, await runtime.listChats(projectId));
+        return;
+      }
+
+      if (req.method === "POST" && segments.length === 4) {
+        const body = await readJson(req);
+        sendJson(res, 201, await runtime.createChat(projectId, parseChatInput(body)));
+        return;
+      }
+
+      const chatId = segments[4];
+
+      if (chatId && segments.length === 5) {
+        if (req.method === "GET") {
+          sendJson(res, 200, await runtime.getChat(projectId, chatId));
+          return;
+        }
+
+        if (req.method === "DELETE") {
+          sendJson(res, 200, await runtime.deleteChat(projectId, chatId));
+          return;
+        }
+      }
+
+      // /api/projects/:id/chats/:chatId/messages
+      if (chatId && req.method === "POST" && segments[5] === "messages") {
+        const body = await readJson(req);
+        sendJson(
+          res,
+          200,
+          await runtime.sendChatMessage(
+            projectId,
+            chatId,
+            parseChatMessage(body),
+          ),
+        );
+        return;
+      }
+    }
+
+    // /api/projects/:id/preview
+    if (segments[3] === "preview") {
+      if (req.method === "GET") {
+        sendJson(res, 200, await runtime.getPreview(projectId));
+        return;
+      }
+
+      if (req.method === "POST") {
+        sendJson(res, 202, await runtime.startPreview(projectId));
+        return;
+      }
+
+      if (req.method === "DELETE") {
+        sendJson(res, 200, await runtime.stopPreview(projectId));
+        return;
+      }
     }
 
     // /api/projects/:id/stream

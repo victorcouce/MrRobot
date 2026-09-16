@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { choiceToAgent } from "../../lib/agents";
 import { useProject } from "../../lib/hooks";
@@ -13,6 +14,7 @@ import { Dialog } from "../ui/Dialog";
 import { Tabs } from "../ui/Tabs";
 import { ActivityLog } from "./ActivityLog";
 import { AgentsPanel } from "./AgentsPanel";
+import { ChatsPanel } from "./ChatsPanel";
 import { DagView } from "./DagView";
 import { ExecutionView } from "./ExecutionView";
 import { PlanView } from "./PlanView";
@@ -30,13 +32,15 @@ type EditorState =
   | null;
 
 export function ProjectWorkspace({ id }: { id: string }) {
-  const { project, events, reviews, supervisorRuns, loading, error, refresh } =
+  const { project, events, reviews, supervisorRuns, chats, loading, error, refresh } =
     useProject(id);
+  const router = useRouter();
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
   const [confirmStart, setConfirmStart] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -122,8 +126,20 @@ export function ProjectWorkspace({ id }: { id: string }) {
     }
   }
 
-  async function removeSelectedTask() {
-    if (!selectedTask) return;
+  async function deleteCurrentProject() {
+    setConfirmDelete(false);
+    setBusy("delete");
+    setActionError(null);
+    try {
+      await api.deleteProject(id);
+      router.push("/");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+      setBusy(null);
+    }
+  }
+
+  async function removeSelectedTask() {    if (!selectedTask) return;
     setBusy("task");
     setActionError(null);
     try {
@@ -146,10 +162,10 @@ export function ProjectWorkspace({ id }: { id: string }) {
     project.status === "failed" ||
     project.status === "cancelled";
   const effectiveTab = isFinished
-    ? ["graph", "tasks", "activity"].includes(activeTab)
+    ? ["graph", "tasks", "activity", "chats"].includes(activeTab)
       ? activeTab
       : "graph"
-    : ["board", "graph", "activity"].includes(activeTab)
+    : ["board", "graph", "activity", "chats"].includes(activeTab)
       ? activeTab
       : "board";
 
@@ -202,6 +218,13 @@ export function ProjectWorkspace({ id }: { id: string }) {
                 Cancel
               </Button>
             )}
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmDelete(true)}
+              loading={busy === "delete"}
+            >
+              Delete
+            </Button>
           </div>
         </div>
 
@@ -258,6 +281,14 @@ export function ProjectWorkspace({ id }: { id: string }) {
         />
       )}
 
+      {(project.status === "draft" ||
+        project.status === "planning" ||
+        project.status === "ready") && (
+        <div className="mt-6">
+          <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+        </div>
+      )}
+
       {isRunningLike && (
         <div className="space-y-4">
           <SupervisorBanner runs={supervisorRuns} />
@@ -267,6 +298,7 @@ export function ProjectWorkspace({ id }: { id: string }) {
               { id: "board", label: "Board" },
               { id: "graph", label: "Graph" },
               { id: "activity", label: "Activity", count: events.length },
+              { id: "chats", label: "Chats", count: chats.length },
             ]}
             active={effectiveTab}
             onChange={setActiveTab}
@@ -286,6 +318,10 @@ export function ProjectWorkspace({ id }: { id: string }) {
           )}
 
           {effectiveTab === "activity" && <ActivityLog events={events} />}
+
+          {effectiveTab === "chats" && (
+            <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+          )}
         </div>
       )}
 
@@ -305,6 +341,7 @@ export function ProjectWorkspace({ id }: { id: string }) {
               { id: "graph", label: "Graph" },
               { id: "tasks", label: "Tasks", count: project.tasks.length },
               { id: "activity", label: "Activity", count: events.length },
+              { id: "chats", label: "Chats", count: chats.length },
             ]}
             active={effectiveTab}
             onChange={setActiveTab}
@@ -317,6 +354,9 @@ export function ProjectWorkspace({ id }: { id: string }) {
             <TaskTable tasks={project.tasks} onSelect={setSelectedTaskId} />
           )}
           {effectiveTab === "activity" && <ActivityLog events={events} />}
+          {effectiveTab === "chats" && (
+            <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+          )}
         </div>
       )}
 
@@ -400,6 +440,30 @@ export function ProjectWorkspace({ id }: { id: string }) {
             }}
           >
             Cancel project
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Borrar proyecto"
+        width="max-w-md"
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+          Se borrará <span className="font-medium">{project.name}</span> de la
+          app, junto con sus tareas, eventos y reviews. El directorio en disco{" "}
+          <span className="font-medium">no</span> se toca. Esta acción no se
+          puede deshacer.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+          <Button
+            variant="danger"
+            loading={busy === "delete"}
+            onClick={() => void deleteCurrentProject()}
+          >
+            Borrar proyecto
           </Button>
         </div>
       </Dialog>

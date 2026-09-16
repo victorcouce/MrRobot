@@ -1,11 +1,20 @@
 import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
+import {
+  createChat as createChatInService,
+  deleteChat as deleteChatInService,
+  getChatDetail,
+  listChats as listChatsInService,
+  sendChatMessage as sendChatMessageInService,
+  type CreateChatInput,
+} from "../chats/service.js";
 import type { OrchestratorConfig } from "../config/index.js";
 import { loadConfig, mergeConfig } from "../config/index.js";
 import type { Project } from "../projects/types.js";
 import {
   cancelProject,
   createProjectDraft,
+  deleteProject as deleteProjectInService,
   emitProjectEvent,
   generatePlan,
   pauseProject,
@@ -22,6 +31,12 @@ import {
   type TaskPatch,
 } from "../projects/plan-editor.js";
 import { updateProjectConfig as updateProjectConfigInService } from "../projects/config-editor.js";
+import {
+  importCompletedProject,
+  listFinalBranches,
+  type ImportProjectInput,
+} from "../projects/import.js";
+import { PreviewManager } from "../preview/preview.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import { createPgliteStorage } from "../storage/pglite.js";
 import type {
@@ -34,6 +49,7 @@ import type {
   AppInfo,
   ConfigInfo,
   ProjectEvent as WireEvent,
+  ProjectPreview,
   ProjectSummary,
 } from "../../shared/types.js";
 import { checkAgentAvailability } from "./availability.js";
@@ -41,6 +57,8 @@ import { createMockDeps, createMockWorkspace, type MockScenario } from "./mock.j
 import {
   computeStats,
   serializeAgent,
+  serializeChatDetail,
+  serializeChatSummary,
   serializeEvent,
   serializeProject,
   serializeReview,
@@ -82,6 +100,7 @@ export class Runtime {
   private readonly workspace: WorkspaceManager;
   private config: OrchestratorConfig;
   private readonly bus = new EventEmitter();
+  private readonly previews = new PreviewManager();
   private readonly activeRuns = new Set<string>();
   private readonly pauseFlags = new Map<string, boolean>();
   private readonly cancelControllers = new Map<string, AbortController>();
@@ -283,6 +302,17 @@ export class Runtime {
     return serializeProject(project);
   }
 
+  async importProject(input: ImportProjectInput) {
+    const project = await importCompletedProject(input, {
+      storage: this.storage,
+    });
+    return serializeProject(project);
+  }
+
+  listFinalBranches(repoPath: string): Promise<string[]> {
+    return listFinalBranches(repoPath);
+  }
+
   async generatePlan(projectId: string) {
     const project = await this.mustGetProject(projectId);
 
@@ -413,8 +443,53 @@ export class Runtime {
     return this.getProject(projectId);
   }
 
-  async listEvents(projectId: string): Promise<WireEvent[]> {
+  async deleteProject(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (this.activeRuns.has(projectId)) {
+      throw new Error(
+        "No se puede borrar un proyecto en ejecución. Cancélalo primero.",
+      );
+    }
+
+    await this.previews.stop(projectId);
+    await emitProjectEvent(this.storage, projectId, "project.deleted");
+
+    await deleteProjectInService(projectId, this.baseDeps());
+    return { id: project.id, deleted: true };
+  }
+
+  async startPreview(projectId: string): Promise<ProjectPreview> {
+    const project = await this.mustGetProject(projectId);
+    const deps = await this.depsFor(projectId);
+    const workspace = deps.workspace ?? this.workspace;
+
+    return this.previews.start(project, workspace);
+  }
+
+  async getPreview(projectId: string): Promise<ProjectPreview> {
     await this.mustGetProject(projectId);
+
+    return (
+      this.previews.get(projectId) ?? {
+        projectId,
+        status: "stopped",
+      }
+    );
+  }
+
+  async stopPreview(projectId: string): Promise<ProjectPreview> {
+    await this.mustGetProject(projectId);
+
+    return (
+      (await this.previews.stop(projectId)) ?? {
+        projectId,
+        status: "stopped",
+      }
+    );
+  }
+
+  async listEvents(projectId: string): Promise<WireEvent[]> {    await this.mustGetProject(projectId);
     const events = await this.storage.listEvents(projectId);
     return events
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -453,6 +528,49 @@ export class Runtime {
     return serializeProject(project);
   }
 
+  async listChats(projectId: string) {
+    await this.mustGetProject(projectId);
+    const results = await listChatsInService(projectId, await this.depsFor(projectId));
+    return results.map((result) =>
+      serializeChatSummary(result.chat, result.messageCount, result.taskIds),
+    );
+  }
+
+  async createChat(projectId: string, input: CreateChatInput) {
+    await this.mustGetProject(projectId);
+    const deps = await this.depsFor(projectId);
+    const chat = await createChatInService(projectId, input, deps);
+
+    if (input.message?.trim()) {
+      await sendChatMessageInService(projectId, chat.id, input.message, deps);
+    }
+
+    return this.getChat(projectId, chat.id);
+  }
+
+  async getChat(projectId: string, chatId: string) {
+    await this.mustGetProject(projectId);
+    const detail = await getChatDetail(projectId, chatId, await this.depsFor(projectId));
+    return serializeChatDetail(detail.chat, detail.messages, detail.taskIds);
+  }
+
+  async deleteChat(projectId: string, chatId: string) {
+    await this.mustGetProject(projectId);
+    await deleteChatInService(projectId, chatId, await this.depsFor(projectId));
+    return { id: chatId, deleted: true };
+  }
+
+  async sendChatMessage(projectId: string, chatId: string, content: string) {
+    await this.mustGetProject(projectId);
+    await sendChatMessageInService(
+      projectId,
+      chatId,
+      content,
+      await this.depsFor(projectId),
+    );
+    return this.getChat(projectId, chatId);
+  }
+
   async activity(limit = 100): Promise<WireEvent[]> {
     const projects = await this.storage.listProjects();
     const events = await Promise.all(
@@ -482,6 +600,7 @@ export class Runtime {
   async shutdown(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    await this.previews.stopAll();
     await this.close?.();
   }
 }
