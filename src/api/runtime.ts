@@ -1,0 +1,451 @@
+import { EventEmitter } from "node:events";
+import { mkdir } from "node:fs/promises";
+import type { OrchestratorConfig } from "../config/index.js";
+import { loadConfig } from "../config/index.js";
+import type { Project } from "../projects/types.js";
+import {
+  cancelProject,
+  createProjectDraft,
+  emitProjectEvent,
+  generatePlan,
+  pauseProject,
+  resumeProject,
+  runProject,
+  type CreateProjectInput,
+  type ProjectDeps,
+} from "../projects/service.js";
+import {
+  addTaskToPlan,
+  removeTaskFromPlan,
+  updateTaskInPlan,
+  type NewTaskInput,
+  type TaskPatch,
+} from "../projects/plan-editor.js";
+import { InMemoryStorage } from "../storage/memory.js";
+import { createPgliteStorage } from "../storage/pglite.js";
+import type {
+  ProjectEvent,
+  Storage,
+} from "../storage/types.js";
+import { createGitWorkspaceManager } from "../workspace/manager.js";
+import type { WorkspaceManager } from "../workspace/types.js";
+import type {
+  AppInfo,
+  ConfigInfo,
+  ProjectEvent as WireEvent,
+  ProjectSummary,
+} from "../../shared/types.js";
+import { checkAgentAvailability } from "./availability.js";
+import { createMockDeps, createMockWorkspace, type MockScenario } from "./mock.js";
+import {
+  computeStats,
+  serializeAgent,
+  serializeEvent,
+  serializeProject,
+  serializeReview,
+  serializeSummary,
+  serializeSupervisorRun,
+} from "./serialize.js";
+
+export interface RuntimeOptions {
+  dataDir?: string;
+  mock?: boolean;
+  scenario?: MockScenario;
+  mockDelayMs?: number;
+  repoCwd?: string;
+}
+
+export class ProjectNotFoundError extends Error {}
+
+function broadcastStorage(
+  storage: Storage,
+  onEvent: (event: ProjectEvent) => void,
+): Storage {
+  return new Proxy(storage, {
+    get(target, prop, receiver) {
+      if (prop === "appendEvent") {
+        return async (event: ProjectEvent): Promise<void> => {
+          await target.appendEvent(event);
+          onEvent(event);
+        };
+      }
+
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function mergeConfig(
+  base: OrchestratorConfig,
+  overrides: Partial<OrchestratorConfig>,
+): OrchestratorConfig {
+  return {
+    ...base,
+    ...overrides,
+    checks: { ...base.checks, ...(overrides.checks ?? {}) },
+  };
+}
+
+export class Runtime {
+  private readonly storage: Storage;
+  private readonly workspace: WorkspaceManager;
+  private config: OrchestratorConfig;
+  private readonly bus = new EventEmitter();
+  private readonly activeRuns = new Set<string>();
+  private readonly pauseFlags = new Map<string, boolean>();
+  private readonly cancelControllers = new Map<string, AbortController>();
+  private readonly mock: boolean;
+  private readonly scenario: MockScenario;
+  private readonly mockDelayMs: number;
+  private readonly repoCwd: string | undefined;
+  private readonly mockDeps: ProjectDeps | undefined;
+  private closed = false;
+
+  private constructor(
+    storage: Storage,
+    workspace: WorkspaceManager,
+    options: RuntimeOptions,
+  ) {
+    this.mock = options.mock ?? false;
+    this.scenario = options.scenario ?? "success";
+    this.mockDelayMs = options.mockDelayMs ?? 0;
+    this.repoCwd = options.repoCwd;
+
+    this.storage = broadcastStorage(storage, (event) => {
+      this.bus.emit("event", event);
+    });
+    this.workspace = workspace;
+    this.config = loadConfig();
+    this.mockDeps = this.mock
+      ? createMockDeps(this.storage, this.scenario, this.mockDelayMs)
+      : undefined;
+  }
+
+  static async create(options: RuntimeOptions = {}): Promise<Runtime> {
+    const mock = options.mock ?? false;
+
+    if (mock) {
+      const storage = new InMemoryStorage();
+      await storage.init();
+      return new Runtime(storage, createMockWorkspace(), options);
+    }
+
+    if (options.dataDir) {
+      await mkdir(options.dataDir, { recursive: true });
+    }
+
+    const { storage, close } = await createPgliteStorage(options.dataDir);
+    const runtime = new Runtime(
+      storage,
+      createGitWorkspaceManager(options.repoCwd),
+      options,
+    );
+    runtime.close = close;
+    return runtime;
+  }
+
+  close?: () => Promise<void>;
+
+  private runInBackground(projectId: string, fn: () => Promise<void>): void {
+    void fn()
+      .catch(async (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        await emitProjectEvent(this.storage, projectId, "project.error", undefined, {
+          message,
+        });
+      });
+  }
+
+  private baseDeps(): ProjectDeps {
+    if (this.mockDeps) {
+      return this.mockDeps;
+    }
+    return { storage: this.storage, workspace: this.workspace };
+  }
+
+  private depsFor(_projectId: string): ProjectDeps {
+    return { ...this.baseDeps(), config: this.config };
+  }
+
+  private mustGetProject(projectId: string): Promise<Project> {
+    return this.storage.getProject(projectId).then((project) => {
+      if (!project) {
+        throw new ProjectNotFoundError(`Proyecto ${projectId} no encontrado.`);
+      }
+      return project;
+    });
+  }
+
+  async info(): Promise<AppInfo> {
+    let repoRoot = "";
+    let baseRef = "";
+
+    try {
+      repoRoot = await this.workspace.getRepoRoot();
+      baseRef = await this.workspace.resolveBaseRef();
+    } catch {
+      // No repo accesible: el backend lo reportará vacío.
+    }
+
+    return {
+      repoRoot,
+      baseRef,
+      mock: this.mock,
+      agents: await checkAgentAvailability(),
+      config: this.configInfo(),
+    };
+  }
+
+  configInfo(): ConfigInfo {
+    const c = this.config;
+    return {
+      concurrency: c.concurrency,
+      maxRetriesPerAgent: c.maxRetriesPerAgent,
+      maxReviewFixCycles: c.maxReviewFixCycles,
+      plannerMaxAttempts: c.plannerMaxAttempts,
+      plannerAgent: serializeAgent(c.plannerAgent),
+      reviewerAgent: serializeAgent(c.reviewerAgent),
+      supervisorAgent: serializeAgent(c.supervisorAgent),
+    };
+  }
+
+  updateConfig(overrides: Partial<OrchestratorConfig>): ConfigInfo {
+    this.config = mergeConfig(this.config, overrides);
+    return this.configInfo();
+  }
+
+  async listProjects(): Promise<ProjectSummary[]> {
+    const projects = await this.storage.listProjects();
+    return projects
+      .sort(
+        (a, b) =>
+          b.updatedAt.getTime() - a.updatedAt.getTime(),
+      )
+      .map(serializeSummary);
+  }
+
+  async getProject(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+    return serializeProject(project);
+  }
+
+  async createProject(
+    input: CreateProjectInput,
+    configOverrides?: Partial<OrchestratorConfig>,
+  ) {
+    const config =
+      configOverrides && Object.keys(configOverrides).length > 0
+        ? mergeConfig(this.config, configOverrides)
+        : undefined;
+
+    const project = await createProjectDraft(
+      config ? { ...input, config } : input,
+      this.baseDeps(),
+    );
+
+    return serializeProject(project);
+  }
+
+  async generatePlan(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (project.status === "running" || project.status === "completed") {
+      throw new Error(
+        `No se puede generar el plan en estado ${project.status}.`,
+      );
+    }
+
+    if (project.status !== "planning") {
+      const planning: Project = {
+        ...project,
+        status: "planning",
+        updatedAt: new Date(),
+      };
+      await this.storage.saveProject(planning);
+      await emitProjectEvent(this.storage, projectId, "plan.started");
+    }
+
+    this.runInBackground(projectId, async () => {
+      await generatePlan(projectId, this.depsFor(projectId));
+    });
+
+    return this.getProject(projectId);
+  }
+
+  async run(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (project.status !== "ready") {
+      throw new Error(
+        `No se puede ejecutar en estado ${project.status}. Genera y revisa el plan primero.`,
+      );
+    }
+
+    if (this.activeRuns.has(projectId)) {
+      throw new Error("El proyecto ya se está ejecutando.");
+    }
+
+    this.activeRuns.add(projectId);
+    this.pauseFlags.set(projectId, false);
+    const controller = new AbortController();
+    this.cancelControllers.set(projectId, controller);
+
+    this.runInBackground(projectId, async () => {
+      try {
+        await runProject(projectId, this.depsFor(projectId), {
+          shouldPause: () => this.pauseFlags.get(projectId) === true,
+          signal: controller.signal,
+        });
+      } finally {
+        this.activeRuns.delete(projectId);
+        this.pauseFlags.delete(projectId);
+        this.cancelControllers.delete(projectId);
+      }
+    });
+
+    return this.getProject(projectId);
+  }
+
+  async pause(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (this.activeRuns.has(projectId)) {
+      this.pauseFlags.set(projectId, true);
+    } else if (project.status === "running") {
+      await pauseProject(projectId, this.baseDeps());
+    } else if (project.status !== "paused") {
+      throw new Error(
+        `No se puede pausar un proyecto en estado ${project.status}.`,
+      );
+    }
+
+    return this.getProject(projectId);
+  }
+
+  async resume(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (project.status !== "paused") {
+      throw new Error(
+        `Solo se puede reanudar un proyecto pausado (estado actual: ${project.status}).`,
+      );
+    }
+
+    if (this.activeRuns.has(projectId)) {
+      throw new Error("El proyecto ya se está ejecutando.");
+    }
+
+    this.activeRuns.add(projectId);
+    this.pauseFlags.set(projectId, false);
+    const controller = new AbortController();
+    this.cancelControllers.set(projectId, controller);
+
+    this.runInBackground(projectId, async () => {
+      try {
+        await resumeProject(projectId, this.depsFor(projectId), {
+          shouldPause: () => this.pauseFlags.get(projectId) === true,
+          signal: controller.signal,
+        });
+      } finally {
+        this.activeRuns.delete(projectId);
+        this.pauseFlags.delete(projectId);
+        this.cancelControllers.delete(projectId);
+      }
+    });
+
+    return this.getProject(projectId);
+  }
+
+  async cancel(projectId: string) {
+    const project = await this.mustGetProject(projectId);
+
+    if (this.activeRuns.has(projectId)) {
+      this.cancelControllers.get(projectId)?.abort();
+    } else if (project.status === "running") {
+      await cancelProject(projectId, this.baseDeps());
+    } else if (
+      project.status !== "cancelled" &&
+      project.status !== "completed" &&
+      project.status !== "failed"
+    ) {
+      throw new Error(
+        `No se puede cancelar un proyecto en estado ${project.status}.`,
+      );
+    }
+
+    return this.getProject(projectId);
+  }
+
+  async listEvents(projectId: string): Promise<WireEvent[]> {
+    await this.mustGetProject(projectId);
+    const events = await this.storage.listEvents(projectId);
+    return events
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map(serializeEvent);
+  }
+
+  async listReviews(projectId: string) {
+    await this.mustGetProject(projectId);
+    const reviews = await this.storage.listReviews(projectId);
+    return reviews.map(serializeReview);
+  }
+
+  async listSupervisorRuns(projectId: string) {
+    await this.mustGetProject(projectId);
+    const runs = await this.storage.listSupervisorRuns(projectId);
+    return runs.map(serializeSupervisorRun);
+  }
+
+  async addTask(projectId: string, input: NewTaskInput) {
+    const project = await addTaskToPlan(projectId, input, this.baseDeps());
+    return serializeProject(project);
+  }
+
+  async updateTask(projectId: string, taskId: string, patch: TaskPatch) {
+    const project = await updateTaskInPlan(
+      projectId,
+      taskId,
+      patch,
+      this.baseDeps(),
+    );
+    return serializeProject(project);
+  }
+
+  async removeTask(projectId: string, taskId: string) {
+    const project = await removeTaskFromPlan(projectId, taskId, this.baseDeps());
+    return serializeProject(project);
+  }
+
+  async activity(limit = 100): Promise<WireEvent[]> {
+    const projects = await this.storage.listProjects();
+    const events = await Promise.all(
+      projects.map((project) => this.storage.listEvents(project.id)),
+    );
+
+    return events
+      .flat()
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit)
+      .map(serializeEvent);
+  }
+
+  subscribe(listener: (event: ProjectEvent) => void): () => void {
+    this.bus.on("event", listener);
+    return () => this.bus.off("event", listener);
+  }
+
+  isMock(): boolean {
+    return this.mock;
+  }
+
+  statsFor(tasks: Project["tasks"]) {
+    return computeStats(tasks);
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    await this.close?.();
+  }
+}

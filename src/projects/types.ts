@@ -1,3 +1,4 @@
+import type { OrchestratorConfig } from "../config/types.js";
 import type { Task } from "../tasks/types.js";
 
 export type ProjectStatus =
@@ -8,7 +9,8 @@ export type ProjectStatus =
   | "paused"
   | "blocked"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface Project {
   id: string;
@@ -20,6 +22,8 @@ export interface Project {
   baseRef: string;
 
   tasks: Task[];
+
+  config?: OrchestratorConfig;
 
   createdAt: Date;
   updatedAt: Date;

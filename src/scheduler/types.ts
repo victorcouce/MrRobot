@@ -1,6 +1,6 @@
 import type { Task } from "../tasks/types.js";
 
-export type PlanStatus = "completed" | "failed" | "blocked";
+export type PlanStatus = "completed" | "failed" | "blocked" | "paused" | "cancelled";
 
 export interface PlanResult {
   status: PlanStatus;

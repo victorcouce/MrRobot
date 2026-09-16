@@ -17,10 +17,16 @@ export function execCli(
         cwd: options.cwd ?? process.cwd(),
         maxBuffer: MAX_BUFFER,
         encoding: "utf8",
+        ...(options.signal ? { signal: options.signal } : {}),
       },
       (error, stdout, stderr) => {
         if (!error) {
           resolve(stdout.trim());
+          return;
+        }
+
+        if (options.signal?.aborted) {
+          reject(new Error(`[${provider}] ejecución cancelada.`));
           return;
         }
 

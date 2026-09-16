@@ -1,0 +1,192 @@
+import type { AgentSpec } from "../agents/types.js";
+import type { OrchestratorConfig } from "../config/index.js";
+import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
+import type {
+  TaskComplexity,
+  TaskType,
+} from "../tasks/types.js";
+import type { AgentChoice } from "../../shared/types.js";
+
+const TASK_TYPES = new Set<TaskType>([
+  "planning",
+  "architecture",
+  "coding",
+  "review",
+  "testing",
+  "research",
+]);
+
+const COMPLEXITIES = new Set<TaskComplexity>([
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+export function parseAgent(value: unknown): AgentSpec | undefined {
+  if (value === undefined || value === null || value === "auto") {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    switch (value as AgentChoice) {
+      case "codex":
+        return { provider: "codex" };
+      case "claude-sonnet":
+        return { provider: "claude", model: "sonnet" };
+      case "claude-opus":
+        return { provider: "claude", model: "opus" };
+      case "deepseek":
+        return { provider: "deepseek", model: "deepseek-flash" };
+      default:
+        throw new Error(`Valor de agente desconocido: ${value}`);
+    }
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, unknown>;
+    const provider = obj["provider"];
+
+    if (provider === "codex") {
+      return { provider: "codex" };
+    }
+
+    if (provider === "claude") {
+      return { provider: "claude", model: obj["model"] === "opus" ? "opus" : "sonnet" };
+    }
+
+    if (provider === "deepseek") {
+      return {
+        provider: "deepseek",
+        model: obj["model"] === "deepseek-v4-pro" ? "deepseek-v4-pro" : "deepseek-flash",
+      };
+    }
+  }
+
+  throw new Error("Valor de agente inválido.");
+}
+
+function assertString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`El campo "${field}" debe ser un texto no vacío.`);
+  }
+  return value;
+}
+
+function parseType(value: unknown): TaskType {
+  if (typeof value !== "string" || !TASK_TYPES.has(value as TaskType)) {
+    throw new Error(`type inválido: ${String(value)}`);
+  }
+  return value as TaskType;
+}
+
+function parseComplexity(value: unknown): TaskComplexity {
+  if (
+    typeof value !== "string" ||
+    !COMPLEXITIES.has(value as TaskComplexity)
+  ) {
+    throw new Error(`complexity inválido: ${String(value)}`);
+  }
+  return value as TaskComplexity;
+}
+
+function parseDependsOn(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("dependsOn debe ser un array de strings.");
+  }
+  return value as string[];
+}
+
+function parseAcceptanceCriteria(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("acceptanceCriteria debe ser un array de strings.");
+  }
+  return value as string[];
+}
+
+export function parseNewTask(body: Record<string, unknown>): NewTaskInput {
+  const title = assertString(body["title"], "title");
+  const description = assertString(body["description"], "description");
+  const type = parseType(body["type"]);
+  const complexity = parseComplexity(body["complexity"]);
+
+  const input: NewTaskInput = { title, description, type, complexity };
+
+  if (typeof body["id"] === "string" && body["id"].trim().length > 0) {
+    input.id = body["id"];
+  }
+  const dependsOn = parseDependsOn(body["dependsOn"]);
+  if (dependsOn) input.dependsOn = dependsOn;
+  const acceptanceCriteria = parseAcceptanceCriteria(body["acceptanceCriteria"]);
+  if (acceptanceCriteria) input.acceptanceCriteria = acceptanceCriteria;
+  if ("agent" in body) {
+    const agent = parseAgent(body["agent"]);
+    if (agent) input.agent = agent;
+  }
+
+  return input;
+}
+
+export function parseTaskPatch(body: Record<string, unknown>): TaskPatch {
+  const patch: TaskPatch = {};
+
+  if (body["title"] !== undefined) patch.title = assertString(body["title"], "title");
+  if (body["description"] !== undefined) {
+    patch.description = assertString(body["description"], "description");
+  }
+  if (body["type"] !== undefined) patch.type = parseType(body["type"]);
+  if (body["complexity"] !== undefined) {
+    patch.complexity = parseComplexity(body["complexity"]);
+  }
+  if (body["dependsOn"] !== undefined) {
+    const dependsOn = parseDependsOn(body["dependsOn"]);
+    if (dependsOn !== undefined) patch.dependsOn = dependsOn;
+  }
+  if (body["acceptanceCriteria"] !== undefined) {
+    const criteria = parseAcceptanceCriteria(body["acceptanceCriteria"]);
+    if (criteria !== undefined) patch.acceptanceCriteria = criteria;
+  }
+  if ("agent" in body) {
+    patch.agent = parseAgent(body["agent"]) ?? null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("No se enviaron campos para actualizar.");
+  }
+
+  return patch;
+}
+
+export function parseConfigOverrides(
+  body: Record<string, unknown>,
+): Partial<OrchestratorConfig> {
+  const overrides: Partial<OrchestratorConfig> = {};
+
+  for (const field of [
+    "concurrency",
+    "maxRetriesPerAgent",
+    "maxReviewFixCycles",
+    "plannerMaxAttempts",
+  ] as const) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+      throw new Error(`El campo "${field}" debe ser un entero positivo.`);
+    }
+    (overrides as Record<string, unknown>)[field] = value;
+  }
+
+  for (const field of ["plannerAgent", "reviewerAgent", "supervisorAgent"] as const) {
+    const value = body[field];
+    if (value === undefined) continue;
+    const agent = parseAgent(value);
+    if (!agent) {
+      throw new Error(`El campo "${field}" requiere un agente concreto (no auto).`);
+    }
+    (overrides as Record<string, unknown>)[field] = agent;
+  }
+
+  return overrides;
+}

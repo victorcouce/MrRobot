@@ -58,4 +58,7 @@ export interface Storage {
   saveReview(review: StoredReview): Promise<void>;
   saveSupervisorRun(run: StoredSupervisorRun): Promise<void>;
   saveAgentRun(run: StoredAgentRun): Promise<void>;
+
+  listReviews(projectId: string): Promise<StoredReview[]>;
+  listSupervisorRuns(projectId: string): Promise<StoredSupervisorRun[]>;
 }

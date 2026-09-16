@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx --env-file=.env src/index.ts",
+    "dev": "tsx --env-file=.env src/api/index.ts",
+    "api": "tsx --env-file=.env src/api/index.ts",
+    "demo": "tsx --env-file=.env src/index.ts",
     "mrrobot": "tsx --env-file=.env src/cli/index.ts",
-    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/planner/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/graph/*.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/planner/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/graph/*.test.ts src/api/*.test.ts"
   },
   "keywords": [],
   "author": "",

@@ -9,6 +9,8 @@ import { validatePlan } from "./validation.js";
 export interface RunPlanOptions {
   executeTask?: (task: Task) => Promise<Task>;
   concurrency?: number;
+  shouldPause?: () => boolean | Promise<boolean>;
+  signal?: AbortSignal;
 }
 
 const DEFAULT_CONCURRENCY = 2;
@@ -160,6 +162,16 @@ export async function runPlan(
       console.log(`\nPLAN COMPLETED`);
       console.log(`${done}/${current.length} tareas`);
       return buildResult("completed", current, startedAt);
+    }
+
+    if (options.shouldPause && (await options.shouldPause())) {
+      console.log(`\nPLAN PAUSED`);
+      return buildResult("paused", current, startedAt);
+    }
+
+    if (options.signal?.aborted) {
+      console.log(`\nPLAN CANCELLED`);
+      return buildResult("cancelled", current, startedAt);
     }
 
     const ready = getReadyTasks(current);

@@ -8,7 +8,9 @@ Git aislada.
 ## Arquitectura
 
 ```text
-CLI (src/cli)
+UI (ui/ — Next.js App Router)
+ ↓  HTTP + SSE
+API (src/api — capa HTTP fina)
  ↓
 Project service (src/projects)
  ↓
@@ -27,6 +29,10 @@ Git worktrees (src/workspace)
 Storage (src/storage)         PGlite (Postgres) o memoria
 ```
 
+La UI nunca llama directamente a Codex/Claude/DeepSeek, Git, worktrees ni a
+PostgreSQL. Toda interacción pasa por la API HTTP (`src/api`), que delega en los
+servicios existentes. Los tipos del wire se comparten en `shared/types.ts`.
+
 - `providers/`: ejecutan los CLIs/API. `runCodex`, `runClaude`, `runDeepSeek`.
 - `agents/`: `selectAgent` (selector por tipo/complejidad), `getFallbackChain`
   (cadena de fallback), `isRetryableError`, `classifyAvailability`, `runAgent`.
@@ -44,9 +50,43 @@ Storage (src/storage)         PGlite (Postgres) o memoria
 
 ```bash
 npm install
-npm test          # tests
+npm test          # tests del motor
 npm run mrrobot help
 ```
+
+### Backend (API HTTP)
+
+```bash
+npm run api       # levanta la API en http://127.0.0.1:4000
+```
+
+### Interfaz gráfica (UI)
+
+```bash
+cd ui
+npm install
+npm run dev       # Next.js en http://localhost:3000
+```
+
+La UI habla con la API a través de `NEXT_PUBLIC_API_URL` (por defecto
+`http://127.0.0.1:4000`). Para desarrollo, arranca ambos procesos:
+
+```bash
+npm run api            # terminal 1
+cd ui && npm run dev   # terminal 2
+```
+
+### Modo mock (sin modelos reales ni Git)
+
+Para probar el flujo completo sin gastar tokens ni tocar Git:
+
+```bash
+MRROBOT_MOCK=1 npm run api
+```
+
+Los agentes, el planner, el reviewer, el supervisor y los worktrees se
+simulan de forma determinista. Escenarios disponibles vía
+`MRROBOT_MOCK_SCENARIO`: `success` (por defecto), `replan` y `fail`.
 
 ## Configuración
 
@@ -70,6 +110,12 @@ Central en `src/config/index.ts` (`loadConfig`):
 ```env
 DEEPSEEK_API_KEY=...       # requerido por el provider DeepSeek
 MRROBOT_DATA_DIR=.mrrobot/data   # opcional, directorio de datos PGlite
+MRROBOT_PORT=4000          # puerto de la API
+MRROBOT_HOST=127.0.0.1     # host de la API
+MRROBOT_REPO=...           # opcional, directorio del repositorio Git
+MRROBOT_MOCK=1             # modo mock (agentes y git simulados)
+MRROBOT_MOCK_SCENARIO=success|replan|fail
+MRROBOT_MOCK_DELAY_MS=0    # retardo artificial por ejecución de agente
 ```
 
 ## PostgreSQL
@@ -95,7 +141,7 @@ npm run mrrobot -- resume <project-id>
 
 ## Estados de Project
 
-`draft → planning → ready → running → paused | blocked | completed | failed`
+`draft → planning → ready → running → paused | blocked | completed | failed | cancelled`
 
 ## Estados de Task
 
@@ -136,9 +182,92 @@ restantes se reintentan.
 
 ## Event log
 
-`project.created`, `plan.generated`, `task.started`, `task.completed`,
-`task.failed`, `task.review_passed`, `task.review_failed`, `git.conflict`,
-`supervisor.replan`, `project.paused`, `project.completed`, `project.resumed`.
+`project.created`, `plan.started`, `plan.generated`, `plan.updated`,
+`task.started`, `task.completed`, `task.failed`, `task.review_passed`,
+`task.review_failed`, `git.conflict`, `supervisor.replan`, `project.paused`,
+`project.resumed`, `project.completed`, `project.cancelled`, `project.error`.
+
+## API HTTP
+
+Capa fina en `src/api` (Node `http`, sin dependencias extra). Endpoints:
+
+```text
+GET    /api/info                       info del backend, agentes, config
+PUT    /api/config                     actualiza la config global
+GET    /api/projects                   lista proyectos (resumen)
+POST   /api/projects                   crea un proyecto (draft)
+GET    /api/projects/:id               proyecto completo + stats
+POST   /api/projects/:id/plan          genera el plan (asíncrono)
+POST   /api/projects/:id/run           inicia la ejecución (asíncrono)
+POST   /api/projects/:id/pause         pausa (se detiene al final del batch)
+POST   /api/projects/:id/resume        reanuda desde el estado persistido
+POST   /api/projects/:id/cancel        cancela (mata los procesos CLI en curso)
+GET    /api/projects/:id/tasks         tareas del proyecto
+GET    /api/projects/:id/events        event log
+GET    /api/projects/:id/reviews       reviews almacenadas
+GET    /api/projects/:id/supervisor    intervenciones del supervisor
+GET    /api/projects/:id/stream        SSE de eventos del proyecto
+POST   /api/projects/:id/tasks         añade tarea (antes de ejecutar)
+PATCH  /api/projects/:id/tasks/:taskId edita tarea (antes de ejecutar)
+DELETE /api/projects/:id/tasks/:taskId elimina tarea (antes de ejecutar)
+GET    /api/activity                   actividad global reciente
+```
+
+Los route handlers no contienen lógica de dominio: delegan en
+`projects/service.ts` y `projects/plan-editor.ts`. La edición del plan valida
+el DAG (IDs, dependencias, ciclos) y se limita a los estados `draft`/`ready`.
+
+## Tiempo real (SSE)
+
+La UI se suscribe a `GET /api/projects/:id/stream`. Cada evento del event log
+se emite como mensaje SSE; la UI invalida y vuelve a pedir el estado del
+proyecto. El backend es la única fuente de verdad: un `F5` durante la ejecución
+reconstruye el estado desde persistencia.
+
+## Interfaz gráfica
+
+Next.js (App Router) + TypeScript + React + Tailwind CSS, en `ui/`. Estructura:
+
+```text
+ui/src/
+  app/                      pages (dashboard, new, [id], agents, activity, settings)
+  components/
+    layout/                 AppShell, Sidebar, ThemeToggle
+    ui/                     primitivas (Button, Badge, Dialog, Tabs, …)
+    projects/               ProjectCard, PlanView, DagView, TaskTable,
+                            TaskDetail, TaskEditor, ExecutionView, ActivityLog, …
+  lib/                      cliente API, hooks, SSE, status, theme
+```
+
+Pantallas:
+
+- **Projects**: dashboard con proyectos recientes, estado, progreso y agentes activos.
+- **New Project**: objetivo + ajustes avanzados (concurrency, modelos, retries).
+- **Plan**: revisar el DAG en modo Lista o Grafo, editar tareas y validar.
+- **Execution**: tablero de tareas (Running/Ready/Blocked/Failed), agentes activos,
+  event log en vivo, fallbacks y revisiones visibles, pause/resume.
+- **Completed/Failed**: resumen con branch/commit final y agentes usados.
+
+Flujo de usuario:
+
+```text
+Create → Plan → Run → Monitor → Complete
+```
+
+La UI no fusiona nada a `main`: el resultado queda en una branch aislada.
+
+### Tests de UI
+
+```bash
+cd ui
+npm test           # tests de componentes (Vitest + Testing Library)
+npm run e2e        # E2E (Playwright) contra backend mock
+```
+
+El E2E arranca el backend en modo mock y la app Next, y recorre el flujo
+completo (crear → plan → ejecutar → completado) sin usar modelos reales.
+
+
 
 ## Limitaciones actuales
 
@@ -151,3 +280,9 @@ restantes se reintentan.
   un smoke run real completo (Claude está limitado por suscripción).
 - **Merge final**: no automático; el usuario decide si integrar la branch.
 - `concurrency` es en proceso.
+- **Pause**: cooperativo a nivel de batch; las tareas en curso terminan y no se
+  lanzan nuevas.
+- **Cancel**: coopera con `AbortSignal` para matar los procesos CLI (codex/claude)
+  en curso; DeepSeek (HTTP) se detiene al final del batch actual.
+- **Activity global**: la página global de actividad usa polling ligero (5s);
+  el stream en tiempo real es por proyecto (SSE).

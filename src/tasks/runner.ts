@@ -25,6 +25,7 @@ export interface RunTaskOptions {
   baseRef?: string | undefined;
   extraPrompt?: string | undefined;
   maxRetriesPerAgent?: number | undefined;
+  signal?: AbortSignal | undefined;
 }
 
 function buildPrompt(task: Task): string {
@@ -124,10 +125,18 @@ export async function runTask(
   let workspaceAttempt = 0;
 
   for (const [index, candidate] of chain.entries()) {
+    if (options.signal?.aborted) {
+      return failTask(running, attempts, "Ejecución cancelada por el usuario.");
+    }
+
     const label = describeAgent(candidate);
     console.log(`\n[${index + 1}/${chain.length}] ${label}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (options.signal?.aborted) {
+        return failTask(running, attempts, "Ejecución cancelada por el usuario.");
+      }
+
       workspaceAttempt += 1;
       const startedAt = new Date();
 
@@ -169,6 +178,7 @@ export async function runTask(
       try {
         const output = await execute(prompt, candidate, {
           cwd: workspace.path,
+          ...(options.signal ? { signal: options.signal } : {}),
         });
 
         const commitSha = await workspaceManager.commit(

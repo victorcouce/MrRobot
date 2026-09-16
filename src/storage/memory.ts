@@ -55,4 +55,16 @@ export class InMemoryStorage implements Storage {
   async saveAgentRun(run: StoredAgentRun): Promise<void> {
     this.agentRuns.push(structuredClone(run));
   }
+
+  async listReviews(projectId: string): Promise<StoredReview[]> {
+    return this.reviews
+      .filter((review) => review.projectId === projectId)
+      .map((review) => structuredClone(review));
+  }
+
+  async listSupervisorRuns(projectId: string): Promise<StoredSupervisorRun[]> {
+    return this.supervisorRuns
+      .filter((run) => run.projectId === projectId)
+      .map((run) => structuredClone(run));
+  }
 }

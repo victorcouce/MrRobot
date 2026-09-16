@@ -31,6 +31,7 @@ export interface ProjectDeps {
 export interface CreateProjectInput {
   goal: string;
   name?: string;
+  config?: OrchestratorConfig;
 }
 
 export interface ProjectRoundResult {
@@ -59,6 +60,8 @@ async function emit(
 
   await storage.appendEvent(event);
 }
+
+export { emit as emitProjectEvent };
 
 function deriveName(goal: string): string {
   const firstLine = goal.trim().split("\n")[0] ?? "proyecto";
@@ -125,6 +128,89 @@ export async function createProject(
   });
 
   return project;
+}
+
+export async function createProjectDraft(
+  input: CreateProjectInput,
+  deps: ProjectDeps,
+): Promise<Project> {
+  const workspace = deps.workspace ?? gitWorkspaceManager;
+  const baseRef = await workspace.resolveBaseRef();
+
+  const now = new Date();
+  const project: Project = {
+    id: randomUUID(),
+    name: input.name ?? deriveName(input.goal),
+    goal: input.goal,
+    status: "draft",
+    baseRef,
+    tasks: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  if (input.config) {
+    project.config = input.config;
+  }
+
+  await deps.storage.saveProject(project);
+  await emit(deps.storage, project.id, "project.created");
+
+  return project;
+}
+
+export async function generatePlan(
+  projectId: string,
+  deps: ProjectDeps,
+): Promise<Project> {
+  const storage = deps.storage;
+
+  const project = await storage.getProject(projectId);
+
+  if (!project) {
+    throw new Error(`Proyecto ${projectId} no encontrado.`);
+  }
+
+  if (project.status === "running" || project.status === "completed") {
+    throw new Error(
+      `No se puede regenerar el plan: el proyecto está en estado ${project.status}.`,
+    );
+  }
+
+  const config = project.config ?? deps.config ?? defaultConfig;
+
+  const alreadyPlanning = project.status === "planning";
+
+  if (!alreadyPlanning) {
+    const planning: Project = {
+      ...project,
+      status: "planning",
+      updatedAt: new Date(),
+    };
+
+    await storage.saveProject(planning);
+    await emit(storage, projectId, "plan.started");
+  }
+
+  const plan = await planProject(project.goal, {}, {
+    execute: deps.plannerExecute,
+    agent: config.plannerAgent,
+    maxAttempts: config.plannerMaxAttempts,
+  });
+
+  const ready: Project = {
+    ...project,
+    status: "ready",
+    tasks: planToTasks(plan),
+    updatedAt: new Date(),
+  };
+
+  await storage.saveProject(ready);
+  await emit(storage, projectId, "plan.generated", undefined, {
+    summary: plan.summary,
+  });
+
+  return ready;
 }
 
 function buildFixFeedback(review: ReviewResult, checks: CheckResult[]): string {
@@ -203,6 +289,7 @@ function makeTaskExecutor(
   workspace: WorkspaceManager,
   storage: Storage,
   taskState: Map<string, Task>,
+  signal?: AbortSignal,
 ): (task: Task) => Promise<Task> {
   return async (task: Task): Promise<Task> => {
     const dependencyCommits = (task.dependsOn ?? [])
@@ -248,6 +335,7 @@ function makeTaskExecutor(
         workspace,
         execute: deps.workerExecute,
         maxRetriesPerAgent: config.maxRetriesPerAgent,
+        ...(signal ? { signal } : {}),
       });
 
       if (result.status !== "done") {
@@ -323,11 +411,16 @@ function makeTaskExecutor(
   };
 }
 
+export interface RunProjectOptions {
+  shouldPause?: () => boolean | Promise<boolean>;
+  signal?: AbortSignal;
+}
+
 export async function runProjectRound(
   projectId: string,
   deps: ProjectDeps,
+  options: RunProjectOptions = {},
 ): Promise<ProjectRoundResult> {
-  const config = deps.config ?? defaultConfig;
   const workspace = deps.workspace ?? gitWorkspaceManager;
   const storage = deps.storage;
 
@@ -336,6 +429,8 @@ export async function runProjectRound(
   if (!project) {
     throw new Error(`Proyecto ${projectId} no encontrado.`);
   }
+
+  const config = project.config ?? deps.config ?? defaultConfig;
 
   const taskState = new Map<string, Task>(
     project.tasks.map((task) => [task.id, task]),
@@ -349,11 +444,14 @@ export async function runProjectRound(
     workspace,
     storage,
     taskState,
+    options.signal,
   );
 
   const planResult = await runPlan([...taskState.values()], {
     executeTask,
     concurrency: config.concurrency,
+    ...(options.shouldPause ? { shouldPause: options.shouldPause } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
 
   for (const task of planResult.tasks) {
@@ -374,8 +472,8 @@ export async function runProjectRound(
 export async function runProject(
   projectId: string,
   deps: ProjectDeps,
+  options: RunProjectOptions = {},
 ): Promise<Project> {
-  const config = deps.config ?? defaultConfig;
   const workspace = deps.workspace ?? gitWorkspaceManager;
   const storage = deps.storage;
 
@@ -384,6 +482,8 @@ export async function runProject(
   if (!loaded) {
     throw new Error(`Proyecto ${projectId} no encontrado.`);
   }
+
+  const config = loaded.config ?? deps.config ?? defaultConfig;
 
   let project = recoverInterrupted(loaded);
   project = {
@@ -399,11 +499,30 @@ export async function runProject(
   const pid = project.id;
 
   for (let round = 0; round < MAX_SUPERVISOR_ROUNDS; round++) {
-    const roundResult = await runProjectRound(projectId, deps);
+    const roundResult = await runProjectRound(projectId, deps, options);
     project = roundResult.project;
 
     if (roundResult.status === "completed") {
       break;
+    }
+
+    if (roundResult.status === "paused") {
+      project = { ...project, status: "paused", updatedAt: new Date() };
+      await storage.saveProject(project);
+      await emit(storage, pid, "project.paused");
+      return project;
+    }
+
+    if (roundResult.status === "cancelled") {
+      project = {
+        ...project,
+        status: "cancelled",
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+      };
+      await storage.saveProject(project);
+      await emit(storage, pid, "project.cancelled");
+      return project;
     }
 
     const failureCount = project.tasks.filter(
@@ -591,9 +710,32 @@ export async function pauseProject(
   return paused;
 }
 
+export async function cancelProject(
+  projectId: string,
+  deps: ProjectDeps,
+): Promise<Project> {
+  const project = await deps.storage.getProject(projectId);
+
+  if (!project) {
+    throw new Error(`Proyecto ${projectId} no encontrado.`);
+  }
+
+  const cancelled: Project = {
+    ...project,
+    status: "cancelled",
+    finishedAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await deps.storage.saveProject(cancelled);
+  await emit(deps.storage, projectId, "project.cancelled");
+  return cancelled;
+}
+
 export async function resumeProject(
   projectId: string,
   deps: ProjectDeps,
+  options: RunProjectOptions = {},
 ): Promise<Project> {
   const project = await deps.storage.getProject(projectId);
 
@@ -609,7 +751,7 @@ export async function resumeProject(
 
   await deps.storage.saveProject(resumed);
   await emit(deps.storage, projectId, "project.resumed");
-  return runProject(projectId, deps);
+  return runProject(projectId, deps, options);
 }
 
 export function buildProjectResult(

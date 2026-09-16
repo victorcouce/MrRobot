@@ -25,6 +25,16 @@ function makeProject(): Project {
     goal: "crear app de hábitos",
     status: "running",
     baseRef: "base0",
+    config: {
+      concurrency: 4,
+      maxRetriesPerAgent: 2,
+      maxReviewFixCycles: 3,
+      plannerMaxAttempts: 2,
+      plannerAgent: { provider: "claude", model: "opus" },
+      reviewerAgent: { provider: "claude", model: "opus" },
+      supervisorAgent: { provider: "codex" },
+      checks: { commands: ["test"] },
+    },
     tasks: [
       makeTask({
         dependsOn: [],
@@ -68,6 +78,9 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.equal(loaded.name, "habits");
   assert.equal(loaded.status, "running");
   assert.equal(loaded.tasks.length, 2);
+  assert.equal(loaded.config?.concurrency, 4);
+  assert.deepEqual(loaded.config?.plannerAgent, { provider: "claude", model: "opus" });
+  assert.deepEqual(loaded.config?.supervisorAgent, { provider: "codex" });
 
   const task1 = loaded.tasks.find((task) => task.id === "TASK-001");
   assert.ok(task1);
