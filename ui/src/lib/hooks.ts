@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { subscribeProjectsChanged } from "./project-store";
 import { subscribeProject } from "./sse";
 import type {
   AppInfo,
@@ -55,6 +56,9 @@ export function useProjects() {
 
   useEffect(() => {
     void refresh();
+    return subscribeProjectsChanged(() => {
+      void refresh();
+    });
   }, [refresh]);
 
   return { projects, error, loading, refresh };

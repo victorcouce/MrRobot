@@ -139,7 +139,8 @@ export function ProjectWorkspace({ id }: { id: string }) {
     }
   }
 
-  async function removeSelectedTask() {    if (!selectedTask) return;
+  async function removeSelectedTask() {
+    if (!selectedTask) return;
     setBusy("task");
     setActionError(null);
     try {
@@ -220,10 +221,27 @@ export function ProjectWorkspace({ id }: { id: string }) {
             )}
             <Button
               variant="ghost"
+              aria-label="Borrar proyecto"
+              title="Borrar proyecto"
+              className="px-2 text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
               onClick={() => setConfirmDelete(true)}
               loading={busy === "delete"}
             >
-              Delete
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 4h10M6.5 4V3h3v1M5 4l.5 8.5h5L11 4"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </Button>
           </div>
         </div>

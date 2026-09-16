@@ -1,3 +1,4 @@
+import { notifyProjectsChanged } from "./project-store";
 import type {
   AgentSpec,
   AppInfo,
@@ -95,10 +96,14 @@ export const api = {
 
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
 
-  deleteProject: (id: string) =>
-    request<{ id: string; deleted: boolean }>(`/api/projects/${id}`, {
-      method: "DELETE",
-    }),
+  deleteProject: async (id: string) => {
+    const result = await request<{ id: string; deleted: boolean }>(
+      `/api/projects/${id}`,
+      { method: "DELETE" },
+    );
+    notifyProjectsChanged();
+    return result;
+  },
 
   updateProjectConfig: (id: string, config: Record<string, unknown>) =>
     request<Project>(`/api/projects/${id}/config`, {
