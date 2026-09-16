@@ -30,6 +30,11 @@ Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
 - **DeepSeek** — provider `deepseek` vía HTTP; no necesita CLI, sólo la
   variable `DEEPSEEK_API_KEY` (ver [Configurar las claves](#configurar-las-claves-solo-para-uso-real)).
 
+> **Nota:** no hace falta contratar tokens ni una API de pago aparte. Codex y
+> Claude se autentican con tu **suscripción normal** de ChatGPT / Claude (Plus,
+> Pro, etc.) y usan esa cuota. El único proveedor que necesita una clave de API
+> es DeepSeek.
+
 Si sólo quieres probar la app sin gastar tokens, usa el **modo mock** (paso 3)
 y no necesitas instalar ni autenticar ninguno de estos.
 
