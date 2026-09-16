@@ -6,10 +6,16 @@ import {
   pauseProject,
   resumeProject,
   runProject,
+  type CreateProjectInput,
   type ProjectDeps,
 } from "../projects/service.js";
 import type { Project } from "../projects/types.js";
 import { createPgliteStorage } from "../storage/pglite.js";
+import type { Storage } from "../storage/types.js";
+import {
+  createGitWorkspaceManager,
+  prepareProjectRepo,
+} from "../workspace/manager.js";
 
 const DATA_DIR = process.env.MRROBOT_DATA_DIR ?? ".mrrobot/data";
 
@@ -17,13 +23,18 @@ function usage(): void {
   console.log(`mrrobot <comando>
 
 Comandos:
-  create "<objetivo>"   Crea un proyecto (planner + DAG)
+  create "<objetivo>" [--folder <ruta>] [--remote <url>]
+                        Crea un proyecto (planner + DAG)
   plan <project-id>     Lista las tareas del plan
   run <project-id>      Ejecuta el proyecto
   status <project-id>   Muestra el estado
   tasks <project-id>    Lista las tareas
   pause <project-id>    Pausa el proyecto
   resume <project-id>   Reanuda el proyecto
+
+Opciones de create:
+  --folder <ruta>   Carpeta del proyecto (se crea/inicializa si no existe)
+  --remote <url>    Repositorio GitHub a vincular como origin
 `);
 }
 
@@ -35,6 +46,49 @@ function requireArg(args: string[], name: string): string {
   }
 
   return value;
+}
+
+function parseCreateArgs(args: string[]): CreateProjectInput {
+  const positional: string[] = [];
+  let repoPath: string | undefined;
+  let remoteUrl: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === undefined) {
+      continue;
+    }
+
+    if (arg === "--folder" || arg === "--repo") {
+      repoPath = args[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--remote") {
+      remoteUrl = args[index + 1];
+      index += 1;
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  const input: CreateProjectInput = { goal: positional.join(" ").trim() };
+  if (repoPath) input.repoPath = repoPath;
+  if (remoteUrl) input.remoteUrl = remoteUrl;
+  return input;
+}
+
+function depsForProject(project: Project, storage: Storage): ProjectDeps {
+  const deps: ProjectDeps = { storage, config: loadConfig() };
+
+  if (project.repoPath) {
+    deps.workspace = createGitWorkspaceManager(project.repoPath);
+  }
+
+  return deps;
 }
 
 function printProject(project: Project): void {
@@ -71,13 +125,27 @@ async function main(): Promise<void> {
   try {
     switch (command) {
       case "create": {
-        const goal = args.join(" ").trim();
+        const input = parseCreateArgs(args);
 
-        if (!goal) {
+        if (!input.goal) {
           throw new Error("falta el objetivo del proyecto");
         }
 
-        const project = await createProject({ goal }, deps);
+        let createDeps = deps;
+
+        if (input.repoPath) {
+          const prepared = await prepareProjectRepo(
+            input.repoPath,
+            input.remoteUrl,
+          );
+          createDeps = {
+            ...deps,
+            workspace: createGitWorkspaceManager(prepared.root),
+          };
+          input.repoPath = prepared.root;
+        }
+
+        const project = await createProject(input, createDeps);
         console.log(`Proyecto creado: ${project.id}`);
         console.log(`Tareas: ${project.tasks.length}`);
         printProject(project);
@@ -103,7 +171,13 @@ async function main(): Promise<void> {
 
       case "run": {
         const id = requireArg(args, "project-id");
-        const project = await runProject(id, deps);
+        const existing = await storage.getProject(id);
+
+        if (!existing) {
+          throw new Error(`proyecto ${id} no encontrado`);
+        }
+
+        const project = await runProject(id, depsForProject(existing, storage));
         printProject(project);
         break;
       }
@@ -127,10 +201,14 @@ async function main(): Promise<void> {
       }
 
       case "resume": {
-        const project = await resumeProject(
-          requireArg(args, "project-id"),
-          deps,
-        );
+        const id = requireArg(args, "project-id");
+        const existing = await storage.getProject(id);
+
+        if (!existing) {
+          throw new Error(`proyecto ${id} no encontrado`);
+        }
+
+        const project = await resumeProject(id, depsForProject(existing, storage));
         printProject(project);
         break;
       }

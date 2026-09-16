@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
 import type {
   IntegrationError,
   IntegrationResult,
@@ -21,7 +21,12 @@ function runGit(args: string[], cwd?: string): Promise<string> {
     execFile(
       "git",
       args,
-      { cwd, maxBuffer: MAX_BUFFER, encoding: "utf8" },
+      {
+        cwd,
+        maxBuffer: MAX_BUFFER,
+        encoding: "utf8",
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      },
       (error, stdout, stderr) => {
         if (error) {
           reject(
@@ -81,6 +86,141 @@ export async function getRepoRoot(cwd?: string): Promise<string> {
 export async function resolveBaseRef(cwd?: string): Promise<string> {
   const root = await getRepoRoot(cwd);
   return runGit(["rev-parse", "HEAD"], root);
+}
+
+async function isInsideWorkTree(cwd: string): Promise<boolean> {
+  try {
+    return (await runGit(["rev-parse", "--is-inside-work-tree"], cwd)) === "true";
+  } catch {
+    return false;
+  }
+}
+
+async function hasHead(cwd: string): Promise<boolean> {
+  try {
+    await runGit(["rev-parse", "--verify", "HEAD"], cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function setOrigin(root: string, url: string): Promise<void> {
+  try {
+    await runGit(["remote", "get-url", "origin"], root);
+    await runGit(["remote", "set-url", "origin", url], root);
+  } catch {
+    await runGit(["remote", "add", "origin", url], root);
+  }
+}
+
+function isGithubHttps(url: string): boolean {
+  return /^https:\/\/github\.com\//i.test(url);
+}
+
+function githubAuthArgs(): string[] {
+  if (!process.env.GITHUB_TOKEN) {
+    return [];
+  }
+
+  return [
+    "-c",
+    "credential.helper=",
+    "-c",
+    'credential.helper=!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f',
+  ];
+}
+
+export async function verifyRemote(url: string, cwd?: string): Promise<void> {
+  if (!process.env.GITHUB_TOKEN || !isGithubHttps(url)) {
+    return;
+  }
+
+  try {
+    await runGit([...githubAuthArgs(), "ls-remote", "--exit-code", url], cwd);
+  } catch (error) {
+    throw new Error(
+      `No se pudo acceder al remoto ${url} con GITHUB_TOKEN: ${messageOf(error)}`,
+    );
+  }
+}
+
+export async function pushBranch(
+  branchName: string,
+  cwd?: string,
+): Promise<void> {
+  await runGit(
+    [...githubAuthArgs(), "push", "--set-upstream", "origin", branchName],
+    cwd,
+  );
+}
+
+async function excludeWorktreesDir(root: string): Promise<void> {
+  const gitPath = await runGit(
+    ["rev-parse", "--git-path", "info/exclude"],
+    root,
+  );
+  const excludePath = isAbsolute(gitPath) ? gitPath : join(root, gitPath);
+
+  try {
+    const content = await readFile(excludePath, "utf8");
+    if (content.split("\n").some((line) => line.trim() === `${WORKTREES_DIR}/`)) {
+      return;
+    }
+  } catch {
+    // El archivo puede no existir todavía; se crea al escribir.
+  }
+
+  await appendFile(excludePath, `\n${WORKTREES_DIR}/\n`, "utf8");
+}
+
+export interface PreparedRepo {
+  root: string;
+  created: boolean;
+  initialized: boolean;
+}
+
+export async function prepareProjectRepo(
+  repoPath: string,
+  remoteUrl?: string,
+): Promise<PreparedRepo> {
+  const target = resolve(repoPath);
+  await mkdir(target, { recursive: true });
+
+  const existed = await isInsideWorkTree(target);
+
+  if (!existed) {
+    await runGit(["init"], target);
+  }
+
+  const root = await getRepoRoot(target);
+  let initialized = false;
+
+  if (!(await hasHead(root))) {
+    await runGit(
+      [
+        "-c",
+        "user.name=MrRobot",
+        "-c",
+        "user.email=mrrobot@localhost",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "chore: initial commit",
+      ],
+      root,
+    );
+    initialized = true;
+  }
+
+  if (remoteUrl) {
+    await setOrigin(root, remoteUrl);
+    await verifyRemote(remoteUrl, root);
+  }
+
+  await excludeWorktreesDir(root);
+
+  return { root, created: !existed, initialized };
 }
 
 export async function isRepoDirty(cwd?: string): Promise<boolean> {
@@ -284,6 +424,7 @@ export function createGitWorkspaceManager(cwd?: string): WorkspaceManager {
     commit: (workspace, message) => commitTaskWorkspace(workspace, message),
     remove: (workspace, options) => removeTaskWorkspace(workspace, options, cwd),
     diff: (commit) => commitDiff(commit, cwd),
+    push: (branchName) => pushBranch(branchName, cwd),
     integrateDependencies: (taskId, dependencyCommits, baseRef) =>
       integrateDependencies(taskId, dependencyCommits, baseRef, cwd),
     finalizeProject: (projectId, commits, baseRef) =>

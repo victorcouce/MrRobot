@@ -39,6 +39,8 @@ export interface WorkspaceManager {
 
   diff(commit: string): Promise<string>;
 
+  push?(branchName: string): Promise<void>;
+
   integrateDependencies(
     taskId: string,
     dependencyCommits: Array<{ taskId: string; commit: string }>,

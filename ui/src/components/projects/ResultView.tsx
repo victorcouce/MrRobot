@@ -48,6 +48,12 @@ export function ResultView({ project }: { project: Project }) {
         {project.resultCommit && (
           <Stat label="Final commit" value={shortSha(project.resultCommit)} mono />
         )}
+        {project.repoPath && (
+          <Stat label="Repo" value={project.repoPath} mono />
+        )}
+        {project.remoteUrl && (
+          <Stat label="Remote" value={project.remoteUrl} mono />
+        )}
       </div>
 
       {project.resultBranch && project.resultCommit && (

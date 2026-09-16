@@ -17,6 +17,7 @@ import { DagView } from "./DagView";
 import { ExecutionView } from "./ExecutionView";
 import { PlanView } from "./PlanView";
 import { PlanningState } from "./PlanningState";
+import { ProjectSettingsDialog } from "./ProjectSettingsDialog";
 import { ResultView } from "./ResultView";
 import { SupervisorBanner } from "./SupervisorBanner";
 import { TaskDetail } from "./TaskDetail";
@@ -36,6 +37,7 @@ export function ProjectWorkspace({ id }: { id: string }) {
   const [editor, setEditor] = useState<EditorState>(null);
   const [confirmStart, setConfirmStart] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("board");
@@ -76,6 +78,10 @@ export function ProjectWorkspace({ id }: { id: string }) {
   const status = PROJECT_STATUS[project.status];
   const { stats } = project;
   const isEditable = project.status === "ready";
+  const canEditConfig =
+    project.status === "draft" ||
+    project.status === "ready" ||
+    project.status === "paused";
   const selectedTask = project.tasks.find((task) => task.id === selectedTaskId);
 
   async function submitTask(data: TaskFormData) {
@@ -160,6 +166,9 @@ export function ProjectWorkspace({ id }: { id: string }) {
             pulse={status.pulse}
           />
           <div className="ml-auto flex items-center gap-2">
+            {canEditConfig && (
+              <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
+            )}
             {project.status === "ready" && (
               <Button
                 variant="primary"
@@ -333,6 +342,15 @@ export function ProjectWorkspace({ id }: { id: string }) {
           error={actionError}
         />
       )}
+
+      <ProjectSettingsDialog
+        project={project}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => {
+          void refresh();
+        }}
+      />
 
       <Dialog
         open={confirmStart}

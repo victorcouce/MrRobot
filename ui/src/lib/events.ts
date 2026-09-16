@@ -92,6 +92,8 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
       return { category: "system", title: "Project paused" };
     case "project.resumed":
       return { category: "system", title: "Project resumed" };
+    case "project.config_updated":
+      return { category: "system", title: "Project settings updated" };
     case "project.completed":
       return {
         category: "system",

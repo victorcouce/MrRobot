@@ -29,4 +29,15 @@ export function loadConfig(
   };
 }
 
+export function mergeConfig(
+  base: OrchestratorConfig,
+  overrides: Partial<OrchestratorConfig>,
+): OrchestratorConfig {
+  return {
+    ...base,
+    ...overrides,
+    checks: { ...base.checks, ...(overrides.checks ?? {}) },
+  };
+}
+
 export type { OrchestratorConfig } from "./types.js";

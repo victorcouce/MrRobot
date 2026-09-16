@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type { AgentSpec } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/index.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
@@ -157,6 +158,41 @@ export function parseTaskPatch(body: Record<string, unknown>): TaskPatch {
   }
 
   return patch;
+}
+
+export interface RepoOptions {
+  repoPath?: string;
+  remoteUrl?: string;
+}
+
+export function parseRepoOptions(body: Record<string, unknown>): RepoOptions {
+  const options: RepoOptions = {};
+
+  const repoPath = body["repoPath"];
+  if (repoPath !== undefined && repoPath !== null && repoPath !== "") {
+    if (typeof repoPath !== "string" || !repoPath.trim()) {
+      throw new Error('El campo "repoPath" debe ser una ruta no vacía.');
+    }
+
+    const trimmed = repoPath.trim();
+
+    if (!isAbsolute(trimmed)) {
+      throw new Error('El campo "repoPath" debe ser una ruta absoluta.');
+    }
+
+    options.repoPath = trimmed;
+  }
+
+  const remoteUrl = body["remoteUrl"];
+  if (remoteUrl !== undefined && remoteUrl !== null && remoteUrl !== "") {
+    if (typeof remoteUrl !== "string" || !remoteUrl.trim()) {
+      throw new Error('El campo "remoteUrl" debe ser una URL no vacía.');
+    }
+
+    options.remoteUrl = remoteUrl.trim();
+  }
+
+  return options;
 }
 
 export function parseConfigOverrides(

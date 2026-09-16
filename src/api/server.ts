@@ -3,8 +3,10 @@ import type { ProjectEvent } from "../storage/types.js";
 import {
   parseConfigOverrides,
   parseNewTask,
+  parseRepoOptions,
   parseTaskPatch,
 } from "./parse.js";
+import { pickFolder } from "./pick-folder.js";
 import {
   ProjectNotFoundError,
   Runtime,
@@ -135,6 +137,16 @@ async function dispatch(
     return;
   }
 
+  // /api/fs/pick-folder
+  if (
+    req.method === "POST" &&
+    segments[1] === "fs" &&
+    segments[2] === "pick-folder"
+  ) {
+    sendJson(res, 200, { path: await pickFolder() });
+    return;
+  }
+
   // /api/activity
   if (req.method === "GET" && segments[1] === "activity") {
     const limit = Number(query.get("limit") ?? "100");
@@ -168,8 +180,10 @@ async function dispatch(
           ? parseConfigOverrides(configBody as Record<string, unknown>)
           : {};
 
+      const repo = parseRepoOptions(body);
+
       const project = await runtime.createProject(
-        name ? { goal, name } : { goal },
+        { goal, ...(name ? { name } : {}), ...repo },
         config,
       );
       sendJson(res, 201, project);
@@ -185,6 +199,17 @@ async function dispatch(
     // /api/projects/:id
     if (req.method === "GET" && segments.length === 3) {
       sendJson(res, 200, await runtime.getProject(projectId));
+      return;
+    }
+
+    // /api/projects/:id/config
+    if (req.method === "PATCH" && segments[3] === "config") {
+      const body = await readJson(req);
+      sendJson(
+        res,
+        200,
+        await runtime.updateProjectConfig(projectId, parseConfigOverrides(body)),
+      );
       return;
     }
 
@@ -314,7 +339,7 @@ export function buildApiServer(runtime: Runtime) {
       const isConflict =
         /ya se está|Solo se puede|No se puede/.test(message);
       const isBadRequest =
-        /inválido|obligatorio|desconocido|debe ser|no vacío|no se enviaron|No se puede/.test(
+        /inválido|obligatorio|desconocido|debe ser|no vacío|no se enviaron|requiere|No se puede/.test(
           message,
         );
 

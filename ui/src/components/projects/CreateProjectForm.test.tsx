@@ -26,6 +26,7 @@ vi.mock("../../lib/api", () => ({
     }),
     createProject: vi.fn().mockResolvedValue({ id: "p1", status: "draft" }),
     generatePlan: vi.fn().mockResolvedValue({ id: "p1", status: "planning" }),
+    pickFolder: vi.fn().mockResolvedValue({ path: null }),
   },
 }));
 
@@ -36,6 +37,8 @@ describe("CreateProjectForm", () => {
     push.mockClear();
     vi.mocked(api.createProject).mockClear();
     vi.mocked(api.generatePlan).mockClear();
+    vi.mocked(api.pickFolder).mockClear();
+    vi.mocked(api.pickFolder).mockResolvedValue({ path: null });
   });
 
   it("crea el proyecto y genera el plan", async () => {
@@ -70,5 +73,36 @@ describe("CreateProjectForm", () => {
       expect(screen.getByText("Describe qué quieres construir.")).toBeInTheDocument();
     });
     expect(api.createProject).not.toHaveBeenCalled();
+  });
+
+  it("incluye la carpeta elegida y el remoto de GitHub", async () => {
+    vi.mocked(api.pickFolder).mockResolvedValue({ path: "/tmp/calc" });
+    render(<CreateProjectForm />);
+
+    fireEvent.change(screen.getByLabelText("Goal"), {
+      target: { value: "Una calculadora web" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Examinar…" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Carpeta del proyecto")).toHaveValue(
+        "/tmp/calc",
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("Repositorio GitHub (opcional)"), {
+      target: { value: "https://github.com/acme/calc.git" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate plan" }));
+
+    await waitFor(() => {
+      expect(api.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          goal: "Una calculadora web",
+          repoPath: "/tmp/calc",
+          remoteUrl: "https://github.com/acme/calc.git",
+        }),
+      );
+    });
   });
 });

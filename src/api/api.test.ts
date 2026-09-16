@@ -296,3 +296,68 @@ test("runtime: config por proyecto se persiste y se expone", async () => {
 
   await runtime.shutdown();
 });
+
+test("runtime: updateProjectConfig persiste y se expone", async () => {
+  const runtime = await Runtime.create({ mock: true });
+
+  const draft = await runtime.createProject({ goal: "x" }, { concurrency: 4 });
+  assert.equal(draft.config?.concurrency, 4);
+
+  const updated = await runtime.updateProjectConfig(draft.id, {
+    plannerAgent: { provider: "deepseek", model: "deepseek-flash" },
+  });
+
+  assert.equal(updated.config?.concurrency, 4);
+  assert.equal(updated.config?.plannerAgent.provider, "deepseek");
+
+  const reloaded = await runtime.getProject(draft.id);
+  assert.equal(reloaded.config?.plannerAgent.provider, "deepseek");
+
+  const events = await runtime.listEvents(draft.id);
+  assert.ok(events.some((event) => event.type === "project.config_updated"));
+
+  await runtime.shutdown();
+});
+
+test("api server: PATCH /api/projects/:id/config actualiza los modelos", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "x" }),
+    })
+  ).json();
+
+  const response = await fetch(`${base}/api/projects/${created.id}/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plannerAgent: "deepseek", concurrency: 3 }),
+  });
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.equal(body.config.concurrency, 3);
+  assert.equal(body.config.plannerAgent.provider, "deepseek");
+
+  const invalid = await fetch(`${base}/api/projects/${created.id}/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plannerAgent: "auto" }),
+  });
+  assert.equal(invalid.status, 400);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+

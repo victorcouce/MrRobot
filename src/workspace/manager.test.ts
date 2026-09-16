@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -15,6 +15,7 @@ import {
   createTaskWorkspace,
   finalizeProject,
   integrateDependencies,
+  prepareProjectRepo,
   removeTaskWorkspace,
   resolveBaseRef,
   sanitizeTaskId,
@@ -378,3 +379,48 @@ test("finalizeProject crea una branch aislada con todos los commits", async () =
     await rm(repo, { recursive: true, force: true });
   }
 });
+
+test("prepareProjectRepo crea la carpeta, inicializa git y hace commit inicial", async () => {
+  const base = await mkdtemp(join(tmpdir(), "mrrobot-prep-"));
+  const target = join(base, "nuevo-proyecto");
+
+  try {
+    const prepared = await prepareProjectRepo(target);
+
+    assert.equal(prepared.created, true);
+    assert.equal(prepared.initialized, true);
+    assert.equal(prepared.root, await realpath(target));
+    assert.ok(existsSync(join(target, ".git")));
+
+    const head = await git(["rev-parse", "HEAD"], target);
+    assert.match(head, /^[0-9a-f]{40}$/);
+
+    const exclude = await git(["rev-parse", "--git-path", "info/exclude"], target);
+    const excludePath = exclude.startsWith("/") ? exclude : join(target, exclude);
+    const content = await readFile(excludePath, "utf8");
+    assert.match(content, /^\.worktrees\/$/m);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("prepareProjectRepo reutiliza un repo existente y configura origin", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const prepared = await prepareProjectRepo(repo, "https://github.com/acme/demo.git");
+
+    assert.equal(prepared.created, false);
+    assert.equal(prepared.initialized, false);
+    assert.equal(prepared.root, await realpath(repo));
+    assert.equal(await resolveBaseRef(repo), base);
+    assert.equal(
+      await git(["remote", "get-url", "origin"], repo),
+      "https://github.com/acme/demo.git",
+    );
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+

@@ -115,6 +115,8 @@ export interface Project {
   goal: string;
   status: ProjectStatus;
   baseRef: string;
+  repoPath?: string;
+  remoteUrl?: string;
   tasks: Task[];
   config?: ConfigInfo;
   createdAt: string;
@@ -133,6 +135,7 @@ export interface ProjectSummary {
   name: string;
   goal: string;
   status: ProjectStatus;
+  repoPath?: string;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;

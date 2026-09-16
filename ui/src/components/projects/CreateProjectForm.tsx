@@ -14,6 +14,9 @@ export function CreateProjectForm() {
 
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
+  const [repoPath, setRepoPath] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [picking, setPicking] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [concurrency, setConcurrency] = useState(2);
   const [maxRetries, setMaxRetries] = useState(1);
@@ -23,6 +26,20 @@ export function CreateProjectForm() {
   const [supervisor, setSupervisor] = useState<AgentChoice>("claude-opus");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handlePickFolder() {
+    setPicking(true);
+    setError(null);
+
+    try {
+      const result = await api.pickFolder();
+      if (result.path) setRepoPath(result.path);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPicking(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -47,7 +64,9 @@ export function CreateProjectForm() {
 
       const project = await api.createProject({
         goal: goal.trim(),
-        name: name.trim() || undefined,
+        ...(name.trim() ? { name: name.trim() } : {}),
+        ...(repoPath.trim() ? { repoPath: repoPath.trim() } : {}),
+        ...(remoteUrl.trim() ? { remoteUrl: remoteUrl.trim() } : {}),
         config,
       });
 
@@ -86,15 +105,44 @@ export function CreateProjectForm() {
         />
       </Field>
 
-      <Field id="repo" label="Repository">
-        <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-          {info?.repoRoot ? (
-            <span className="font-mono text-xs">{info.repoRoot}</span>
-          ) : (
-            <span>Repositorio actual no detectado</span>
-          )}
-          <span className="ml-2 text-zinc-400">· usar repo actual</span>
+      <Field
+        id="repo"
+        label="Carpeta del proyecto"
+        hint={
+          info?.repoRoot
+            ? `Si la dejas vacía se usa el repositorio actual (${info.repoRoot}). Si indicas una ruta, se crea e inicializa allí.`
+            : "Si indicas una ruta, se crea e inicializa como repositorio git."
+        }
+      >
+        <div className="flex gap-2">
+          <Input
+            id="repo"
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.target.value)}
+            placeholder={info?.repoRoot || "/ruta/a/mi/proyecto"}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handlePickFolder}
+            loading={picking}
+          >
+            Examinar…
+          </Button>
         </div>
+      </Field>
+
+      <Field
+        id="remote"
+        label="Repositorio GitHub (opcional)"
+        hint="Se configura como remoto origin del proyecto."
+      >
+        <Input
+          id="remote"
+          value={remoteUrl}
+          onChange={(event) => setRemoteUrl(event.target.value)}
+          placeholder="https://github.com/usuario/repo.git"
+        />
       </Field>
 
       <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">

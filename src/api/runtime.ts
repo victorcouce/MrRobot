@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import type { OrchestratorConfig } from "../config/index.js";
-import { loadConfig } from "../config/index.js";
+import { loadConfig, mergeConfig } from "../config/index.js";
 import type { Project } from "../projects/types.js";
 import {
   cancelProject,
@@ -21,13 +21,14 @@ import {
   type NewTaskInput,
   type TaskPatch,
 } from "../projects/plan-editor.js";
+import { updateProjectConfig as updateProjectConfigInService } from "../projects/config-editor.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import { createPgliteStorage } from "../storage/pglite.js";
 import type {
   ProjectEvent,
   Storage,
 } from "../storage/types.js";
-import { createGitWorkspaceManager } from "../workspace/manager.js";
+import { createGitWorkspaceManager, prepareProjectRepo } from "../workspace/manager.js";
 import type { WorkspaceManager } from "../workspace/types.js";
 import type {
   AppInfo,
@@ -74,17 +75,6 @@ function broadcastStorage(
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
-}
-
-function mergeConfig(
-  base: OrchestratorConfig,
-  overrides: Partial<OrchestratorConfig>,
-): OrchestratorConfig {
-  return {
-    ...base,
-    ...overrides,
-    checks: { ...base.checks, ...(overrides.checks ?? {}) },
-  };
 }
 
 export class Runtime {
@@ -164,8 +154,22 @@ export class Runtime {
     return { storage: this.storage, workspace: this.workspace };
   }
 
-  private depsFor(_projectId: string): ProjectDeps {
-    return { ...this.baseDeps(), config: this.config };
+  private async depsFor(projectId: string): Promise<ProjectDeps> {
+    const base = this.baseDeps();
+
+    if (!this.mockDeps && base.workspace) {
+      const project = await this.storage.getProject(projectId);
+
+      if (project?.repoPath) {
+        return {
+          ...base,
+          workspace: createGitWorkspaceManager(project.repoPath),
+          config: this.config,
+        };
+      }
+    }
+
+    return { ...base, config: this.config };
   }
 
   private mustGetProject(projectId: string): Promise<Project> {
@@ -230,6 +234,18 @@ export class Runtime {
     return serializeProject(project);
   }
 
+  async updateProjectConfig(
+    projectId: string,
+    overrides: Partial<OrchestratorConfig>,
+  ) {
+    const project = await updateProjectConfigInService(
+      projectId,
+      overrides,
+      await this.depsFor(projectId),
+    );
+    return serializeProject(project);
+  }
+
   async createProject(
     input: CreateProjectInput,
     configOverrides?: Partial<OrchestratorConfig>,
@@ -239,9 +255,29 @@ export class Runtime {
         ? mergeConfig(this.config, configOverrides)
         : undefined;
 
+    let effective = input;
+    let deps: ProjectDeps;
+
+    if (this.mockDeps) {
+      deps = { ...this.mockDeps, config: this.config };
+    } else {
+      let workspace = this.workspace;
+
+      if (input.repoPath) {
+        const prepared = await prepareProjectRepo(
+          input.repoPath,
+          input.remoteUrl,
+        );
+        effective = { ...input, repoPath: prepared.root };
+        workspace = createGitWorkspaceManager(prepared.root);
+      }
+
+      deps = { storage: this.storage, workspace, config: this.config };
+    }
+
     const project = await createProjectDraft(
-      config ? { ...input, config } : input,
-      this.baseDeps(),
+      config ? { ...effective, config } : effective,
+      deps,
     );
 
     return serializeProject(project);
@@ -267,7 +303,7 @@ export class Runtime {
     }
 
     this.runInBackground(projectId, async () => {
-      await generatePlan(projectId, this.depsFor(projectId));
+      await generatePlan(projectId, await this.depsFor(projectId));
     });
 
     return this.getProject(projectId);
@@ -293,7 +329,7 @@ export class Runtime {
 
     this.runInBackground(projectId, async () => {
       try {
-        await runProject(projectId, this.depsFor(projectId), {
+        await runProject(projectId, await this.depsFor(projectId), {
           shouldPause: () => this.pauseFlags.get(projectId) === true,
           signal: controller.signal,
         });
@@ -343,7 +379,7 @@ export class Runtime {
 
     this.runInBackground(projectId, async () => {
       try {
-        await resumeProject(projectId, this.depsFor(projectId), {
+        await resumeProject(projectId, await this.depsFor(projectId), {
           shouldPause: () => this.pauseFlags.get(projectId) === true,
           signal: controller.signal,
         });

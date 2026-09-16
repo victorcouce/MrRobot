@@ -31,6 +31,8 @@ export interface ProjectDeps {
 export interface CreateProjectInput {
   goal: string;
   name?: string;
+  repoPath?: string;
+  remoteUrl?: string;
   config?: OrchestratorConfig;
 }
 
@@ -121,6 +123,9 @@ export async function createProject(
     updatedAt: now,
   };
 
+  if (input.repoPath) project.repoPath = input.repoPath;
+  if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
+
   await deps.storage.saveProject(project);
   await emit(deps.storage, project.id, "project.created");
   await emit(deps.storage, project.id, "plan.generated", undefined, {
@@ -152,6 +157,9 @@ export async function createProjectDraft(
   if (input.config) {
     project.config = input.config;
   }
+
+  if (input.repoPath) project.repoPath = input.repoPath;
+  if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
 
   await deps.storage.saveProject(project);
   await emit(deps.storage, project.id, "project.created");
@@ -664,6 +672,22 @@ export async function finalizeProjectRun(
         branch: integration.branchName,
         commit: integration.ref,
       });
+
+      if (project.remoteUrl && workspace.push) {
+        try {
+          await workspace.push(integration.branchName);
+          await emit(storage, projectId, "project.pushed", undefined, {
+            branch: integration.branchName,
+            remote: project.remoteUrl,
+          });
+        } catch (error) {
+          await emit(storage, projectId, "project.push_failed", undefined, {
+            branch: integration.branchName,
+            remote: project.remoteUrl,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     } else {
       project = { ...project, tasks, status: "failed", updatedAt: new Date() };
       await emit(

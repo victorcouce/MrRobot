@@ -62,6 +62,8 @@ export const api = {
   createProject: (input: {
     goal: string;
     name?: string;
+    repoPath?: string;
+    remoteUrl?: string;
     config?: Record<string, unknown>;
   }) =>
     request<Project>("/api/projects", {
@@ -69,7 +71,16 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  pickFolder: () =>
+    request<{ path: string | null }>("/api/fs/pick-folder", { method: "POST" }),
+
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
+
+  updateProjectConfig: (id: string, config: Record<string, unknown>) =>
+    request<Project>(`/api/projects/${id}/config`, {
+      method: "PATCH",
+      body: JSON.stringify(config),
+    }),
 
   generatePlan: (id: string) =>
     request<Project>(`/api/projects/${id}/plan`, { method: "POST" }),

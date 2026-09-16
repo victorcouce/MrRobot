@@ -105,10 +105,16 @@ Central en `src/config/index.ts` (`loadConfig`):
 }
 ```
 
+Un proyecto puede sobrescribir estos valores al crearse (pantalla *New Project*,
+avanzado) o después mediante `PATCH /api/projects/:id/config` (mientras esté en
+`draft`, `ready` o `paused`). Al primer cambio, el proyecto materializa su propia
+config (deja de heredar del global). Si no define config, usa la global.
+
 ## Variables de entorno
 
 ```env
 DEEPSEEK_API_KEY=...       # requerido por el provider DeepSeek
+GITHUB_TOKEN=...           # opcional, para validar/push a repos GitHub (HTTPS)
 MRROBOT_DATA_DIR=.mrrobot/data   # opcional, directorio de datos PGlite
 MRROBOT_PORT=4000          # puerto de la API
 MRROBOT_HOST=127.0.0.1     # host de la API
@@ -131,6 +137,7 @@ Para Postgres real basta añadir un `SqlExecutor` con `pg` y usar `SqlStorage`.
 
 ```bash
 npm run mrrobot -- create "Crear una librería TypeScript con sum(a,b), tests y README"
+npm run mrrobot -- create "Calculadora web" --folder ~/proyectos/calc --remote https://github.com/acme/calc.git
 npm run mrrobot -- plan <project-id>
 npm run mrrobot -- run <project-id>
 npm run mrrobot -- status <project-id>
@@ -138,6 +145,23 @@ npm run mrrobot -- tasks <project-id>
 npm run mrrobot -- pause <project-id>
 npm run mrrobot -- resume <project-id>
 ```
+
+## Carpeta del proyecto y remoto
+
+Cada proyecto puede tener su propia carpeta y un remoto de GitHub:
+
+- **Carpeta**: se elige en la UI con el botón `Examinar…` (diálogo nativo de
+  macOS vía `osascript`) o con `--folder` en el CLI. Si no existe, se crea y se
+  inicializa con `git init` + commit inicial; si ya es un repo git, se
+  reutiliza. Si se deja vacía, se usa el repositorio actual (`MRROBOT_REPO` o el
+  cwd del backend).
+- **Remoto**: la URL opcional se configura como `origin` del repo del proyecto.
+  Si defines `GITHUB_TOKEN`, al crear el proyecto se valida el acceso con
+  `git ls-remote`, y al completarse se hace push de la branch final
+  (`agent/project-<id>-final`) al remoto. Sin token no se sube nada.
+
+Los worktrees de cada proyecto se crean bajo `<carpeta>/.worktrees/`, que se
+añade a `.git/info/exclude` del repo para no ensuciar el working tree.
 
 ## Estados de Project
 
@@ -183,6 +207,7 @@ restantes se reintentan.
 ## Event log
 
 `project.created`, `plan.started`, `plan.generated`, `plan.updated`,
+`project.config_updated`,
 `task.started`, `task.completed`, `task.failed`, `task.review_passed`,
 `task.review_failed`, `git.conflict`, `supervisor.replan`, `project.paused`,
 `project.resumed`, `project.completed`, `project.cancelled`, `project.error`.
@@ -197,6 +222,7 @@ PUT    /api/config                     actualiza la config global
 GET    /api/projects                   lista proyectos (resumen)
 POST   /api/projects                   crea un proyecto (draft)
 GET    /api/projects/:id               proyecto completo + stats
+PATCH  /api/projects/:id/config        actualiza settings/modelos (draft|ready|paused)
 POST   /api/projects/:id/plan          genera el plan (asíncrono)
 POST   /api/projects/:id/run           inicia la ejecución (asíncrono)
 POST   /api/projects/:id/pause         pausa (se detiene al final del batch)

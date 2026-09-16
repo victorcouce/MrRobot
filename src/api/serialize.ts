@@ -217,6 +217,8 @@ export function serializeProject(project: DomainProject): Project {
 
   if (startedAt) serialized.startedAt = startedAt;
   if (finishedAt) serialized.finishedAt = finishedAt;
+  if (project.repoPath) serialized.repoPath = project.repoPath;
+  if (project.remoteUrl) serialized.remoteUrl = project.remoteUrl;
   if (project.resultBranch) serialized.resultBranch = project.resultBranch;
   if (project.resultCommit) serialized.resultCommit = project.resultCommit;
 
@@ -253,6 +255,7 @@ export function serializeSummary(project: DomainProject): ProjectSummary {
   const finishedAt = iso(project.finishedAt);
   if (startedAt) summary.startedAt = startedAt;
   if (finishedAt) summary.finishedAt = finishedAt;
+  if (project.repoPath) summary.repoPath = project.repoPath;
   if (project.resultBranch) summary.resultBranch = project.resultBranch;
   if (project.resultCommit) summary.resultCommit = project.resultCommit;
 

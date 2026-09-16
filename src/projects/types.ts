@@ -21,6 +21,9 @@ export interface Project {
 
   baseRef: string;
 
+  repoPath?: string;
+  remoteUrl?: string;
+
   tasks: Task[];
 
   config?: OrchestratorConfig;

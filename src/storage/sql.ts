@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS projects (
   goal TEXT NOT NULL,
   status TEXT NOT NULL,
   base_ref TEXT NOT NULL,
+  repo_path TEXT,
+  remote_url TEXT,
   result_branch TEXT,
   result_commit TEXT,
   config JSONB,
@@ -153,6 +155,8 @@ interface ProjectRow {
   goal: string;
   status: Project["status"];
   base_ref: string;
+  repo_path: string | null;
+  remote_url: string | null;
   result_branch: string | null;
   result_commit: string | null;
   config: unknown;
@@ -202,6 +206,8 @@ export class SqlStorage implements Storage {
   async init(): Promise<void> {
     await this.db.exec(SCHEMA);
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS config JSONB");
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT");
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS remote_url TEXT");
   }
 
   async close(): Promise<void> {}
@@ -209,14 +215,16 @@ export class SqlStorage implements Storage {
   async saveProject(project: Project): Promise<void> {
     await this.db.query(
       `INSERT INTO projects
-        (id, name, goal, status, base_ref, result_branch, result_commit,
+        (id, name, goal, status, base_ref, repo_path, remote_url, result_branch, result_commit,
          config, created_at, updated_at, started_at, finished_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          goal = EXCLUDED.goal,
          status = EXCLUDED.status,
          base_ref = EXCLUDED.base_ref,
+         repo_path = EXCLUDED.repo_path,
+         remote_url = EXCLUDED.remote_url,
          result_branch = EXCLUDED.result_branch,
          result_commit = EXCLUDED.result_commit,
          config = EXCLUDED.config,
@@ -229,6 +237,8 @@ export class SqlStorage implements Storage {
         project.goal,
         project.status,
         project.baseRef,
+        project.repoPath ?? null,
+        project.remoteUrl ?? null,
         project.resultBranch ?? null,
         project.resultCommit ?? null,
         toJson(project.config),
@@ -376,6 +386,8 @@ export class SqlStorage implements Storage {
       updatedAt: new Date(row.updated_at),
     };
 
+    if (row.repo_path) project.repoPath = row.repo_path;
+    if (row.remote_url) project.remoteUrl = row.remote_url;
     if (row.result_branch) project.resultBranch = row.result_branch;
     if (row.result_commit) project.resultCommit = row.result_commit;
     const config = fromJson<Project["config"]>(row.config);
