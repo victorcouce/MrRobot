@@ -109,7 +109,11 @@ function toResult(
 
   const value = outcome.value;
 
-  if (value.status !== "done" && value.status !== "failed") {
+  if (
+    value.status !== "done" &&
+    value.status !== "failed" &&
+    value.status !== "blocked"
+  ) {
     return {
       ...value,
       status: "failed",

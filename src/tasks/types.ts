@@ -1,10 +1,12 @@
 import type { AgentCandidate, AgentSpec } from "../agents/types.js";
+import type { IntegrationError } from "../workspace/types.js";
 
 export type TaskStatus =
   | "todo"
   | "blocked"
   | "ready"
   | "running"
+  | "interrupted"
   | "done"
   | "failed";
 
@@ -47,6 +49,9 @@ export interface Task {
 
   dependsOn?: string[];
   blockedReason?: string;
+
+  acceptanceCriteria?: string[];
+  integrationError?: IntegrationError;
 
   agent?: AgentSpec;
   executedBy?: AgentSpec;

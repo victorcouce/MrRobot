@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type {
+  IntegrationError,
+  IntegrationResult,
   RemoveWorkspaceOptions,
   TaskWorkspace,
   WorkspaceManager,
@@ -152,6 +154,126 @@ export async function removeTaskWorkspace(
   }
 }
 
+export async function commitDiff(
+  commit: string,
+  cwd?: string,
+): Promise<string> {
+  const root = await getRepoRoot(cwd);
+  return runGit(["show", "--patch", "--stat", "--no-color", commit], root);
+}
+
+async function conflictFiles(cwd: string): Promise<string[]> {
+  try {
+    const output = await runGit(
+      ["diff", "--name-only", "--diff-filter=U"],
+      cwd,
+    );
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function integrateCommits(
+  branchName: string,
+  worktreeLabel: string,
+  commits: Array<{ taskId: string; commit: string }>,
+  baseRef: string,
+  cwd?: string,
+): Promise<IntegrationResult> {
+  const root = await getRepoRoot(cwd);
+  const path = join(root, WORKTREES_DIR, worktreeLabel);
+  const dependencyTaskIds = commits.map((entry) => entry.taskId);
+
+  await mkdir(join(root, WORKTREES_DIR), { recursive: true });
+  await runGitBestEffort(["worktree", "remove", "--force", path], root);
+  await runGitBestEffort(["branch", "-D", branchName], root);
+  await runGitBestEffort(["worktree", "prune"], root);
+
+  try {
+    await runGit(["worktree", "add", "-b", branchName, path, baseRef], root);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        type: "git_conflict",
+        dependencyTaskIds,
+        message: `No se pudo crear la integración ${branchName}: ${messageOf(error)}`,
+      },
+    };
+  }
+
+  for (const entry of commits) {
+    try {
+      await runGit(["cherry-pick", entry.commit], path);
+    } catch (error) {
+      const files = await conflictFiles(path);
+
+      await runGitBestEffort(["cherry-pick", "--abort"], path);
+      await runGitBestEffort(["worktree", "remove", "--force", path], root);
+      await runGitBestEffort(["branch", "-D", branchName], root);
+
+      const integrationError: IntegrationError = {
+        type: "git_conflict",
+        dependencyTaskIds,
+        message: `Conflicto al integrar el commit de ${entry.taskId}: ${messageOf(error)}`,
+      };
+
+      if (files.length > 0) {
+        integrationError.files = files;
+      }
+
+      return { ok: false, error: integrationError };
+    }
+  }
+
+  const ref = await runGit(["rev-parse", "HEAD"], path);
+
+  await runGitBestEffort(["worktree", "remove", "--force", path], root);
+  await runGitBestEffort(["worktree", "prune"], root);
+
+  return { ok: true, ref, branchName };
+}
+
+export async function integrateDependencies(
+  taskId: string,
+  dependencyCommits: Array<{ taskId: string; commit: string }>,
+  baseRef: string,
+  cwd?: string,
+): Promise<IntegrationResult> {
+  if (dependencyCommits.length === 0) {
+    return { ok: true, ref: baseRef, branchName: baseRef };
+  }
+
+  const safe = sanitizeTaskId(taskId);
+  return integrateCommits(
+    `integration/${safe}`,
+    `integration-${safe}`,
+    dependencyCommits,
+    baseRef,
+    cwd,
+  );
+}
+
+export async function finalizeProject(
+  projectId: string,
+  commits: Array<{ taskId: string; commit: string }>,
+  baseRef: string,
+  cwd?: string,
+): Promise<IntegrationResult> {
+  const safe = sanitizeTaskId(projectId);
+  return integrateCommits(
+    `agent/project-${safe}-final`,
+    `project-${safe}-final`,
+    commits,
+    baseRef,
+    cwd,
+  );
+}
+
 export function createGitWorkspaceManager(cwd?: string): WorkspaceManager {
   return {
     getRepoRoot: () => getRepoRoot(cwd),
@@ -161,6 +283,11 @@ export function createGitWorkspaceManager(cwd?: string): WorkspaceManager {
       createTaskWorkspace(taskId, attempt, baseRef, cwd),
     commit: (workspace, message) => commitTaskWorkspace(workspace, message),
     remove: (workspace, options) => removeTaskWorkspace(workspace, options, cwd),
+    diff: (commit) => commitDiff(commit, cwd),
+    integrateDependencies: (taskId, dependencyCommits, baseRef) =>
+      integrateDependencies(taskId, dependencyCommits, baseRef, cwd),
+    finalizeProject: (projectId, commits, baseRef) =>
+      finalizeProject(projectId, commits, baseRef, cwd),
   };
 }
 

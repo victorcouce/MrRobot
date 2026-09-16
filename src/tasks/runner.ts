@@ -20,11 +20,21 @@ export type AgentExecutor = (
 ) => Promise<string>;
 
 export interface RunTaskOptions {
-  execute?: AgentExecutor;
-  workspace?: WorkspaceManager;
+  execute?: AgentExecutor | undefined;
+  workspace?: WorkspaceManager | undefined;
+  baseRef?: string | undefined;
+  extraPrompt?: string | undefined;
+  maxRetriesPerAgent?: number | undefined;
 }
 
 function buildPrompt(task: Task): string {
+  const criteria = task.acceptanceCriteria ?? [];
+
+  const criteriaBlock =
+    criteria.length > 0
+      ? `\n\nCRITERIOS DE ACEPTACIÓN\n${criteria.map((item) => `- ${item}`).join("\n")}`
+      : "";
+
   return `Eres un agente ejecutor dentro de un sistema multiagente.
 
 TAREA
@@ -33,7 +43,7 @@ ID: ${task.id}
 Título: ${task.title}
 
 DESCRIPCIÓN
-${task.description}
+${task.description}${criteriaBlock}
 
 Completa exclusivamente esta tarea.
 
@@ -60,6 +70,7 @@ export async function runTask(
 ): Promise<Task> {
   const execute = options.execute ?? runAgent;
   const workspaceManager = options.workspace ?? gitWorkspaceManager;
+  const maxRetries = options.maxRetriesPerAgent ?? MAX_RETRIES_PER_AGENT;
 
   if (task.status !== "ready") {
     throw new Error(
@@ -68,6 +79,10 @@ export async function runTask(
   }
 
   const chain = getFallbackChain(task);
+  const basePrompt = buildPrompt(task);
+  const prompt = options.extraPrompt
+    ? `${basePrompt}\n\n${options.extraPrompt}`
+    : basePrompt;
 
   const running: Task = {
     ...task,
@@ -88,7 +103,7 @@ export async function runTask(
 
   try {
     repoRoot = await workspaceManager.getRepoRoot();
-    baseRef = await workspaceManager.resolveBaseRef();
+    baseRef = options.baseRef ?? (await workspaceManager.resolveBaseRef());
   } catch (error) {
     const message = errorMessage(error);
     console.log(`✗ No se pudo preparar el aislamiento: ${message}`);
@@ -112,7 +127,7 @@ export async function runTask(
     const label = describeAgent(candidate);
     console.log(`\n[${index + 1}/${chain.length}] ${label}`);
 
-    for (let attempt = 0; attempt <= MAX_RETRIES_PER_AGENT; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       workspaceAttempt += 1;
       const startedAt = new Date();
 
@@ -152,7 +167,7 @@ export async function runTask(
       console.log(`Intento ${attempt + 1}`);
 
       try {
-        const output = await execute(buildPrompt(running), candidate, {
+        const output = await execute(prompt, candidate, {
           cwd: workspace.path,
         });
 
@@ -232,7 +247,7 @@ export async function runTask(
           break;
         }
 
-        if (attempt < MAX_RETRIES_PER_AGENT) {
+        if (attempt < maxRetries) {
           console.log(`\nRetry ${label}\n`);
         }
       }

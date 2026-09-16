@@ -42,6 +42,10 @@ export function updateTaskStatuses(tasks: Task[]): Task[] {
       return task;
     }
 
+    if (task.status === "blocked" && task.integrationError) {
+      return task;
+    }
+
     const dependencies = dependenciesOf(task);
 
     if (dependencies.length === 0) {

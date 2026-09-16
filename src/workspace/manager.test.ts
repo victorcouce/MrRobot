@@ -13,6 +13,8 @@ import {
   commitTaskWorkspace,
   createGitWorkspaceManager,
   createTaskWorkspace,
+  finalizeProject,
+  integrateDependencies,
   removeTaskWorkspace,
   resolveBaseRef,
   sanitizeTaskId,
@@ -259,6 +261,119 @@ test("Caso 6: todos los intentos parten del mismo baseRef", async () => {
     const bases = new Set(result.attempts?.map((attempt) => attempt.baseRef));
     assert.equal(bases.size, 1);
     assert.equal([...bases][0], base);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("propagación: integra los commits de dos dependencias", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+
+    const a = await createTaskWorkspace("TASK-A", 1, base, repo);
+    await writeFile(join(a.path, "a.txt"), "A\n", "utf8");
+    const commitA = await commitTaskWorkspace(a, "agent(TASK-A): a");
+    await removeTaskWorkspace(a, { deleteBranch: false }, repo);
+
+    const b = await createTaskWorkspace("TASK-B", 1, base, repo);
+    await writeFile(join(b.path, "b.txt"), "B\n", "utf8");
+    const commitB = await commitTaskWorkspace(b, "agent(TASK-B): b");
+    await removeTaskWorkspace(b, { deleteBranch: false }, repo);
+
+    assert.ok(commitA && commitB);
+
+    const integration = await integrateDependencies(
+      "TASK-C",
+      [
+        { taskId: "TASK-A", commit: commitA },
+        { taskId: "TASK-B", commit: commitB },
+      ],
+      base,
+      repo,
+    );
+
+    assert.equal(integration.ok, true);
+    if (integration.ok) {
+      assert.equal(await git(["show", `${integration.ref}:a.txt`], repo), "A");
+      assert.equal(await git(["show", `${integration.ref}:b.txt`], repo), "B");
+    }
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("propagación: conflicto se detecta y no toca el repo principal", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+
+    const a = await createTaskWorkspace("TASK-A", 1, base, repo);
+    await writeFile(join(a.path, "shared.txt"), "A\n", "utf8");
+    const commitA = await commitTaskWorkspace(a, "agent(TASK-A): a");
+    await removeTaskWorkspace(a, { deleteBranch: false }, repo);
+
+    const b = await createTaskWorkspace("TASK-B", 1, base, repo);
+    await writeFile(join(b.path, "shared.txt"), "B\n", "utf8");
+    const commitB = await commitTaskWorkspace(b, "agent(TASK-B): b");
+    await removeTaskWorkspace(b, { deleteBranch: false }, repo);
+
+    assert.ok(commitA && commitB);
+
+    const integration = await integrateDependencies(
+      "TASK-C",
+      [
+        { taskId: "TASK-A", commit: commitA },
+        { taskId: "TASK-B", commit: commitB },
+      ],
+      base,
+      repo,
+    );
+
+    assert.equal(integration.ok, false);
+    if (!integration.ok) {
+      assert.equal(integration.error.type, "git_conflict");
+      assert.deepEqual(integration.error.dependencyTaskIds, ["TASK-A", "TASK-B"]);
+    }
+
+    assert.equal(await git(["rev-parse", "HEAD"], repo), base);
+    assert.equal(await git(["status", "--porcelain"], repo), "");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("finalizeProject crea una branch aislada con todos los commits", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+
+    const a = await createTaskWorkspace("TASK-A", 1, base, repo);
+    await writeFile(join(a.path, "a.txt"), "A\n", "utf8");
+    const commitA = await commitTaskWorkspace(a, "agent(TASK-A): a");
+    await removeTaskWorkspace(a, { deleteBranch: false }, repo);
+
+    assert.ok(commitA);
+
+    const result = await finalizeProject(
+      "proj-1",
+      [{ taskId: "TASK-A", commit: commitA }],
+      base,
+      repo,
+    );
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.branchName, "agent/project-proj-1-final");
+      const branches = await git(["branch", "--list", result.branchName], repo);
+      assert.match(branches, /agent\/project-proj-1-final/);
+      assert.equal(await git(["show", `${result.ref}:a.txt`], repo), "A");
+    }
+
+    assert.equal(await git(["rev-parse", "HEAD"], repo), base);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }

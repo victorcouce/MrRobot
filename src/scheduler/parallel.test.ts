@@ -82,6 +82,17 @@ function fakeWorkspaceManager(): WorkspaceManager {
       return `fakecommit-${commits}`;
     },
     remove: async () => {},
+    diff: async () => "",
+    integrateDependencies: async (_taskId, _commits, baseRef) => ({
+      ok: true,
+      ref: baseRef,
+      branchName: "integration/fake",
+    }),
+    finalizeProject: async (_projectId, _commits, baseRef) => ({
+      ok: true,
+      ref: baseRef,
+      branchName: "agent/project-fake-final",
+    }),
   };
 }
 

@@ -1,6 +1,9 @@
-import type { Task } from "../tasks/types.js";
+export interface DependencyNode {
+  id: string;
+  dependsOn?: string[];
+}
 
-export function findDuplicateIds(tasks: Task[]): string[] {
+export function findDuplicateIds(tasks: DependencyNode[]): string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 
@@ -14,7 +17,7 @@ export function findDuplicateIds(tasks: Task[]): string[] {
   return [...duplicates];
 }
 
-export function findMissingDependencies(tasks: Task[]): string[] {
+export function findMissingDependencies(tasks: DependencyNode[]): string[] {
   const ids = new Set(tasks.map((task) => task.id));
   const problems: string[] = [];
 
@@ -29,7 +32,7 @@ export function findMissingDependencies(tasks: Task[]): string[] {
   return problems;
 }
 
-export function findCycle(tasks: Task[]): string[] | undefined {
+export function findCycle(tasks: DependencyNode[]): string[] | undefined {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const state = new Map<string, "visiting" | "done">();
   const stack: string[] = [];
@@ -76,7 +79,7 @@ export function findCycle(tasks: Task[]): string[] | undefined {
   return undefined;
 }
 
-export function validatePlan(tasks: Task[]): void {
+export function validatePlan(tasks: DependencyNode[]): void {
   const duplicates = findDuplicateIds(tasks);
 
   if (duplicates.length > 0) {
