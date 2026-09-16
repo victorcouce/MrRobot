@@ -34,6 +34,10 @@ Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
 > Claude se autentican con tu **suscripción normal** de ChatGPT / Claude (Plus,
 > Pro, etc.) y usan esa cuota. El único proveedor que necesita una clave de API
 > es DeepSeek.
+>
+> Cuando un proveedor agota su cuota o alcanza su límite (rate limit, sesión,
+> etc.), el motor **pasa automáticamente al siguiente modelo configurado** de la
+> cadena de fallback (ver [Fallback](#fallback)), así que no se queda atascado.
 
 Si sólo quieres probar la app sin gastar tokens, usa el **modo mock** (paso 3)
 y no necesitas instalar ni autenticar ninguno de estos.
@@ -240,6 +244,11 @@ No borra su carpeta ni los worktrees del disco.
 `type`/`complexity`. Si un agente falla, se reintenta (si el error es
 retryable) y luego se pasa al siguiente. Un agente explícito (`task.agent`)
 va primero. Cada intento parte de un worktree limpio.
+
+`classifyAvailability` detecta los límites de cuota (`usage_limit`,
+`rate_limit`) y de autenticación (`auth`) y los trata como «no disponible»,
+por lo que al agotar la cuota o el límite de un proveedor el motor salta al
+siguiente modelo de la cadena sin intervención manual.
 
 ## Review
 
