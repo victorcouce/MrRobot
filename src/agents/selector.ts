@@ -3,16 +3,16 @@ import type { AgentSpec } from "./types.js";
 
 export type AgentSelection = AgentSpec;
 
-const DEEPSEEK_FLASH: AgentSelection = {
+export const DEEPSEEK_FLASH: AgentSelection = {
   provider: "deepseek",
   model: "deepseek-flash",
 };
-const CLAUDE_SONNET: AgentSelection = {
+export const CLAUDE_SONNET: AgentSelection = {
   provider: "claude",
   model: "sonnet",
 };
-const CLAUDE_OPUS: AgentSelection = { provider: "claude", model: "opus" };
-const CODEX: AgentSelection = { provider: "codex" };
+export const CLAUDE_OPUS: AgentSelection = { provider: "claude", model: "opus" };
+export const CODEX: AgentSelection = { provider: "codex" };
 
 function isHigh(complexity: TaskComplexity): boolean {
   return complexity === "high" || complexity === "critical";

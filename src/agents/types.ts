@@ -8,3 +8,5 @@ export type AgentSpec =
   | { provider: "deepseek"; model?: DeepSeekModel };
 
 export type AgentProvider = AgentSpec["provider"];
+
+export type AgentCandidate = AgentSpec;
