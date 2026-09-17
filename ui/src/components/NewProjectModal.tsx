@@ -19,6 +19,7 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const [state, setState] = useState<ModalState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [pickingFolder, setPickingFolder] = useState(false);
 
   const agents = [
     { id: "codex", label: "codex", available: true },
@@ -34,6 +35,20 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
       .join("-")
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "") || "";
+
+  const handlePickFolder = async () => {
+    setPickingFolder(true);
+    try {
+      const result = await api.pickFolder();
+      if (result.path) {
+        setRepoPath(result.path);
+      }
+    } catch (err) {
+      console.error("Error picking folder:", err);
+    } finally {
+      setPickingFolder(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!goal.trim()) {
@@ -179,17 +194,23 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
                     value={repoPath}
                     onChange={(e) => setRepoPath(e.target.value)}
                     placeholder="~/proyectos/calc"
-                    disabled={state === "creating"}
+                    disabled={state === "creating" || pickingFolder}
                     className="font-mono flex-1 rounded-btn border border-line-strong bg-surface px-3 py-2 text-xs outline-none placeholder:text-ink-4 focus:border-primary focus:ring-1 focus:ring-primary-soft disabled:bg-muted"
                   />
                   <button
                     type="button"
-                    disabled={state === "creating"}
-                    className="rounded-btn border border-line-strong bg-surface px-2.5 py-2 text-ink-4 hover:bg-muted disabled:opacity-50"
+                    onClick={handlePickFolder}
+                    disabled={state === "creating" || pickingFolder}
+                    className="rounded-btn border border-line-strong bg-surface px-2.5 py-2 text-ink-4 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Examinar carpeta"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-                      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    </svg>
+                    {pickingFolder ? (
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      </svg>
+                    )}
                   </button>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-success-text">
