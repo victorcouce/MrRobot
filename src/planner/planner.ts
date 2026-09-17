@@ -1,3 +1,4 @@
+import { renderAttachments } from "../agents/attachments.js";
 import { errorMessage } from "../agents/fallback.js";
 import { runAgent } from "../agents/router.js";
 import type { AgentCandidate } from "../agents/types.js";
@@ -124,6 +125,14 @@ function buildPrompt(
     parts.push("", `INSTRUCCIONES: ${context.instructions}`);
   }
 
+  if (context.attachments?.length) {
+    parts.push(...renderAttachments(context.attachments));
+    parts.push(
+      "",
+      'Si una tarea necesita alguno de estos adjuntos, indícalo en su campo "attachments" con la referencia entre corchetes (por ejemplo ["ADJ-1"]). Déjalo vacío si no hace falta ninguno.',
+    );
+  }
+
   if (feedback) {
     parts.push(
       "",
@@ -148,6 +157,7 @@ function buildPrompt(
             complexity: "medium",
             dependsOn: [],
             acceptanceCriteria: ["criterio verificable"],
+            attachments: [],
           },
         ],
       },

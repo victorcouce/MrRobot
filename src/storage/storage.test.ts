@@ -61,6 +61,7 @@ function makeProject(): Project {
         dependsOn: ["TASK-001"],
         chatId: "chat-1",
         status: "blocked",
+        attachmentIds: ["att-1"],
       }),
     ],
     createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -96,6 +97,7 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.deepEqual(task2?.dependsOn, ["TASK-001"]);
   assert.equal(task2?.status, "blocked");
   assert.equal(task2?.chatId, "chat-1");
+  assert.deepEqual(task2?.attachmentIds, ["att-1"]);
 
   await storage.appendEvent({
     id: "ev-1",

@@ -1,5 +1,6 @@
 import { errorMessage, getFallbackChain } from "../agents/fallback.js";
 import { describeAgent } from "../agents/selector.js";
+import type { AgentCandidate } from "../agents/types.js";
 import { runTask } from "../tasks/runner.js";
 import type { Task } from "../tasks/types.js";
 import { getReadyTasks, updateTaskStatuses } from "./dependencies.js";
@@ -12,6 +13,8 @@ export interface RunPlanOptions {
   shouldPause?: () => boolean | Promise<boolean>;
   signal?: AbortSignal;
   onUpdate?: (tasks: Task[]) => void | Promise<void>;
+  /** Agentes permitidos del chat de cada tarea, para previsualizar la cadena. */
+  allowedAgentsFor?: (task: Task) => AgentCandidate[] | undefined;
 }
 
 const DEFAULT_CONCURRENCY = 2;
@@ -88,8 +91,8 @@ function buildResult(
   return result;
 }
 
-function previewAgent(task: Task): string {
-  const first = getFallbackChain(task)[0];
+function previewAgent(task: Task, allowed: AgentCandidate[]): string {
+  const first = getFallbackChain(task, allowed)[0];
   return first ? describeAgent(first) : "?";
 }
 
@@ -206,7 +209,8 @@ export async function runPlan(
 
     console.log(`\nStarting batch:`);
     selected.forEach((task) => {
-      console.log(`→ ${task.id} [${previewAgent(task)}]`);
+      const allowed = options.allowedAgentsFor?.(task) ?? [];
+      console.log(`→ ${task.id} [${previewAgent(task, allowed)}]`);
     });
 
     const results = new Map<string, Task>();

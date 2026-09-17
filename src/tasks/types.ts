@@ -53,6 +53,8 @@ export interface Task {
   blockedReason?: string;
 
   acceptanceCriteria?: string[];
+  /** Ids de los adjuntos del chat que esta tarea necesita. */
+  attachmentIds?: string[];
   integrationError?: IntegrationError;
 
   agent?: AgentSpec;

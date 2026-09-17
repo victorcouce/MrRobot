@@ -1,3 +1,4 @@
+import type { Attachment } from "../agents/types.js";
 import type { TaskComplexity, TaskType } from "../tasks/types.js";
 
 export interface GeneratedTask {
@@ -8,6 +9,8 @@ export interface GeneratedTask {
   complexity: TaskComplexity;
   dependsOn: string[];
   acceptanceCriteria: string[];
+  /** Referencias a adjuntos del contexto (`ADJ-1`, `ADJ-2`…). */
+  attachments: string[];
 }
 
 export interface GeneratedPlan {
@@ -22,4 +25,6 @@ export interface PlanContext {
   supervisorReason?: string;
   instructions?: string;
   conversation?: Array<{ role: string; content: string }>;
+  /** Adjuntos del chat, disponibles para que las tareas los referencien. */
+  attachments?: Attachment[];
 }

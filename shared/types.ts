@@ -69,6 +69,7 @@ export interface Task {
   dependsOn?: string[];
   blockedReason?: string;
   acceptanceCriteria?: string[];
+  attachmentIds?: string[];
   integrationError?: IntegrationError;
   agent?: AgentSpec;
   executedBy?: AgentSpec;

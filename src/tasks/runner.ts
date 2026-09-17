@@ -1,4 +1,5 @@
 import { relative } from "node:path";
+import { renderAttachments } from "../agents/attachments.js";
 import {
   errorMessage,
   getFallbackChain,
@@ -7,7 +8,7 @@ import {
 } from "../agents/fallback.js";
 import { runAgent } from "../agents/router.js";
 import { describeAgent } from "../agents/selector.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, Attachment } from "../agents/types.js";
 import type { RunOptions } from "../providers/types.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
 import type { WorkspaceManager } from "../workspace/types.js";
@@ -25,15 +26,24 @@ export interface RunTaskOptions {
   baseRef?: string | undefined;
   extraPrompt?: string | undefined;
   maxRetriesPerAgent?: number | undefined;
+  /** Agentes permitidos del chat. Vacío o ausente = sin restricción. */
+  allowedAgents?: AgentCandidate[] | undefined;
+  /** Adjuntos que la tarea referencia, ya resueltos. */
+  attachments?: Attachment[] | undefined;
   signal?: AbortSignal | undefined;
 }
 
-function buildPrompt(task: Task): string {
+function buildPrompt(task: Task, attachments: Attachment[]): string {
   const criteria = task.acceptanceCriteria ?? [];
 
   const criteriaBlock =
     criteria.length > 0
       ? `\n\nCRITERIOS DE ACEPTACIÓN\n${criteria.map((item) => `- ${item}`).join("\n")}`
+      : "";
+
+  const attachmentsBlock =
+    attachments.length > 0
+      ? `\n${renderAttachments(attachments, { refs: false }).join("\n")}`
       : "";
 
   return `Eres un agente ejecutor dentro de un sistema multiagente.
@@ -44,7 +54,7 @@ ID: ${task.id}
 Título: ${task.title}
 
 DESCRIPCIÓN
-${task.description}${criteriaBlock}
+${task.description}${criteriaBlock}${attachmentsBlock}
 
 Completa exclusivamente esta tarea.
 
@@ -79,8 +89,8 @@ export async function runTask(
     );
   }
 
-  const chain = getFallbackChain(task);
-  const basePrompt = buildPrompt(task);
+  const chain = getFallbackChain(task, options.allowedAgents ?? []);
+  const basePrompt = buildPrompt(task, options.attachments ?? []);
   const prompt = options.extraPrompt
     ? `${basePrompt}\n\n${options.extraPrompt}`
     : basePrompt;

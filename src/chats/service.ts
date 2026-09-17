@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveAttachmentRefs } from "../agents/attachments.js";
 import type { Attachment } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import { planProject } from "../planner/planner.js";
@@ -50,6 +51,7 @@ export function remapChatTasks(
   plan: GeneratedPlan,
   seq: number,
   chatId: string,
+  attachments: Attachment[] = [],
 ): Task[] {
   const prefix = chatPrefix(seq);
   const ids = new Map<string, string>();
@@ -58,17 +60,30 @@ export function remapChatTasks(
     ids.set(task.id, `${prefix}-${task.id}`);
   }
 
-  return plan.tasks.map((task) => ({
-    id: ids.get(task.id) as string,
-    title: task.title,
-    description: task.description,
-    status: "todo" as const,
-    type: task.type,
-    complexity: task.complexity,
-    chatId,
-    dependsOn: (task.dependsOn ?? []).map((id) => ids.get(id) ?? id),
-    acceptanceCriteria: task.acceptanceCriteria ?? [],
-  }));
+  return plan.tasks.map((task) => {
+    const remapped: Task = {
+      id: ids.get(task.id) as string,
+      title: task.title,
+      description: task.description,
+      status: "todo" as const,
+      type: task.type,
+      complexity: task.complexity,
+      chatId,
+      dependsOn: (task.dependsOn ?? []).map((id) => ids.get(id) ?? id),
+      acceptanceCriteria: task.acceptanceCriteria ?? [],
+    };
+
+    const attachmentIds = resolveAttachmentRefs(
+      task.attachments ?? [],
+      attachments,
+    );
+
+    if (attachmentIds.length > 0) {
+      remapped.attachmentIds = attachmentIds;
+    }
+
+    return remapped;
+  });
 }
 
 export function mergeChatTasks(
@@ -326,6 +341,13 @@ export async function sendChatMessage(
 
   const chatTasks = project.tasks.filter((task) => task.chatId === chatId);
 
+  // El planner ve todos los adjuntos del chat, no solo los de este mensaje: un
+  // mockup enviado hace tres turnos sigue siendo válido para las tareas nuevas.
+  const chatAttachments = [
+    ...history.flatMap((message) => message.attachments ?? []),
+    ...processedAttachments,
+  ];
+
   const context: PlanContext = {
     conversation: [
       ...history.map((message) => ({
@@ -336,6 +358,10 @@ export async function sendChatMessage(
     ],
     instructions: trimmed,
   };
+
+  if (chatAttachments.length > 0) {
+    context.attachments = chatAttachments;
+  }
 
   if (chatTasks.length > 0) {
     context.previousPlan = {
@@ -348,6 +374,7 @@ export async function sendChatMessage(
         complexity: task.complexity,
         dependsOn: task.dependsOn ?? [],
         acceptanceCriteria: task.acceptanceCriteria ?? [],
+        attachments: [],
       })),
     };
   }
@@ -367,7 +394,7 @@ export async function sendChatMessage(
       maxAttempts: config.plannerMaxAttempts,
     });
 
-    const generated = remapChatTasks(plan, chat.seq, chatId);
+    const generated = remapChatTasks(plan, chat.seq, chatId, chatAttachments);
     const tasks = mergeChatTasks(project, chatId, generated);
     const updatedProject = reactivateForNewTasks(project, tasks);
     const generatedIds = generated.map((task) => task.id);

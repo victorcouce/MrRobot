@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Task } from "../tasks/types.js";
-import { resolveAgent, selectAgent } from "./selector.js";
+import { isAgentAllowed, resolveAgent, selectAgent } from "./selector.js";
 
 function makeTask(overrides: Partial<Task>): Task {
   return {
@@ -130,4 +130,51 @@ test("no explicit agent falls back to auto-selection", () => {
   const task = makeTask({ type: "architecture", complexity: "low" });
 
   assert.deepEqual(resolveAgent(task), { provider: "claude", model: "opus" });
+});
+
+test("selectAgent respeta los agentes permitidos del chat", () => {
+  const task = makeTask({ type: "coding", complexity: "low" });
+
+  // El automático sería deepseek-flash; el chat solo permite codex.
+  assert.deepEqual(selectAgent(task, [{ provider: "codex" }]), {
+    provider: "codex",
+  });
+
+  // Si el automático está permitido, se mantiene.
+  assert.deepEqual(
+    selectAgent(task, [
+      { provider: "codex" },
+      { provider: "deepseek", model: "deepseek-flash" },
+    ]),
+    { provider: "deepseek", model: "deepseek-flash" },
+  );
+});
+
+test("resolveAgent descarta el agente explícito si el chat no lo permite", () => {
+  const task = makeTask({
+    type: "coding",
+    complexity: "low",
+    agent: { provider: "claude", model: "opus" },
+  });
+
+  assert.deepEqual(resolveAgent(task, [{ provider: "codex" }]), {
+    provider: "codex",
+  });
+  assert.deepEqual(resolveAgent(task), { provider: "claude", model: "opus" });
+});
+
+test("isAgentAllowed iguala el modelo por defecto de cada proveedor", () => {
+  assert.equal(
+    isAgentAllowed({ provider: "claude" }, [
+      { provider: "claude", model: "sonnet" },
+    ]),
+    true,
+  );
+  assert.equal(
+    isAgentAllowed({ provider: "claude", model: "opus" }, [
+      { provider: "claude", model: "sonnet" },
+    ]),
+    false,
+  );
+  assert.equal(isAgentAllowed({ provider: "codex" }, []), true);
 });

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   agent JSONB,
   executed_by JSONB,
   acceptance_criteria JSONB NOT NULL DEFAULT '[]',
+  attachment_ids JSONB,
   integration_error JSONB,
   output TEXT,
   error TEXT,
@@ -226,6 +227,7 @@ interface TaskRow {
   agent: unknown;
   executed_by: unknown;
   acceptance_criteria: unknown;
+  attachment_ids: unknown;
   integration_error: unknown;
   output: string | null;
   error: string | null;
@@ -258,6 +260,9 @@ export class SqlStorage implements Storage {
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS remote_url TEXT");
     await this.db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS chat_id TEXT");
+    await this.db.exec(
+      "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_ids JSONB",
+    );
     await this.db.exec(
       "ALTER TABLE chats ADD COLUMN IF NOT EXISTS allowed_agents JSONB",
     );
@@ -323,9 +328,10 @@ export class SqlStorage implements Storage {
       `INSERT INTO tasks
         (project_id, id, title, description, status, type, complexity,
          chat_id, blocked_reason, agent, executed_by, acceptance_criteria,
-         integration_error, output, error, result_commit, started_at, finished_at)
+         attachment_ids, integration_error, output, error, result_commit,
+         started_at, finished_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,
-               $13::jsonb,$14,$15,$16,$17,$18)`,
+               $13::jsonb,$14::jsonb,$15,$16,$17,$18,$19)`,
       [
         projectId,
         task.id,
@@ -339,6 +345,7 @@ export class SqlStorage implements Storage {
         toJson(task.agent),
         toJson(task.executedBy),
         toJson(task.acceptanceCriteria ?? []),
+        toJson(task.attachmentIds),
         toJson(task.integrationError),
         task.output ?? null,
         task.error ?? null,
@@ -512,6 +519,8 @@ export class SqlStorage implements Storage {
     if (executedBy) task.executedBy = executedBy;
     const criteria = fromJson<string[]>(row.acceptance_criteria);
     if (criteria && criteria.length > 0) task.acceptanceCriteria = criteria;
+    const attachmentIds = fromJson<string[]>(row.attachment_ids);
+    if (attachmentIds?.length) task.attachmentIds = attachmentIds;
     const integrationError = fromJson<IntegrationError>(row.integration_error);
     if (integrationError) task.integrationError = integrationError;
     if (row.output) task.output = row.output;

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AgentCandidate } from "../agents/types.js";
+import { pickAttachments } from "../agents/attachments.js";
+import type { AgentCandidate, AgentSpec, Attachment } from "../agents/types.js";
 import { detectCheckScripts, runProjectChecks } from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
@@ -289,6 +290,38 @@ export function mergeReplan(existing: Task[], plan: GeneratedPlan): Task[] {
   return merged;
 }
 
+interface ChatContext {
+  /** Agentes permitidos del chat que generó la tarea. Vacío = sin restricción. */
+  allowedAgentsFor: (task: Task) => AgentSpec[];
+  /** Adjuntos que la tarea referencia, resueltos a partir de sus ids. */
+  attachmentsFor: (task: Task) => Attachment[];
+}
+
+async function loadChatContext(
+  projectId: string,
+  storage: Storage,
+): Promise<ChatContext> {
+  const chats = await storage.listChats(projectId);
+  const agentsByChat = new Map<string, AgentSpec[]>();
+  const attachments: Attachment[] = [];
+
+  for (const chat of chats) {
+    if (chat.allowedAgents?.length) {
+      agentsByChat.set(chat.id, chat.allowedAgents);
+    }
+
+    for (const message of await storage.listChatMessages(chat.id)) {
+      attachments.push(...(message.attachments ?? []));
+    }
+  }
+
+  return {
+    allowedAgentsFor: (task) =>
+      (task.chatId ? agentsByChat.get(task.chatId) : undefined) ?? [],
+    attachmentsFor: (task) => pickAttachments(task.attachmentIds, attachments),
+  };
+}
+
 function makeTaskExecutor(
   pid: string,
   projectBaseRef: string,
@@ -297,6 +330,7 @@ function makeTaskExecutor(
   workspace: WorkspaceManager,
   storage: Storage,
   taskState: Map<string, Task>,
+  chatContext: ChatContext,
   signal?: AbortSignal,
 ): (task: Task) => Promise<Task> {
   return async (task: Task): Promise<Task> => {
@@ -343,6 +377,8 @@ function makeTaskExecutor(
         workspace,
         execute: deps.workerExecute,
         maxRetriesPerAgent: config.maxRetriesPerAgent,
+        allowedAgents: chatContext.allowedAgentsFor(task),
+        attachments: chatContext.attachmentsFor(task),
         ...(signal ? { signal } : {}),
       });
 
@@ -444,6 +480,8 @@ export async function runProjectRound(
     project.tasks.map((task) => [task.id, task]),
   );
 
+  const chatContext = await loadChatContext(projectId, storage);
+
   const executeTask = makeTaskExecutor(
     project.id,
     project.baseRef,
@@ -452,6 +490,7 @@ export async function runProjectRound(
     workspace,
     storage,
     taskState,
+    chatContext,
     options.signal,
   );
 
@@ -463,6 +502,7 @@ export async function runProjectRound(
     executeTask,
     concurrency: config.concurrency,
     onUpdate: persistProgress,
+    allowedAgentsFor: chatContext.allowedAgentsFor,
     ...(options.shouldPause ? { shouldPause: options.shouldPause } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
   });

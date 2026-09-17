@@ -145,6 +145,80 @@ test("no hay candidatos duplicados en la cadena", () => {
   ]);
 });
 
+test("los agentes permitidos del chat filtran la cadena", () => {
+  const chain = getFallbackChain(
+    makeTask({ type: "coding", complexity: "high" }),
+    [
+      { provider: "claude", model: "sonnet" },
+      { provider: "codex" },
+    ],
+  );
+
+  // Conserva el orden automático (codex antes que sonnet en coding high) y
+  // descarta opus, que el chat no permite.
+  assert.deepEqual(chain, [
+    { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
+  ]);
+});
+
+test("un permitido fuera de la cadena automática se añade al final", () => {
+  const chain = getFallbackChain(
+    makeTask({ type: "coding", complexity: "low" }),
+    [{ provider: "deepseek", model: "deepseek-v4-pro" }],
+  );
+
+  assert.deepEqual(chain, [{ provider: "deepseek", model: "deepseek-v4-pro" }]);
+});
+
+test("el agente explícito de la tarea también se filtra", () => {
+  const chain = getFallbackChain(
+    makeTask({
+      type: "coding",
+      complexity: "medium",
+      agent: { provider: "claude", model: "opus" },
+    }),
+    [{ provider: "codex" }],
+  );
+
+  assert.deepEqual(chain, [{ provider: "codex" }]);
+});
+
+test("una lista vacía de permitidos no restringe nada", () => {
+  const task = makeTask({ type: "coding", complexity: "high" });
+  assert.deepEqual(getFallbackChain(task, []), getFallbackChain(task));
+});
+
+test("runTask solo ejecuta agentes permitidos", async () => {
+  const used: AgentCandidate[] = [];
+  const execute = async (
+    _prompt: string,
+    agent: AgentCandidate,
+  ): Promise<string> => {
+    used.push(agent);
+    throw new Error("503 service unavailable");
+  };
+
+  const result = await runTask(
+    makeTask({ type: "coding", complexity: "high" }),
+    {
+      execute,
+      workspace: fakeWorkspace(),
+      allowedAgents: [{ provider: "deepseek", model: "deepseek-flash" }],
+    },
+  );
+
+  assert.equal(result.status, "failed");
+  assert.ok(used.length > 0);
+  assert.ok(
+    used.every(
+      (agent) =>
+        agent.provider === "deepseek" && agent.model === "deepseek-flash",
+    ),
+    `se usaron agentes no permitidos: ${used.map(keyOf).join(", ")}`,
+  );
+});
+
 test("isRetryableError clasifica errores temporales como reintentables", () => {
   assert.equal(isRetryableError(new Error("HTTP 429 Too Many Requests")), true);
   assert.equal(isRetryableError(new Error("ETIMEDOUT")), true);

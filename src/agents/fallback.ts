@@ -1,19 +1,14 @@
 import type { Task, TaskComplexity } from "../tasks/types.js";
 import {
+  agentKey,
   CLAUDE_OPUS,
   CLAUDE_SONNET,
   CODEX,
   DEEPSEEK_FLASH,
 } from "./selector.js";
-import type { AgentCandidate, AgentProvider } from "./types.js";
+import type { AgentCandidate } from "./types.js";
 
 export const MAX_RETRIES_PER_AGENT = 1;
-
-const DEFAULT_MODEL: Record<AgentProvider, string | undefined> = {
-  codex: undefined,
-  claude: "sonnet",
-  deepseek: "deepseek-flash",
-};
 
 function isHigh(complexity: TaskComplexity): boolean {
   return complexity === "high" || complexity === "critical";
@@ -79,15 +74,6 @@ function autoChain(task: Task): AgentCandidate[] {
   }
 }
 
-function modelOf(agent: AgentCandidate): string | undefined {
-  return agent.provider === "codex" ? undefined : agent.model;
-}
-
-function agentKey(agent: AgentCandidate): string {
-  const model = modelOf(agent) ?? DEFAULT_MODEL[agent.provider];
-  return `${agent.provider}:${model ?? ""}`;
-}
-
 function dedupe(candidates: AgentCandidate[]): AgentCandidate[] {
   const seen = new Set<string>();
   const result: AgentCandidate[] = [];
@@ -106,14 +92,40 @@ function dedupe(candidates: AgentCandidate[]): AgentCandidate[] {
   return result;
 }
 
-export function getFallbackChain(task: Task): AgentCandidate[] {
-  const auto = autoChain(task);
-
-  if (!task.agent) {
-    return auto;
+/**
+ * Restringe la cadena a los agentes permitidos del chat conservando el orden de
+ * preferencia automático. Los permitidos que la cadena no contemplaba se añaden
+ * al final, así el filtro nunca deja una tarea sin candidatos.
+ */
+function restrictToAllowed(
+  chain: AgentCandidate[],
+  allowed: AgentCandidate[],
+): AgentCandidate[] {
+  if (allowed.length === 0) {
+    return chain;
   }
 
-  return dedupe([task.agent, ...auto]);
+  const allowedKeys = new Set(allowed.map(agentKey));
+
+  return dedupe([
+    ...chain.filter((candidate) => allowedKeys.has(agentKey(candidate))),
+    ...allowed,
+  ]);
+}
+
+/**
+ * `allowed` son los agentes permitidos del chat al que pertenece la tarea. Una
+ * lista vacía significa "sin restricción". El agente fijado a mano en la tarea
+ * también se filtra: la restricción del chat manda.
+ */
+export function getFallbackChain(
+  task: Task,
+  allowed: AgentCandidate[] = [],
+): AgentCandidate[] {
+  const auto = autoChain(task);
+  const chain = task.agent ? dedupe([task.agent, ...auto]) : auto;
+
+  return restrictToAllowed(chain, allowed);
 }
 
 export function errorMessage(error: unknown): string {

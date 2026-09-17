@@ -1,7 +1,38 @@
 import type { Task, TaskComplexity } from "../tasks/types.js";
-import type { AgentSpec } from "./types.js";
+import type { AgentProvider, AgentSpec } from "./types.js";
 
 export type AgentSelection = AgentSpec;
+
+const DEFAULT_MODEL: Record<AgentProvider, string | undefined> = {
+  codex: undefined,
+  claude: "sonnet",
+  deepseek: "deepseek-flash",
+};
+
+/**
+ * Identidad comparable de un agente: `codex` no tiene modelo y el resto caen a
+ * su modelo por defecto, de modo que `{provider:"claude"}` y
+ * `{provider:"claude",model:"sonnet"}` son el mismo agente.
+ */
+export function agentKey(agent: AgentSpec): string {
+  const model =
+    (agent.provider === "codex" ? undefined : agent.model) ??
+    DEFAULT_MODEL[agent.provider];
+
+  return `${agent.provider}:${model ?? ""}`;
+}
+
+export function isAgentAllowed(
+  agent: AgentSpec,
+  allowed: AgentSpec[],
+): boolean {
+  if (allowed.length === 0) {
+    return true;
+  }
+
+  const key = agentKey(agent);
+  return allowed.some((candidate) => agentKey(candidate) === key);
+}
 
 export const DEEPSEEK_FLASH: AgentSelection = {
   provider: "deepseek",
@@ -42,7 +73,7 @@ function selectResearch(complexity: TaskComplexity): AgentSelection {
   }
 }
 
-export function selectAgent(task: Task): AgentSelection {
+function autoSelect(task: Task): AgentSelection {
   switch (task.type) {
     case "architecture":
       return CLAUDE_OPUS;
@@ -59,8 +90,32 @@ export function selectAgent(task: Task): AgentSelection {
   }
 }
 
-export function resolveAgent(task: Task): AgentSelection {
-  return task.agent ?? selectAgent(task);
+/**
+ * `allowed` son los agentes permitidos del chat. Si el agente que tocaría por
+ * tipo y complejidad no está en la lista, se usa el primero permitido.
+ */
+export function selectAgent(
+  task: Task,
+  allowed: AgentSpec[] = [],
+): AgentSelection {
+  const auto = autoSelect(task);
+
+  if (isAgentAllowed(auto, allowed)) {
+    return auto;
+  }
+
+  return allowed[0] ?? auto;
+}
+
+export function resolveAgent(
+  task: Task,
+  allowed: AgentSpec[] = [],
+): AgentSelection {
+  if (task.agent && isAgentAllowed(task.agent, allowed)) {
+    return task.agent;
+  }
+
+  return selectAgent(task, allowed);
 }
 
 export function describeAgent(agent: AgentSelection): string {

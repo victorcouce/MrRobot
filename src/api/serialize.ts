@@ -73,6 +73,9 @@ export function serializeTask(task: DomainTask): Task {
   if (task.acceptanceCriteria && task.acceptanceCriteria.length > 0) {
     result.acceptanceCriteria = task.acceptanceCriteria;
   }
+  if (task.attachmentIds && task.attachmentIds.length > 0) {
+    result.attachmentIds = task.attachmentIds;
+  }
   if (task.integrationError) result.integrationError = task.integrationError;
   if (task.agent) result.agent = serializeAgent(task.agent);
   if (task.executedBy) result.executedBy = serializeAgent(task.executedBy);

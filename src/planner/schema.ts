@@ -15,6 +15,7 @@ export const generatedTaskSchema = z.object({
   complexity: z.enum(["low", "medium", "high", "critical"]),
   dependsOn: z.array(z.string()).default([]),
   acceptanceCriteria: z.array(z.string()).default([]),
+  attachments: z.array(z.string()).default([]),
 });
 
 export const generatedPlanSchema = z.object({
