@@ -246,6 +246,10 @@ export function serializeProject(project: DomainProject): Project {
       plannerAgent: serializeAgent(project.config.plannerAgent),
       reviewerAgent: serializeAgent(project.config.reviewerAgent),
       supervisorAgent: serializeAgent(project.config.supervisorAgent),
+      checks: { commands: [...project.config.checks.commands] },
+      defaultAllowedAgents: (project.config.defaultAllowedAgents ?? []).map(
+        serializeAgent,
+      ),
     };
   }
 

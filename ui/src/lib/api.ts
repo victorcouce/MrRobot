@@ -87,6 +87,17 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
 
+  checkDeepSeekKey: (apiKey: string) =>
+    request<{
+      ok: boolean;
+      applied: boolean;
+      persisted: false;
+      error?: string;
+    }>("/api/agents/deepseek-key", {
+      method: "POST",
+      body: JSON.stringify({ apiKey }),
+    }),
+
   checkRemote: (url: string) =>
     request<RemoteCheck>("/api/fs/check-remote", {
       method: "POST",

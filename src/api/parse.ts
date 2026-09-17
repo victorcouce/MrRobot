@@ -407,5 +407,34 @@ export function parseConfigOverrides(
     (overrides as Record<string, unknown>)[field] = agent;
   }
 
+  const checks = body["checks"];
+  if (checks !== undefined) {
+    if (typeof checks !== "object" || checks === null || Array.isArray(checks)) {
+      throw new Error('El campo "checks" debe ser un objeto.');
+    }
+
+    const commands = (checks as Record<string, unknown>)["commands"];
+    if (commands !== undefined) {
+      if (
+        !Array.isArray(commands) ||
+        commands.some((command) => typeof command !== "string")
+      ) {
+        throw new Error('El campo "checks.commands" debe ser un array de textos.');
+      }
+
+      overrides.checks = {
+        commands: (commands as string[])
+          .map((command) => command.trim())
+          .filter((command) => command.length > 0),
+      };
+    }
+  }
+
+  if (body["defaultAllowedAgents"] !== undefined) {
+    overrides.defaultAllowedAgents = parseAllowedAgents(
+      body["defaultAllowedAgents"],
+    );
+  }
+
   return overrides;
 }

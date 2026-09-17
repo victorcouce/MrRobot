@@ -30,6 +30,7 @@ const INFO = {
     { provider: "claude" as const, label: "claude", connected: true },
     { provider: "deepseek" as const, label: "deepseek", connected: false },
   ],
+  githubToken: false,
   config: {
     concurrency: 2,
     maxRetriesPerAgent: 1,
@@ -38,6 +39,11 @@ const INFO = {
     plannerAgent: { provider: "claude" as const, model: "opus" as const },
     reviewerAgent: { provider: "claude" as const, model: "opus" as const },
     supervisorAgent: { provider: "claude" as const, model: "opus" as const },
+    checks: { commands: [] },
+    defaultAllowedAgents: [
+      { provider: "codex" as const },
+      { provider: "claude" as const, model: "sonnet" as const },
+    ],
   },
 };
 
@@ -121,6 +127,11 @@ describe("NewProjectModal", () => {
 
     render(<NewProjectModal open onClose={() => {}} />);
 
+    // Los chips se marcan cuando llega la configuración del backend.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Codex/)).toBeChecked();
+    });
+
     fireEvent.change(screen.getByPlaceholderText(/Calculadora web/), {
       target: { value: "una calculadora" },
     });
@@ -131,7 +142,7 @@ describe("NewProjectModal", () => {
     });
 
     expect(push).toHaveBeenCalledWith("/projects/p1");
-    // Los agentes marcados viajan como valores por defecto del proyecto.
+    // Los agentes marcados en Ajustes llegan como defecto del proyecto.
     expect(vi.mocked(api.createProject).mock.calls[0]?.[0]).toMatchObject({
       defaultAllowedAgents: [
         { provider: "codex" },

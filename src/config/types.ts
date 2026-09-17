@@ -15,4 +15,10 @@ export interface OrchestratorConfig {
   supervisorAgent: AgentCandidate;
 
   checks: ChecksConfig;
+
+  /**
+   * Agentes que vienen marcados al crear un proyecto. Ausente o vacío = todos.
+   * Opcional porque hay configuraciones guardadas de antes de que existiera.
+   */
+  defaultAllowedAgents?: AgentCandidate[];
 }

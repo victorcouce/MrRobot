@@ -10,6 +10,7 @@ import {
   parseRepoOptions,
   parseTaskPatch,
 } from "./parse.js";
+import { checkAndApplyDeepSeekKey } from "./deepseek-key.js";
 import { pickFolder } from "./pick-folder.js";
 import { checkFolder, checkRemote } from "../workspace/validate.js";
 import {
@@ -186,6 +187,24 @@ async function dispatch(
     }
 
     sendJson(res, 200, await checkRemote(url));
+    return;
+  }
+
+  // /api/agents/deepseek-key
+  if (
+    req.method === "POST" &&
+    segments[1] === "agents" &&
+    segments[2] === "deepseek-key"
+  ) {
+    const body = await readJson(req);
+    const apiKey = body["apiKey"];
+
+    if (typeof apiKey !== "string") {
+      sendJson(res, 400, { error: 'El campo "apiKey" es obligatorio.' });
+      return;
+    }
+
+    sendJson(res, 200, await checkAndApplyDeepSeekKey(apiKey));
     return;
   }
 

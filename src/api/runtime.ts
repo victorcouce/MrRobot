@@ -220,6 +220,7 @@ export class Runtime {
       mock: this.mock,
       agents: await checkAgentAvailability(),
       config: this.configInfo(),
+      githubToken: Boolean(process.env.GITHUB_TOKEN),
     };
   }
 
@@ -233,6 +234,8 @@ export class Runtime {
       plannerAgent: serializeAgent(c.plannerAgent),
       reviewerAgent: serializeAgent(c.reviewerAgent),
       supervisorAgent: serializeAgent(c.supervisorAgent),
+      checks: { commands: [...c.checks.commands] },
+      defaultAllowedAgents: (c.defaultAllowedAgents ?? []).map(serializeAgent),
     };
   }
 

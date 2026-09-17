@@ -267,6 +267,10 @@ export interface ConfigInfo {
   plannerAgent: AgentSpec;
   reviewerAgent: AgentSpec;
   supervisorAgent: AgentSpec;
+  /** Vacío = se detectan los scripts del package.json. */
+  checks: { commands: string[] };
+  /** Agentes marcados por defecto al crear un proyecto. */
+  defaultAllowedAgents: AgentSpec[];
 }
 
 export interface FolderCheck {
@@ -294,4 +298,6 @@ export interface AppInfo {
   mock: boolean;
   agents: AgentAvailability[];
   config: ConfigInfo;
+  /** Si GITHUB_TOKEN está definido en el proceso del backend. */
+  githubToken: boolean;
 }

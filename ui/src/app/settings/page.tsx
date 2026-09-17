@@ -2,10 +2,18 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { AGENT_CHOICES, agentToChoice, type AgentChoice } from "@/lib/agents";
+import {
+  AGENT_CHOICES,
+  agentToChoice,
+  choiceToAgent,
+  type AgentChoice,
+} from "@/lib/agents";
 import { useAppInfo } from "@/lib/hooks";
+import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/Badge";
+
+const DEFAULT_CHECKS = ["typecheck", "build", "test"];
 
 type Section = "ejecucion" | "modelos" | "agentes" | "checks" | "github" | "apariencia";
 
@@ -22,10 +30,18 @@ export default function SettingsPage() {
   const [reviewer, setReviewer] = useState<AgentChoice>("claude-opus");
   const [supervisor, setSupervisor] = useState<AgentChoice>("claude-opus");
   const [deepseekKey, setDeepseekKey] = useState("");
+  const [checkingKey, setCheckingKey] = useState(false);
+  const [keyResult, setKeyResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [autoChecks, setAutoChecks] = useState(true);
+  const [checkCommands, setCheckCommands] = useState<string[]>(DEFAULT_CHECKS);
+  const [defaultAgents, setDefaultAgents] = useState<AgentChoice[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<"system" | "light" | "dark">("light");
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!info) return;
@@ -37,6 +53,12 @@ export default function SettingsPage() {
     setPlanner(agentToChoice(config.plannerAgent));
     setReviewer(agentToChoice(config.reviewerAgent));
     setSupervisor(agentToChoice(config.supervisorAgent));
+    // Sin comandos explícitos el motor detecta los scripts del package.json.
+    setAutoChecks(config.checks.commands.length === 0);
+    setCheckCommands(
+      config.checks.commands.length > 0 ? config.checks.commands : DEFAULT_CHECKS,
+    );
+    setDefaultAgents(config.defaultAllowedAgents.map(agentToChoice));
   }, [info]);
 
   const handleChange = useCallback(() => {
@@ -55,9 +77,11 @@ export default function SettingsPage() {
         maxRetriesPerAgent: maxRetries,
         maxReviewFixCycles: maxReviewCycles,
         plannerMaxAttempts: plannerAttempts,
-        plannerAgent: planner,
-        reviewerAgent: reviewer,
-        supervisorAgent: supervisor,
+        plannerAgent: choiceToAgent(planner),
+        reviewerAgent: choiceToAgent(reviewer),
+        supervisorAgent: choiceToAgent(supervisor),
+        checks: { commands: autoChecks ? [] : checkCommands },
+        defaultAllowedAgents: defaultAgents.map(choiceToAgent),
       });
       setSaved(true);
       setHasChanges(false);
@@ -79,8 +103,44 @@ export default function SettingsPage() {
     setPlanner(agentToChoice(config.plannerAgent));
     setReviewer(agentToChoice(config.reviewerAgent));
     setSupervisor(agentToChoice(config.supervisorAgent));
+    setAutoChecks(config.checks.commands.length === 0);
+    setCheckCommands(
+      config.checks.commands.length > 0 ? config.checks.commands : DEFAULT_CHECKS,
+    );
+    setDefaultAgents(config.defaultAllowedAgents.map(agentToChoice));
     setHasChanges(false);
     setSaved(false);
+  }
+
+  async function handleCheckKey() {
+    setCheckingKey(true);
+    setKeyResult(null);
+
+    try {
+      const result = await api.checkDeepSeekKey(deepseekKey);
+
+      setKeyResult(
+        result.ok
+          ? {
+              ok: true,
+              message:
+                "Clave válida y aplicada al backend. Añádela a .env para que sobreviva a un reinicio.",
+            }
+          : { ok: false, message: result.error ?? "La clave no es válida." },
+      );
+
+      if (result.ok) {
+        setDeepseekKey("");
+        await refresh();
+      }
+    } catch (error) {
+      setKeyResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setCheckingKey(false);
+    }
   }
 
   if (!info) {
@@ -104,7 +164,14 @@ export default function SettingsPage() {
           <p className="text-xs text-ink-3">Se aplican a todos los proyectos y chats</p>
         </div>
         <div className="flex items-center gap-3">
-          {hasChanges && <span className="text-xs font-medium text-ink-3">2 cambios sin guardar</span>}
+          {saved && !hasChanges && (
+            <span className="text-xs font-medium text-success-text">Guardado</span>
+          )}
+          {hasChanges && (
+            <span className="text-xs font-medium text-ink-3">
+              Cambios sin guardar
+            </span>
+          )}
           {hasChanges && (
             <>
               <Button variant="ghost" size="sm" onClick={handleDiscard}>
@@ -275,32 +342,101 @@ export default function SettingsPage() {
               <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">Agentes</h2>
-                  <p className="mt-1 text-xs text-ink-3">Conexión de cada proveedor.</p>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Conexión de cada proveedor y qué se marca al crear un proyecto.
+                  </p>
                 </div>
                 <div className="divide-y divide-line-soft px-5 py-3">
-                  <AgentStatus label="codex" connected={agentConnected("codex")} desc="Suscripción de ChatGPT · CLI en PATH" />
-                  <AgentStatus label="claude · sonnet, opus" connected={agentConnected("claude")} desc="Suscripción de Claude · CLI en PATH" />
-                  <div className="space-y-2 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`h-2 w-2 rounded-full ${agentConnected("deepseek") ? "bg-success" : "bg-neutral-dot"}`} />
-                      <div>
-                        <div className="font-mono text-sm font-medium text-ink">deepseek · flash, v4-pro</div>
-                        <div className="text-xs text-ink-3">Necesita una clave de API. Es el único que consume tokens de pago.</div>
+                  {AGENT_CHOICES.map((choice) => {
+                    const spec = choiceToAgent(choice.value);
+                    const connected = agentConnected(spec.provider);
+                    const marked = defaultAgents.includes(choice.value);
+
+                    return (
+                      <div
+                        key={choice.value}
+                        className="flex items-center justify-between py-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
+                              connected ? "bg-success" : "bg-neutral-dot"
+                            }`}
+                          />
+                          <div>
+                            <div className="font-mono text-sm font-medium text-ink">
+                              {choice.label}
+                            </div>
+                            <div className="mt-0.5 text-xs text-ink-3">
+                              {connected
+                                ? "Disponible"
+                                : (info.agents.find(
+                                    (agent) => agent.provider === spec.provider,
+                                  )?.reason ?? "No disponible")}
+                            </div>
+                          </div>
+                        </div>
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={marked}
+                            onChange={(event) => {
+                              setDefaultAgents((current) =>
+                                event.target.checked
+                                  ? [...current, choice.value]
+                                  : current.filter((item) => item !== choice.value),
+                              );
+                              handleChange();
+                            }}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="text-xs text-ink-3">
+                            Marcado por defecto
+                          </span>
+                        </label>
                       </div>
+                    );
+                  })}
+
+                  <div className="space-y-2 py-3">
+                    <div className="text-sm font-medium text-ink">
+                      Clave de DeepSeek
                     </div>
-                    <div className="flex gap-2 pt-2">
+                    <div className="text-xs text-ink-3">
+                      Es el único proveedor que consume tokens de pago.
+                    </div>
+                    <div className="flex gap-2 pt-1">
                       <input
                         type="password"
                         placeholder="DEEPSEEK_API_KEY"
                         value={deepseekKey}
-                        onChange={(e) => {
-                          setDeepseekKey(e.target.value);
-                          handleChange();
+                        onChange={(event) => {
+                          setDeepseekKey(event.target.value);
+                          setKeyResult(null);
                         }}
-                        className="flex-1 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-4 outline-none"
+                        className="flex-1 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-4"
                       />
-                      <Button size="sm" variant="secondary">Comprobar</Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        type="button"
+                        loading={checkingKey}
+                        disabled={!deepseekKey.trim()}
+                        onClick={() => void handleCheckKey()}
+                      >
+                        Comprobar y aplicar
+                      </Button>
                     </div>
+                    {keyResult && (
+                      <p
+                        role="status"
+                        className={`text-xs ${
+                          keyResult.ok ? "text-success-text" : "text-danger-text"
+                        }`}
+                      >
+                        {keyResult.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               </section>
@@ -310,30 +446,78 @@ export default function SettingsPage() {
               <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">Checks</h2>
-                  <p className="mt-1 text-xs text-ink-3">Scripts que se ejecutan sobre cada tarea.</p>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Scripts que se ejecutan sobre cada tarea.
+                  </p>
                 </div>
                 <div className="divide-y divide-line-soft px-5 py-4">
                   <div className="pb-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-sm text-ink">Detectar scripts automáticamente</div>
-                        <div className="text-xs text-ink-3">Usa los que existan en package.json.</div>
+                        <div className="text-sm font-medium text-ink">
+                          Detectar scripts automáticamente
+                        </div>
+                        <div className="text-xs text-ink-3">
+                          Usa los que existan en package.json.
+                        </div>
                       </div>
-                      <Toggle checked={true} onChange={handleChange} />
+                      <Toggle
+                        label="Detectar scripts automáticamente"
+                        checked={autoChecks}
+                        onChange={() => {
+                          setAutoChecks(!autoChecks);
+                          handleChange();
+                        }}
+                      />
                     </div>
                   </div>
                   <div className="pt-4">
-                    <div className="mb-2 font-medium text-sm text-ink">Orden</div>
-                    <div className="flex gap-2">
-                      {["typecheck", "build", "test"].map((check) => (
+                    <div className="mb-2 text-sm font-medium text-ink">
+                      {autoChecks ? "Se probarán, si existen" : "Orden"}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {checkCommands.map((check) => (
                         <span
                           key={check}
-                          className="inline-flex items-center rounded-lg bg-muted px-2 py-1 font-mono text-xs text-ink"
+                          className={`inline-flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 font-mono text-xs ${
+                            autoChecks ? "text-ink-4" : "text-ink"
+                          }`}
                         >
                           {check}
+                          {!autoChecks && (
+                            <button
+                              type="button"
+                              aria-label={`Quitar ${check}`}
+                              onClick={() => {
+                                setCheckCommands((current) =>
+                                  current.filter((item) => item !== check),
+                                );
+                                handleChange();
+                              }}
+                              className="focus-ring text-ink-4 hover:text-danger"
+                            >
+                              ×
+                            </button>
+                          )}
                         </span>
                       ))}
                     </div>
+                    {!autoChecks && (
+                      <input
+                        type="text"
+                        placeholder="Añadir un script y pulsar Enter"
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          const value = event.currentTarget.value.trim();
+                          if (!value || checkCommands.includes(value)) return;
+                          setCheckCommands((current) => [...current, value]);
+                          event.currentTarget.value = "";
+                          handleChange();
+                        }}
+                        className="mt-3 w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-4"
+                      />
+                    )}
                   </div>
                 </div>
               </section>
@@ -343,12 +527,23 @@ export default function SettingsPage() {
               <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">GitHub</h2>
-                  <p className="mt-1 text-xs text-ink-3">Para validar remotos y subir la rama final.</p>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Para validar remotos y subir la rama final.
+                  </p>
                 </div>
-                <SettingRow label="GITHUB_TOKEN" desc="Definido en .env · el push se hace solo a ramas agent/project-*-final">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-success-soft px-3 py-1 text-xs font-medium text-success-text">
-                    ✓ Configurado
-                  </div>
+                <SettingRow
+                  label="GITHUB_TOKEN"
+                  desc="Se lee del entorno del backend. El push solo se hace a ramas agent/project-*-final."
+                >
+                  {info.githubToken ? (
+                    <div className="inline-flex items-center gap-2 rounded-full bg-success-soft px-3 py-1 text-xs font-medium text-success-text">
+                      ✓ Configurado
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-2 rounded-full bg-warning-soft px-3 py-1 text-xs font-medium text-warning-text">
+                      Sin definir
+                    </div>
+                  )}
                 </SettingRow>
               </section>
             )}
@@ -357,25 +552,26 @@ export default function SettingsPage() {
               <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">Apariencia</h2>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Se guarda en este navegador, no en la configuración del motor.
+                  </p>
                 </div>
                 <SettingRow label="Tema">
                   <div className="inline-flex gap-1 rounded-xl bg-muted p-1">
-                    {(["system", "light", "dark"] as const).map((t) => (
+                    {(["system", "light", "dark"] as const).map((option) => (
                       <button
-                        key={t}
-                        onClick={() => {
-                          setTheme(t);
-                          handleChange();
-                        }}
+                        key={option}
+                        type="button"
+                        onClick={() => setTheme(option)}
                         className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
-                          theme === t
+                          theme === option
                             ? "bg-surface text-ink shadow-sm"
                             : "bg-transparent text-ink-3"
                         }`}
                       >
-                        {t === "system" && "Sistema"}
-                        {t === "light" && "Claro"}
-                        {t === "dark" && "Oscuro"}
+                        {option === "system" && "Sistema"}
+                        {option === "light" && "Claro"}
+                        {option === "dark" && "Oscuro"}
                       </button>
                     ))}
                   </div>
@@ -429,8 +625,12 @@ function Stepper({
       </button>
       <input
         type="number"
+        min={min}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const parsed = Number(e.target.value);
+          if (Number.isFinite(parsed)) onChange(Math.max(min, parsed));
+        }}
         className="w-12 text-center font-medium text-sm border-l border-r border-line-strong outline-none bg-surface"
       />
       <button
@@ -444,42 +644,21 @@ function Stepper({
   );
 }
 
-function AgentStatus({
-  label,
-  connected,
-  desc,
-}: {
-  label: string;
-  connected: boolean;
-  desc: string;
-}) {
-  return (
-    <div className="py-3 flex items-center justify-between">
-      <div className="flex items-start gap-3">
-        <div className={`h-2 w-2 rounded-full mt-1 flex-shrink-0 ${connected ? "bg-success" : "bg-neutral-dot"}`} />
-        <div>
-          <div className="font-mono text-sm font-medium text-ink">{label}</div>
-          <div className="text-xs text-ink-3 mt-0.5">{desc}</div>
-        </div>
-      </div>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" defaultChecked className="w-4 h-4 accent-primary" />
-        <span className="text-xs text-ink-3">Marcado por defecto</span>
-      </label>
-    </div>
-  );
-}
-
 function Toggle({
   checked,
   onChange,
+  label,
 }: {
   checked: boolean;
   onChange?: () => void;
+  label: string;
 }) {
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
       onClick={onChange}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
         checked ? "bg-primary" : "bg-muted"

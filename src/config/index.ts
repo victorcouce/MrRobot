@@ -15,6 +15,7 @@ export const defaultConfig: OrchestratorConfig = {
   supervisorAgent: CLAUDE_OPUS,
 
   checks: { commands: [] },
+  defaultAllowedAgents: [],
 };
 
 export const fallbackCodingAgent = DEEPSEEK_FLASH;

@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { AGENT_CHOICES, choiceToAgent, type AgentChoice } from "@/lib/agents";
+import {
+  AGENT_CHOICES,
+  agentToChoice,
+  choiceToAgent,
+  type AgentChoice,
+} from "@/lib/agents";
 import type { AgentSpec, AppInfo, FolderCheck, RemoteCheck } from "@/lib/types";
 import { clsx } from "@/lib/cx";
 import { AttachmentUpload } from "./AttachmentUpload";
@@ -47,10 +52,7 @@ export function NewProjectModal({
   const [repoPath, setRepoPath] = useState("");
   const [remoteUrl, setRemoteUrl] = useState("");
   const [planOnCreate, setPlanOnCreate] = useState(true);
-  const [selectedAgents, setSelectedAgents] = useState<AgentChoice[]>([
-    "codex",
-    "claude-sonnet",
-  ]);
+  const [selectedAgents, setSelectedAgents] = useState<AgentChoice[]>([]);
   const [showMore, setShowMore] = useState(false);
   const [state, setState] = useState<ModalState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +78,11 @@ export function NewProjectModal({
     setGoal(initialGoal);
     void api
       .info()
-      .then(setAppInfo)
+      .then((info) => {
+        setAppInfo(info);
+        // Los agentes vienen marcados según lo configurado en Ajustes.
+        setSelectedAgents(info.config.defaultAllowedAgents.map(agentToChoice));
+      })
       .catch(() => setAppInfo(null));
   }, [open, initialGoal]);
 
