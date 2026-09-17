@@ -1,21 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:wght@400&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --accent: 59 130 246; /* blue-500 */
-  --accent-fg: 255 255 255;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --font-display: "Instrument Serif", Georgia, serif;
   color-scheme: light;
-}
-
-.dark {
-  --accent: 96 165 250; /* blue-400 */
-  --accent-fg: 8 12 20;
-  color-scheme: dark;
 }
 
 html,
@@ -24,12 +19,14 @@ body {
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  @apply bg-[#FAFAF8] text-ink antialiased;
+  font-family: var(--font-sans);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
-  @apply border-zinc-200 dark:border-zinc-800;
+  @apply border-line;
 }
 
 @layer components {

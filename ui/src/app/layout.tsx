@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/lib/theme";
 import { AppShell } from "@/components/layout/AppShell";
+import { CommandPalette } from "@/components/CommandPalette";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <AppShell>{children}</AppShell>
+          <CommandPalette />
         </ThemeProvider>
       </body>
     </html>

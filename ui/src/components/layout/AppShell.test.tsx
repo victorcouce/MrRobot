@@ -87,18 +87,26 @@ describe("AppShell", () => {
     mocks.refresh.mockReset();
     mocks.projects = [];
     mocks.chats = [];
+    localStorage.clear();
   });
 
-  it("lista los chats agrupados por proyecto", () => {
+  it("lista los chats agrupados por proyecto cuando se expande", async () => {
     mocks.projects = [makeProject()];
     mocks.chats = [makeChat()];
 
     render(<AppShell>contenido</AppShell>);
 
-    expect(screen.getByRole("link", { name: "Web" })).toHaveAttribute(
-      "href",
-      "/projects/p1",
-    );
+    const expandBtn = screen.getByRole("button", {
+      name: "Expandir barra lateral",
+    });
+    await userEvent.click(expandBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Web" })).toHaveAttribute(
+        "href",
+        "/projects/p1",
+      );
+    });
     expect(screen.getByRole("link", { name: /Iterar login/ })).toHaveAttribute(
       "href",
       "/projects/p1?chat=c1",
@@ -111,6 +119,11 @@ describe("AppShell", () => {
 
     render(<AppShell>contenido</AppShell>);
 
+    const expandBtn = screen.getByRole("button", {
+      name: "Expandir barra lateral",
+    });
+    await userEvent.click(expandBtn);
+
     await userEvent.click(
       screen.getByRole("button", { name: "Nuevo chat en Web" }),
     );
@@ -120,13 +133,20 @@ describe("AppShell", () => {
     expect(mocks.refresh).toHaveBeenCalled();
   });
 
-  it("deshabilita el botón + mientras el proyecto se ejecuta", () => {
+  it("deshabilita el botón + mientras el proyecto se ejecuta", async () => {
     mocks.projects = [makeProject({ status: "running" })];
 
     render(<AppShell>contenido</AppShell>);
 
-    expect(
-      screen.getByRole("button", { name: "Nuevo chat en Web" }),
-    ).toBeDisabled();
+    const expandBtn = screen.getByRole("button", {
+      name: "Expandir barra lateral",
+    });
+    await userEvent.click(expandBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Nuevo chat en Web" }),
+      ).toBeDisabled();
+    });
   });
 });
