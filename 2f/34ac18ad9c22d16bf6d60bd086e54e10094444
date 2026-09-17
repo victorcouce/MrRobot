@@ -1,0 +1,23 @@
+ui/src/components/projects/ChatsPanel.tsx
+  s_87df841214afdc::t_bae44bca50f1dd 10,215
+ui/src/components/projects/ProjectWorkspace.tsx
+  s_87df841214afdc::t_53247ceb2fb60b 7-8,35,90-99,104,113-123,278-313
+ui/src/components/projects/ThreadComposer.tsx
+  s_87df841214afdc::t_74cdfec20bbaea 3,5-16,20-23,25-27,36-38,44,55-58,60,66-82,133-144,165-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f34ac18ad9c22d16bf6d60bd086e54e10094444",
+  "prompts": {},
+  "sessions": {
+    "s_87df841214afdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12ecf92a-b2db-4268-810b-b5c5fb1a08a0",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
