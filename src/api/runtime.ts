@@ -7,6 +7,7 @@ import {
   listAllChats as listAllChatsInService,
   listChats as listChatsInService,
   sendChatMessage as sendChatMessageInService,
+  updateChatAllowedAgents as updateChatAllowedAgentsInService,
   type CreateChatInput,
 } from "../chats/service.js";
 import type { OrchestratorConfig } from "../config/index.js";
@@ -47,6 +48,7 @@ import type {
 import { createGitWorkspaceManager, prepareProjectRepo } from "../workspace/manager.js";
 import type { WorkspaceManager } from "../workspace/types.js";
 import type {
+  AgentSpec,
   AppInfo,
   ConfigInfo,
   ProjectEvent as WireEvent,
@@ -573,15 +575,41 @@ export class Runtime {
     return { id: chatId, deleted: true };
   }
 
-  async sendChatMessage(projectId: string, chatId: string, content: string) {
+  async sendChatMessage(
+    projectId: string,
+    chatId: string,
+    content: string,
+    attachments?: Array<{
+      name: string;
+      type: "image" | "markdown";
+      mimeType: string;
+      size: number;
+      data: string;
+    }>,
+  ) {
     await this.mustGetProject(projectId);
     await sendChatMessageInService(
       projectId,
       chatId,
       content,
+      attachments,
       await this.depsFor(projectId),
     );
     return this.getChat(projectId, chatId);
+  }
+
+  async updateChatAllowedAgents(
+    projectId: string,
+    chatId: string,
+    agents: AgentSpec[],
+  ) {
+    await this.mustGetProject(projectId);
+    return updateChatAllowedAgentsInService(
+      projectId,
+      chatId,
+      agents,
+      await this.depsFor(projectId),
+    );
   }
 
   async activity(limit = 100): Promise<WireEvent[]> {

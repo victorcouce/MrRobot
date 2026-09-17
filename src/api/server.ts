@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProjectEvent } from "../storage/types.js";
 import {
+  parseAllowedAgents,
   parseChatInput,
   parseChatMessage,
   parseConfigOverrides,
@@ -335,15 +336,33 @@ async function dispatch(
       // /api/projects/:id/chats/:chatId/messages
       if (chatId && req.method === "POST" && segments[5] === "messages") {
         const body = await readJson(req);
+        const parsed = parseChatMessage(body);
         sendJson(
           res,
           200,
           await runtime.sendChatMessage(
             projectId,
             chatId,
-            parseChatMessage(body),
+            parsed.content,
+            parsed.attachments,
           ),
         );
+        return;
+      }
+
+      // /api/projects/:id/chats/:chatId (PATCH)
+      if (chatId && req.method === "PATCH" && segments.length === 5) {
+        const body = await readJson(req);
+        if ("allowedAgents" in body) {
+          const agents = parseAllowedAgents(body["allowedAgents"]);
+          sendJson(
+            res,
+            200,
+            await runtime.updateChatAllowedAgents(projectId, chatId, agents),
+          );
+        } else {
+          sendJson(res, 400, { error: "No hay campos para actualizar." });
+        }
         return;
       }
     }

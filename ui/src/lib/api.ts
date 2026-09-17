@@ -192,16 +192,43 @@ export const api = {
     return result;
   },
 
-  sendChatMessage: async (id: string, chatId: string, content: string) => {
+  sendChatMessage: async (
+    id: string,
+    chatId: string,
+    content: string,
+    attachments?: Array<{
+      name: string;
+      type: "image" | "markdown";
+      mimeType: string;
+      size: number;
+      data: string;
+    }>,
+  ) => {
     const chat = await request<ChatDetail>(
       `/api/projects/${id}/chats/${chatId}/messages`,
       {
         method: "POST",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, attachments }),
       },
     );
     notifyProjectsChanged();
     return chat;
+  },
+
+  updateChatAllowedAgents: async (
+    id: string,
+    chatId: string,
+    allowedAgents: AgentSpec[],
+  ) => {
+    const result = await request<{ id: string; allowedAgents?: AgentSpec[] }>(
+      `/api/projects/${id}/chats/${chatId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ allowedAgents }),
+      },
+    );
+    notifyProjectsChanged();
+    return result;
   },
 
   activity: (limit = 100) =>

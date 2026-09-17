@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Attachment } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import { planProject } from "../planner/planner.js";
 import type {
@@ -7,6 +8,7 @@ import type {
 } from "../planner/types.js";
 import { emitProjectEvent, type ProjectDeps } from "../projects/service.js";
 import type { Project } from "../projects/types.js";
+import type { AgentSpec } from "../agents/types.js";
 import { validatePlan } from "../scheduler/validation.js";
 import type { Task } from "../tasks/types.js";
 import type { Chat, ChatMessage } from "./types.js";
@@ -267,6 +269,13 @@ export async function sendChatMessage(
   projectId: string,
   chatId: string,
   content: string,
+  attachments: Array<{
+    name: string;
+    type: "image" | "markdown";
+    mimeType: string;
+    size: number;
+    data: string;
+  }> | undefined,
   deps: ProjectDeps,
 ): Promise<SendChatMessageResult> {
   const project = await loadProject(projectId, deps);
@@ -287,6 +296,16 @@ export async function sendChatMessage(
   const config = project.config ?? deps.config ?? defaultConfig;
   const history = await deps.storage.listChatMessages(chatId);
 
+  const processedAttachments: Attachment[] = attachments?.map((att) => ({
+    id: randomUUID(),
+    name: att.name,
+    type: att.type,
+    mimeType: att.mimeType,
+    size: att.size,
+    data: att.data,
+    createdAt: new Date(),
+  })) ?? [];
+
   const userMessage: ChatMessage = {
     id: randomUUID(),
     chatId,
@@ -294,6 +313,7 @@ export async function sendChatMessage(
     role: "user",
     content: trimmed,
     taskIds: [],
+    attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
     createdAt: new Date(),
   };
 
@@ -413,4 +433,20 @@ export async function sendChatMessage(
       project,
     };
   }
+}
+
+export async function updateChatAllowedAgents(
+  projectId: string,
+  chatId: string,
+  agents: AgentSpec[],
+  deps: ProjectDeps,
+): Promise<Chat> {
+  const chat = await loadChat(projectId, chatId, deps);
+  const updated: Chat = { ...chat, allowedAgents: agents.length > 0 ? agents : undefined, updatedAt: new Date() };
+  await deps.storage.saveChat(updated);
+  await emitProjectEvent(deps.storage, projectId, "chat.updated", undefined, {
+    chatId,
+    allowedAgents: agents,
+  });
+  return updated;
 }

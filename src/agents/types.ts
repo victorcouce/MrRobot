@@ -10,3 +10,15 @@ export type AgentSpec =
 export type AgentProvider = AgentSpec["provider"];
 
 export type AgentCandidate = AgentSpec;
+
+export type AttachmentType = "image" | "markdown";
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: AttachmentType;
+  mimeType: string;
+  size: number;
+  data?: string;
+  createdAt: Date;
+}

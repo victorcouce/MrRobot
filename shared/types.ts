@@ -120,6 +120,7 @@ export interface Project {
   remoteUrl?: string;
   tasks: Task[];
   config?: ConfigInfo;
+  defaultAllowedAgents?: AgentSpec[];
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -133,6 +134,18 @@ export interface Project {
 
 export type ChatMessageRole = "user" | "assistant";
 
+export type AttachmentType = "image" | "markdown";
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: AttachmentType;
+  mimeType: string;
+  size: number;
+  data?: string;
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -140,6 +153,7 @@ export interface ChatMessage {
   role: ChatMessageRole;
   content: string;
   taskIds: string[];
+  attachments?: Attachment[];
   agent?: AgentSpec;
   error?: string;
   createdAt: string;
@@ -149,6 +163,7 @@ export interface ChatSummary {
   id: string;
   projectId: string;
   title: string;
+  allowedAgents?: AgentSpec[];
   createdAt: string;
   updatedAt: string;
   messageCount: number;
