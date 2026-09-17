@@ -1,0 +1,39 @@
+shared/types.ts
+  s_87df841214afdc::t_3a1fcf361dbed0 123,137-148,156,166
+src/agents/types.ts
+  s_87df841214afdc::t_895c73daa188be 13-24
+src/api/parse.ts
+  s_87df841214afdc::t_004779a9b45e5d 262-273,280-351
+src/api/runtime.ts
+  s_87df841214afdc::t_196ebf219367a9 10,51,578-589,595,601-614
+src/api/server.ts
+  s_87df841214afdc::t_d6affb53843336 4,339,346-347,352-367
+src/chats/service.ts
+  s_87df841214afdc::t_847d7f3fec031c 2,11,272-278,299-308,316,437-452
+src/chats/types.ts
+  s_87df841214afdc::t_3dee9db2b49af6 1,10,22
+ui/src/components/AttachmentPreview.tsx
+  s_87df841214afdc::t_70fa2cedb18252 1-79
+ui/src/components/AttachmentUpload.tsx
+  s_87df841214afdc::t_a454f42649207c 1-209
+ui/src/components/ChatAgentSelector.tsx
+  s_87df841214afdc::t_89e2b105516288 1-120
+ui/src/lib/api.ts
+  s_87df841214afdc::t_3c3b35fe155a12 195-206,211,218-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d37f380aa0fd601159c76d950a8c638a97c044c",
+  "prompts": {},
+  "sessions": {
+    "s_87df841214afdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12ecf92a-b2db-4268-810b-b5c5fb1a08a0",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
