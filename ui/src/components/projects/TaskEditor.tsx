@@ -84,7 +84,7 @@ export function TaskEditor({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          <div className="rounded-md border border-danger-text bg-danger-soft px-3 py-2 text-sm text-danger-text">
             {error}
           </div>
         )}
@@ -164,20 +164,20 @@ export function TaskEditor({
 
         {otherTasks.length > 0 && (
           <Field id="task-deps" label="Dependencies">
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-zinc-200 p-2 dark:border-zinc-700">
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-line bg-subtle p-2">
               {otherTasks.map((candidate) => (
                 <label
                   key={candidate.id}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted"
                 >
                   <input
                     type="checkbox"
                     checked={dependsOn.includes(candidate.id)}
                     onChange={() => toggleDependency(candidate.id)}
-                    className="h-4 w-4 rounded border-zinc-300 accent-blue-500"
+                    className="h-4 w-4 rounded border-line-strong accent-primary"
                   />
-                  <span className="font-mono text-xs text-zinc-400">{candidate.id}</span>
-                  <span className="truncate text-zinc-700 dark:text-zinc-300">
+                  <span className="font-mono text-xs text-ink-4">{candidate.id}</span>
+                  <span className="truncate text-ink-2">
                     {candidate.title}
                   </span>
                 </label>
@@ -186,7 +186,7 @@ export function TaskEditor({
           </Field>
         )}
 
-        <div className="flex justify-end gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" loading={submitting}>
             {mode === "edit" ? "Save" : "Add task"}

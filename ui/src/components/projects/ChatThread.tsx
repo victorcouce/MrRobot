@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Project, ProjectEvent } from "../../lib/types";
+import type { Project, ProjectEvent, StoredReview, AgentAvailability } from "../../lib/types";
 import { ActivityLog } from "./ActivityLog";
 import { DagView } from "./DagView";
 import { ExecutionView } from "./ExecutionView";
@@ -10,6 +10,10 @@ import { PlanView } from "./PlanView";
 import { PreviewPanel } from "./PreviewPanel";
 import { ResultView } from "./ResultView";
 import { SupervisorBanner } from "./SupervisorBanner";
+import { TaskDetailBlock } from "./TaskDetailBlock";
+import { GitConflictBlock } from "./GitConflictBlock";
+import { PauseStateBlock } from "./PauseStateBlock";
+import { AgentsStatusBlock } from "./AgentsStatusBlock";
 import type { SupervisorRun } from "../../lib/types";
 
 type ViewMode = "list" | "graph" | "board";
@@ -18,22 +22,38 @@ interface ChatThreadProps {
   project: Project;
   events: ProjectEvent[];
   supervisorRuns: SupervisorRun[];
+  reviews: StoredReview[];
+  agents: AgentAvailability[];
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onSelectTask: (taskId: string | null) => void;
+  selectedTaskId?: string | null;
   isEditable: boolean;
   onAddTask: (() => void) | undefined;
+  onEditTask?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
+  onResume?: () => void;
+  onCancel?: () => void;
+  onConfigureDeepSeek?: () => void;
 }
 
 export function ChatThread({
   project,
   events,
   supervisorRuns,
+  reviews,
+  agents,
   viewMode,
   onViewModeChange,
   onSelectTask,
+  selectedTaskId,
   isEditable,
   onAddTask,
+  onEditTask,
+  onDeleteTask,
+  onResume,
+  onCancel,
+  onConfigureDeepSeek,
 }: ChatThreadProps) {
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -108,12 +128,56 @@ export function ChatThread({
           </div>
         )}
 
+        {/* Selected task detail block */}
+        {selectedTaskId && (
+          <>
+            {project.tasks.map((task) => {
+              if (task.id !== selectedTaskId) return null;
+              return (
+                <TaskDetailBlock
+                  key={task.id}
+                  task={task}
+                  reviews={reviews}
+                  onEdit={onEditTask ? () => onEditTask(task.id) : undefined}
+                  onDelete={onDeleteTask ? () => onDeleteTask(task.id) : undefined}
+                />
+              );
+            })}
+          </>
+        )}
+
+        {/* Git conflicts */}
+        {project.tasks.map((task) => {
+          if (!task.integrationError) return null;
+          return (
+            <GitConflictBlock
+              key={`conflict-${task.id}`}
+              task={task}
+            />
+          );
+        })}
+
+        {/* Pause state block */}
+        <PauseStateBlock
+          project={project}
+          onResume={onResume}
+          onCancel={onCancel}
+        />
+
         {/* Events */}
         {events.length > 0 && (
           <div className="rounded-lg border border-line bg-surface p-6 shadow-sm">
             <h2 className="mb-4 text-base font-semibold text-ink">Eventos</h2>
             <ActivityLog events={events} />
           </div>
+        )}
+
+        {/* Agents status block */}
+        {agents.length > 0 && (
+          <AgentsStatusBlock
+            agents={agents}
+            onConfigureDeepSeek={onConfigureDeepSeek}
+          />
         )}
 
         {/* Supervisor */}

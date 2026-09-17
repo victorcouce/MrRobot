@@ -44,6 +44,7 @@ export function ProjectWorkspace({
   const [pauseRequested, setPauseRequested] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId ?? null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (notFound) {
@@ -220,13 +221,36 @@ export function ProjectWorkspace({
         project={project}
         events={events}
         supervisorRuns={supervisorRuns}
+        reviews={reviews}
+        agents={[]}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onSelectTask={(taskId) => {
-          // TaskDetail will be handled in Fase 4 as expandible blocks
-        }}
+        onSelectTask={setSelectedTaskId}
+        selectedTaskId={selectedTaskId}
         isEditable={isEditable}
         onAddTask={() => setEditor({ mode: "create" })}
+        onEditTask={(taskId) => {
+          const task = project.tasks.find((t) => t.id === taskId);
+          if (task) {
+            setEditor({ mode: "edit", task });
+          }
+        }}
+        onDeleteTask={async (taskId) => {
+          setBusy("task");
+          setActionError(null);
+          try {
+            await api.removeTask(id, taskId);
+            setSelectedTaskId(null);
+            await refresh();
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : String(error));
+          } finally {
+            setBusy(null);
+          }
+        }}
+        onResume={() => run("resume", () => api.resume(id))}
+        onCancel={() => setConfirmCancel(true)}
+        onConfigureDeepSeek={() => setSettingsOpen(true)}
       />
 
       {/* Composer (always at bottom) */}
@@ -262,16 +286,16 @@ export function ProjectWorkspace({
       <Dialog
         open={confirmStart}
         onClose={() => setConfirmStart(false)}
-        title="Start project"
+        title="Ejecutar proyecto"
         width="max-w-md"
       >
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+        <p className="text-sm text-ink-3">
           La ejecución puede modificar código, crear commits y ejecutar tests en
           worktrees aislados. El resultado se deja en una branch aislada y nunca
           se integra automáticamente a <code className="font-mono">main</code>.
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button onClick={() => setConfirmStart(false)}>Cancel</Button>
+          <Button onClick={() => setConfirmStart(false)}>Cancelar</Button>
           <Button
             variant="primary"
             loading={busy === "start"}
@@ -280,7 +304,7 @@ export function ProjectWorkspace({
               void run("start", () => api.run(id));
             }}
           >
-            Start project
+            Ejecutar
           </Button>
         </div>
       </Dialog>
@@ -288,16 +312,16 @@ export function ProjectWorkspace({
       <Dialog
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
-        title="Cancel project"
+        title="Cancelar proyecto"
         width="max-w-md"
       >
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+        <p className="text-sm text-ink-3">
           Se detendrá la ejecución: las tareas en curso se interrumpen y no se
-          lanzan nuevas tareas. El proyecto quedará en estado{" "}
-          <span className="font-medium">Cancelled</span>.
+          lanzan nuevas tareas. DeepSeek finalizará su lote actual. El proyecto
+          quedará en estado <span className="font-medium">Cancelled</span>.
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button onClick={() => setConfirmCancel(false)}>Keep running</Button>
+          <Button onClick={() => setConfirmCancel(false)}>Continuar</Button>
           <Button
             variant="danger"
             loading={busy === "cancel"}
@@ -306,7 +330,7 @@ export function ProjectWorkspace({
               void run("cancel", () => api.cancel(id));
             }}
           >
-            Cancel project
+            Cancelar proyecto
           </Button>
         </div>
       </Dialog>
@@ -317,7 +341,7 @@ export function ProjectWorkspace({
         title="Borrar proyecto"
         width="max-w-md"
       >
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+        <p className="text-sm text-ink-3">
           Se borrará <span className="font-medium">{project.name}</span> de la
           app, junto con sus tareas, eventos y reviews. El directorio en disco{" "}
           <span className="font-medium">no</span> se toca. Esta acción no se
