@@ -1,0 +1,37 @@
+ui/src/components/projects/AgentsStatusBlock.tsx
+  s_d724ca0f5d9e75::t_0cfe5743c0b7f6 1-106
+ui/src/components/projects/ChatThread.tsx
+  s_d724ca0f5d9e75::t_fff66f6d9f5c99 4,13-16,25-26,30,33-37,44-45,49,52-56,131-166,175-182
+ui/src/components/projects/GitConflictBlock.tsx
+  s_d724ca0f5d9e75::t_1f75aa18ecc176 1-87
+ui/src/components/projects/ImportProjectDialog.tsx
+  s_d724ca0f5d9e75::t_0acab74ba155f1 107
+ui/src/components/projects/PauseStateBlock.tsx
+  s_d724ca0f5d9e75::t_6e82e17b36a800 1-83
+ui/src/components/projects/PlannerErrorBlock.tsx
+  s_d724ca0f5d9e75::t_e702deb4f69814 1-59
+ui/src/components/projects/ProjectWorkspace.tsx
+  s_d724ca0f5d9e75::t_69026fcc851289 47,224-225,228-229,232-253,289,292,298,307,315,318,320-321,324,333,344
+ui/src/components/projects/TaskDetailBlock.tsx
+  s_d724ca0f5d9e75::t_6336083c7973e6 1-231
+ui/src/components/projects/TaskEditor.tsx
+  s_d724ca0f5d9e75::t_20e989cabc1982 87,167,171,177,179-180,189
+ui/src/components/ui/Block.tsx
+  s_d724ca0f5d9e75::t_90c1baea60a540 1-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe3fc137efbb3bb550850cd7b3df914bea9eb162",
+  "prompts": {},
+  "sessions": {
+    "s_d724ca0f5d9e75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c06e9666-7a97-40ef-babe-d4cfc80dd0bf",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
