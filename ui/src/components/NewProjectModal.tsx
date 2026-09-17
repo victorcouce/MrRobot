@@ -150,11 +150,18 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
         className="fixed inset-0 bg-black/30 z-40"
         onClick={handleClose}
       />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-title"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50"
+      >
         <div className="w-[640px] bg-surface rounded-composer shadow-modal overflow-hidden">
           <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-1">
             <div>
-              <h2 className="text-lg font-semibold text-ink">Nuevo proyecto</h2>
+              <h2 id="new-project-title" className="text-lg font-semibold text-ink">
+                Nuevo proyecto
+              </h2>
               <p className="mt-1 text-sm text-ink-3 leading-relaxed">
                 Describe qué quieres construir y dónde. Lo demás lo decide el planner.
               </p>

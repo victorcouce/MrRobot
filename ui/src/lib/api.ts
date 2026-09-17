@@ -171,7 +171,20 @@ export const api = {
 
   listAllChats: () => request<ChatSummary[]>("/api/chats"),
 
-  createChat: async (id: string, input: { title?: string; message?: string }) => {
+  createChat: async (
+    id: string,
+    input: {
+      title?: string;
+      message?: string;
+      attachments?: Array<{
+        name: string;
+        type: "image" | "markdown";
+        mimeType: string;
+        size: number;
+        data: string;
+      }>;
+    },
+  ) => {
     const chat = await request<ChatDetail>(`/api/projects/${id}/chats`, {
       method: "POST",
       body: JSON.stringify(input),

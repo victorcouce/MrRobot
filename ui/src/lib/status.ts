@@ -16,25 +16,25 @@ export interface StatusMeta {
 }
 
 export const PROJECT_STATUS: Record<ProjectStatus, StatusMeta> = {
-  draft: { label: "Draft", color: "zinc" },
-  planning: { label: "Planning", color: "amber", pulse: true },
-  ready: { label: "Ready", color: "sky" },
-  running: { label: "Running", color: "blue", pulse: true },
-  paused: { label: "Paused", color: "amber" },
-  blocked: { label: "Blocked", color: "orange" },
-  completed: { label: "Completed", color: "emerald" },
-  failed: { label: "Failed", color: "red" },
-  cancelled: { label: "Cancelled", color: "zinc" },
+  draft: { label: "Borrador", color: "zinc" },
+  planning: { label: "Planificando", color: "amber", pulse: true },
+  ready: { label: "Listo", color: "sky" },
+  running: { label: "Ejecutando", color: "blue", pulse: true },
+  paused: { label: "En pausa", color: "amber" },
+  blocked: { label: "Bloqueado", color: "orange" },
+  completed: { label: "Completado", color: "emerald" },
+  failed: { label: "Fallido", color: "red" },
+  cancelled: { label: "Cancelado", color: "zinc" },
 };
 
 export const TASK_STATUS: Record<TaskStatus, StatusMeta> = {
-  todo: { label: "Todo", color: "zinc" },
-  ready: { label: "Ready", color: "sky" },
-  running: { label: "Running", color: "blue", pulse: true },
-  interrupted: { label: "Interrupted", color: "amber" },
-  blocked: { label: "Blocked", color: "orange" },
-  done: { label: "Done", color: "emerald" },
-  failed: { label: "Failed", color: "red" },
+  todo: { label: "Pendiente", color: "zinc" },
+  ready: { label: "Lista", color: "sky" },
+  running: { label: "En curso", color: "blue", pulse: true },
+  interrupted: { label: "Interrumpida", color: "amber" },
+  blocked: { label: "Bloqueada", color: "orange" },
+  done: { label: "Hecha", color: "emerald" },
+  failed: { label: "Fallida", color: "red" },
 };
 
 export const TASK_TYPE_LABELS: Record<string, string> = {

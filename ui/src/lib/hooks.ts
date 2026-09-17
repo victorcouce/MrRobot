@@ -9,6 +9,7 @@ import {
 import { subscribeProject } from "./sse";
 import type {
   AppInfo,
+  ChatMessage,
   ChatSummary,
   Project,
   ProjectEvent,
@@ -144,18 +145,24 @@ export interface ProjectState {
   reviews: StoredReview[];
   supervisorRuns: SupervisorRun[];
   chats: ChatSummary[];
+  messages: ChatMessage[];
   loading: boolean;
   error: string | null;
   notFound: boolean;
   refresh: () => Promise<void>;
 }
 
-export function useProject(id: string): ProjectState {
+/**
+ * `chatId` es el chat abierto en el hilo: sus mensajes se cargan y se refrescan
+ * con el mismo ciclo que el resto del proyecto, sin abrir un segundo SSE.
+ */
+export function useProject(id: string, chatId?: string | null): ProjectState {
   const [project, setProject] = useState<Project | null>(null);
   const [events, setEvents] = useState<ProjectEvent[]>([]);
   const [reviews, setReviews] = useState<StoredReview[]>([]);
   const [supervisorRuns, setSupervisorRuns] = useState<SupervisorRun[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -163,19 +170,21 @@ export function useProject(id: string): ProjectState {
 
   const load = useCallback(async () => {
     try {
-      const [project, events, reviews, supervisorRuns, chats] =
+      const [project, events, reviews, supervisorRuns, chats, detail] =
         await Promise.all([
           api.getProject(id),
           api.getEvents(id),
           api.getReviews(id),
           api.getSupervisorRuns(id),
           api.listChats(id),
+          chatId ? api.getChat(id, chatId) : Promise.resolve(null),
         ]);
       setProject(project);
       setEvents(events);
       setReviews(reviews);
       setSupervisorRuns(supervisorRuns);
       setChats(chats);
+      setMessages(detail?.messages ?? []);
       setError(null);
       setNotFound(false);
     } catch (error) {
@@ -187,16 +196,18 @@ export function useProject(id: string): ProjectState {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, chatId]);
+
+  // La suscripción solo depende del proyecto: cambiar de chat recarga los datos
+  // pero no reabre el stream.
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useEffect(() => {
-    setLoading(true);
-    void load();
-
     const unsubscribe = subscribeProject(id, () => {
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
-        void load();
+        void loadRef.current();
       }, 60);
     });
 
@@ -204,7 +215,11 @@ export function useProject(id: string): ProjectState {
       clearTimeout(timer.current);
       unsubscribe();
     };
-  }, [id, load]);
+  }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return {
     project,
@@ -212,6 +227,7 @@ export function useProject(id: string): ProjectState {
     reviews,
     supervisorRuns,
     chats,
+    messages,
     loading,
     error,
     notFound,

@@ -561,7 +561,7 @@ export class Runtime {
         projectId,
         chat.id,
         input.message,
-        undefined,
+        input.attachments,
         deps,
       );
     }

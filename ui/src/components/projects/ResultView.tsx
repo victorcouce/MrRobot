@@ -1,7 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import type { Project } from "../../lib/types";
 import { formatDuration, shortSha } from "../../lib/format";
-import { agentLabel } from "../../lib/api";
-import { PreviewPanel } from "./PreviewPanel";
+import { clsx } from "../../lib/cx";
 
 function Stat({
   label,
@@ -13,16 +15,57 @@ function Stat({
   mono?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="text-xs uppercase tracking-wide text-zinc-400">{label}</div>
+    <div className="rounded-chip border border-line bg-subtle px-3 py-2.5">
+      <div className="text-xs text-ink-4">{label}</div>
       <div
-        className={
+        className={clsx(
+          "mt-1",
           mono
-            ? "mt-1 break-all font-mono text-sm text-zinc-800 dark:text-zinc-100"
-            : "mt-1 text-lg font-semibold text-zinc-900 dark:text-zinc-100"
-        }
+            ? "break-all font-mono text-sm text-ink-2"
+            : "text-lg font-semibold text-ink",
+        )}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * MrRobot nunca integra: el resultado se queda en su rama y aquí se ofrece el
+ * comando de merge para que lo haga quien corresponda.
+ */
+function MergeCommand({ branch }: { branch: string }) {
+  const [copied, setCopied] = useState(false);
+  const command = `git merge ${branch}`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="rounded-chip border border-line bg-subtle p-3">
+      <p className="text-sm text-ink-3">
+        El trabajo está en una rama aparte. MrRobot no hace merge: cuando lo
+        revises, intégralo tú.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <code className="flex-1 truncate rounded-chip bg-surface px-3 py-2 font-mono text-xs text-ink-2">
+          {command}
+        </code>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="focus-ring shrink-0 rounded-btn border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:bg-muted"
+        >
+          {copied ? "Copiado" : "Copiar"}
+        </button>
       </div>
     </div>
   );
@@ -39,51 +82,38 @@ export function ResultView({ project }: { project: Project }) {
   const blockedTasks = project.tasks.filter((task) => task.status === "blocked");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Tasks completed" value={`${stats.done} / ${stats.total}`} />
-        {duration && <Stat label="Duration" value={duration} />}
+        <Stat label="Tareas hechas" value={`${stats.done} / ${stats.total}`} />
+        {duration && <Stat label="Duración" value={duration} />}
         {project.resultBranch && (
-          <Stat label="Final branch" value={project.resultBranch} mono />
+          <Stat label="Rama final" value={project.resultBranch} mono />
         )}
         {project.resultCommit && (
-          <Stat label="Final commit" value={shortSha(project.resultCommit)} mono />
+          <Stat label="Commit final" value={shortSha(project.resultCommit)} mono />
         )}
-        {project.repoPath && (
-          <Stat label="Repo" value={project.repoPath} mono />
-        )}
+        {project.repoPath && <Stat label="Carpeta" value={project.repoPath} mono />}
         {project.remoteUrl && (
-          <Stat label="Remote" value={project.remoteUrl} mono />
+          <Stat label="Remoto" value={project.remoteUrl} mono />
         )}
       </div>
 
-      {project.resultBranch && project.resultCommit && (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            El trabajo está en una <strong>branch aislada</strong>. No se ha
-            integrado automáticamente a <code className="font-mono">main</code>.
-          </p>
-        </div>
-      )}
-
-      {project.resultCommit && <PreviewPanel project={project} />}
+      {project.resultBranch && <MergeCommand branch={project.resultBranch} />}
 
       {agentsUsed.length > 0 && (
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Agents used
+          <h3 className="mb-2 text-xs font-semibold text-ink-4">
+            Agentes que trabajaron
           </h3>
-          <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <div className="overflow-hidden rounded-chip border border-line">
             {agentsUsed.map((usage) => (
               <div
                 key={`${usage.provider}:${usage.model ?? ""}`}
-                className="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5 text-sm last:border-0 dark:border-zinc-800"
+                className="flex items-center justify-between border-b border-line-soft px-3 py-2 text-sm last:border-0"
               >
-                <span className="text-zinc-700 dark:text-zinc-300">
-                  {usage.label}
-                </span>
-                <span className="tabular-nums text-zinc-500">
-                  {usage.tasks} task{usage.tasks === 1 ? "" : "s"}
+                <span className="font-mono text-ink-2">{usage.label}</span>
+                <span className="tabular-nums text-ink-4">
+                  {usage.tasks} {usage.tasks === 1 ? "tarea" : "tareas"}
                 </span>
               </div>
             ))}
@@ -93,14 +123,12 @@ export function ResultView({ project }: { project: Project }) {
 
       {(failedTasks.length > 0 || blockedTasks.length > 0) && (
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Issues
-          </h3>
+          <h3 className="mb-2 text-xs font-semibold text-ink-4">Sin terminar</h3>
           <ul className="space-y-2">
             {failedTasks.map((task) => (
               <li
                 key={task.id}
-                className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+                className="rounded-chip border border-danger-soft bg-danger-soft px-3 py-2 text-sm text-danger-text"
               >
                 <span className="font-mono text-xs">{task.id}</span> · {task.title}
                 {task.error ? ` — ${task.error}` : ""}
@@ -109,7 +137,7 @@ export function ResultView({ project }: { project: Project }) {
             {blockedTasks.map((task) => (
               <li
                 key={task.id}
-                className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-900/50 dark:bg-orange-950/30 dark:text-orange-300"
+                className="rounded-chip border border-warning-soft bg-warning-soft px-3 py-2 text-sm text-warning-text"
               >
                 <span className="font-mono text-xs">{task.id}</span> · {task.title}
                 {task.blockedReason ? ` — ${task.blockedReason}` : ""}

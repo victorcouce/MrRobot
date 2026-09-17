@@ -237,6 +237,80 @@ export function parseImportProject(
   return input;
 }
 
+export interface ParsedAttachment {
+  name: string;
+  type: "image" | "markdown";
+  mimeType: string;
+  size: number;
+  data: string;
+}
+
+export function parseAttachments(
+  value: unknown,
+): ParsedAttachment[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("El campo attachments debe ser un array.");
+  }
+
+  const validated: ParsedAttachment[] = [];
+
+  for (const att of value) {
+    if (typeof att !== "object" || att === null) {
+      throw new Error("Cada adjunto debe ser un objeto.");
+    }
+
+    const obj = att as Record<string, unknown>;
+    const name = obj["name"];
+    const type = obj["type"];
+    const mimeType = obj["mimeType"];
+    const size = obj["size"];
+    const data = obj["data"];
+
+    if (typeof name !== "string" || !name.trim()) {
+      throw new Error('El campo "name" del adjunto es obligatorio.');
+    }
+    if (type !== "image" && type !== "markdown") {
+      throw new Error('El campo "type" debe ser "image" o "markdown".');
+    }
+    if (typeof mimeType !== "string" || !mimeType.trim()) {
+      throw new Error('El campo "mimeType" es obligatorio.');
+    }
+    if (typeof size !== "number" || size < 0) {
+      throw new Error('El campo "size" debe ser un número positivo.');
+    }
+    if (typeof data !== "string" || !data.trim()) {
+      throw new Error('El campo "data" es obligatorio.');
+    }
+
+    if (size > 2 * 1024 * 1024) {
+      throw new Error(`El adjunto "${name}" excede 2MB.`);
+    }
+
+    validated.push({
+      name: name.trim(),
+      type,
+      mimeType: mimeType.trim(),
+      size,
+      data,
+    });
+  }
+
+  if (validated.length === 0) {
+    return undefined;
+  }
+
+  const totalSize = validated.reduce((sum, a) => sum + a.size, 0);
+  if (totalSize > 5 * 1024 * 1024) {
+    throw new Error("El total de adjuntos excede 5MB.");
+  }
+
+  return validated;
+}
+
 export function parseChatInput(body: Record<string, unknown>): CreateChatInput {
   const input: CreateChatInput = {};
 
@@ -256,18 +330,17 @@ export function parseChatInput(body: Record<string, unknown>): CreateChatInput {
     input.message = message.trim();
   }
 
+  const attachments = parseAttachments(body["attachments"]);
+  if (attachments) {
+    input.attachments = attachments;
+  }
+
   return input;
 }
 
 export interface ParsedChatMessage {
   content: string;
-  attachments?: Array<{
-    name: string;
-    type: "image" | "markdown";
-    mimeType: string;
-    size: number;
-    data: string;
-  }>;
+  attachments?: ParsedAttachment[];
 }
 
 export function parseChatMessage(body: Record<string, unknown>): ParsedChatMessage {
@@ -279,61 +352,9 @@ export function parseChatMessage(body: Record<string, unknown>): ParsedChatMessa
 
   const parsed: ParsedChatMessage = { content: content.trim() };
 
-  const attachments = body["attachments"];
-  if (attachments !== undefined && attachments !== null) {
-    if (!Array.isArray(attachments)) {
-      throw new Error("El campo attachments debe ser un array.");
-    }
-
-    const validated = [];
-    for (const att of attachments) {
-      if (typeof att !== "object" || att === null) {
-        throw new Error("Cada adjunto debe ser un objeto.");
-      }
-
-      const obj = att as Record<string, unknown>;
-      const name = obj["name"];
-      const type = obj["type"];
-      const mimeType = obj["mimeType"];
-      const size = obj["size"];
-      const data = obj["data"];
-
-      if (typeof name !== "string" || !name.trim()) {
-        throw new Error('El campo "name" del adjunto es obligatorio.');
-      }
-      if (type !== "image" && type !== "markdown") {
-        throw new Error('El campo "type" debe ser "image" o "markdown".');
-      }
-      if (typeof mimeType !== "string" || !mimeType.trim()) {
-        throw new Error('El campo "mimeType" es obligatorio.');
-      }
-      if (typeof size !== "number" || size < 0) {
-        throw new Error('El campo "size" debe ser un número positivo.');
-      }
-      if (typeof data !== "string" || !data.trim()) {
-        throw new Error('El campo "data" es obligatorio.');
-      }
-
-      if (size > 2 * 1024 * 1024) {
-        throw new Error(`El adjunto "${name}" excede 2MB.`);
-      }
-
-      validated.push({
-        name: name.trim(),
-        type: type as "image" | "markdown",
-        mimeType: mimeType.trim(),
-        size,
-        data,
-      });
-    }
-
-    if (validated.length > 0) {
-      const totalSize = validated.reduce((sum, a) => sum + a.size, 0);
-      if (totalSize > 5 * 1024 * 1024) {
-        throw new Error("El total de adjuntos excede 5MB.");
-      }
-      parsed.attachments = validated;
-    }
+  const attachments = parseAttachments(body["attachments"]);
+  if (attachments) {
+    parsed.attachments = attachments;
   }
 
   return parsed;

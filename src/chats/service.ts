@@ -24,6 +24,14 @@ const REACTIVATABLE_STATUSES = new Set([
 export interface CreateChatInput {
   title?: string;
   message?: string;
+  /** Adjuntos del primer mensaje, cuando el chat nace con uno. */
+  attachments?: Array<{
+    name: string;
+    type: "image" | "markdown";
+    mimeType: string;
+    size: number;
+    data: string;
+  }>;
 }
 
 export interface ChatSummaryResult {

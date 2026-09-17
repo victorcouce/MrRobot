@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { AGENT_CHOICES, choiceToAgent } from "../../lib/agents";
@@ -12,16 +12,19 @@ import { Dialog } from "../ui/Dialog";
 import { ChatThread } from "./ChatThread";
 import { ThreadComposer } from "./ThreadComposer";
 import { ThreadHeader } from "./ThreadHeader";
-import { ChatsPanel } from "./ChatsPanel";
-import { ProjectSettingsDialog } from "./ProjectSettingsDialog";
 import { TaskEditor, type TaskFormData } from "./TaskEditor";
 
-type EditorState =
-  | { mode: "edit"; task: Task }
-  | { mode: "create" }
-  | null;
+type EditorState = { mode: "edit"; task: Task } | { mode: "create" } | null;
 
 type ViewMode = "list" | "graph" | "board";
+
+interface ProcessedAttachment {
+  name: string;
+  type: "image" | "markdown";
+  mimeType: string;
+  size: number;
+  data: string;
+}
 
 export function ProjectWorkspace({
   id,
@@ -30,8 +33,21 @@ export function ProjectWorkspace({
   id: string;
   initialChatId?: string;
 }) {
-  const { project, events, reviews, supervisorRuns, chats, loading, error, notFound, refresh } =
-    useProject(id);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(
+    initialChatId ?? null,
+  );
+  const {
+    project,
+    events,
+    reviews,
+    supervisorRuns,
+    chats,
+    messages,
+    loading,
+    error,
+    notFound,
+    refresh,
+  } = useProject(id, selectedChatId);
   const { info } = useAppInfo();
   const router = useRouter();
 
@@ -39,12 +55,11 @@ export function ProjectWorkspace({
   const [confirmStart, setConfirmStart] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pauseRequested, setPauseRequested] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId ?? null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +73,34 @@ export function ProjectWorkspace({
       setPauseRequested(false);
     }
   }, [project?.status]);
+
+  // Sin `?chat=` se abre el chat más reciente: el composer nunca queda muerto.
+  useEffect(() => {
+    if (chats.length === 0) {
+      setSelectedChatId(null);
+      return;
+    }
+
+    setSelectedChatId((current) =>
+      current && chats.some((chat) => chat.id === current)
+        ? current
+        : (chats[chats.length - 1]?.id ?? null),
+    );
+  }, [chats]);
+
+  const availableAgents: AgentSpec[] = useMemo(() => {
+    const connected = new Set(
+      (info?.agents ?? [])
+        .filter((agent) => agent.connected)
+        .map((agent) => agent.provider),
+    );
+
+    return AGENT_CHOICES.map((choice) => choiceToAgent(choice.value)).filter(
+      (agent) => connected.has(agent.provider),
+    );
+  }, [info]);
+
+  const selectedChat = chats.find((chat) => chat.id === selectedChatId);
 
   async function run(action: string, fn: () => Promise<unknown>) {
     setBusy(action);
@@ -89,19 +132,20 @@ export function ProjectWorkspace({
 
   async function handleSendMessage(
     message: string,
-    attachments?: Array<{
-      name: string;
-      type: "image" | "markdown";
-      mimeType: string;
-      size: number;
-      data: string;
-    }>,
+    attachments?: ProcessedAttachment[],
   ) {
-    if (!selectedChatId) return;
     setBusy("message");
     setActionError(null);
     try {
-      await api.sendChatMessage(id, selectedChatId, message, attachments);
+      if (selectedChatId) {
+        await api.sendChatMessage(id, selectedChatId, message, attachments);
+      } else {
+        // Un proyecto sin chats necesita uno: crearlo con el mensaje ya lo
+        // envía, así que no se manda dos veces.
+        const chat = await api.createChat(id, { message, attachments });
+        setSelectedChatId(chat.id);
+      }
+
       await refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -132,7 +176,7 @@ export function ProjectWorkspace({
   if (error && !project) {
     return (
       <div className="mx-auto max-w-xl px-6 py-16">
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <div className="rounded-block border border-danger bg-danger-soft px-4 py-3 text-sm text-danger-text">
           {error}
         </div>
       </div>
@@ -142,10 +186,6 @@ export function ProjectWorkspace({
   if (!project) return null;
 
   const isEditable = project.status === "ready";
-  const canEditConfig =
-    project.status === "draft" ||
-    project.status === "ready" ||
-    project.status === "paused";
 
   async function submitTask(data: TaskFormData) {
     setBusy("task");
@@ -202,8 +242,7 @@ export function ProjectWorkspace({
     <div className="flex h-full flex-col">
       <ThreadHeader
         project={project}
-        chatName={selectedChatId ? chats.find((c) => c.id === selectedChatId)?.title : undefined}
-        onSettings={() => setSettingsOpen(true)}
+        chatName={selectedChat?.title}
         onStart={async () => {
           if (project.status === "draft") {
             await run("plan", () => api.generatePlan(id));
@@ -218,32 +257,14 @@ export function ProjectWorkspace({
         busy={busy}
         pauseRequested={pauseRequested}
         actionError={actionError}
-        canEditConfig={canEditConfig}
       />
 
-      {/* Show ChatsPanel for draft/planning/ready states */}
-      {(project.status === "draft" ||
-        project.status === "planning" ||
-        project.status === "ready") && (
-        <div className="border-b border-line">
-          <div className="mx-auto max-w-[820px] px-4 py-4 sm:px-6">
-            <ChatsPanel
-              project={project}
-              chats={chats}
-              initialChatId={initialChatId}
-              onRefresh={refresh}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Main chat thread */}
       <ChatThread
         project={project}
+        messages={messages}
         events={events}
         supervisorRuns={supervisorRuns}
         reviews={reviews}
-        agents={[]}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onSelectTask={setSelectedTaskId}
@@ -251,7 +272,7 @@ export function ProjectWorkspace({
         isEditable={isEditable}
         onAddTask={() => setEditor({ mode: "create" })}
         onEditTask={(taskId) => {
-          const task = project.tasks.find((t) => t.id === taskId);
+          const task = project.tasks.find((entry) => entry.id === taskId);
           if (task) {
             setEditor({ mode: "edit", task });
           }
@@ -264,44 +285,28 @@ export function ProjectWorkspace({
             setSelectedTaskId(null);
             await refresh();
           } catch (error) {
-            setActionError(error instanceof Error ? error.message : String(error));
+            setActionError(
+              error instanceof Error ? error.message : String(error),
+            );
           } finally {
             setBusy(null);
           }
         }}
         onResume={() => run("resume", () => api.resume(id))}
         onCancel={() => setConfirmCancel(true)}
-        onConfigureDeepSeek={() => setSettingsOpen(true)}
+        onRetryPlan={() => run("plan", () => api.generatePlan(id))}
       />
 
-      {/* Composer (always at bottom) */}
-      {(() => {
-        const selectedChat = selectedChatId
-          ? chats?.find((c) => c.id === selectedChatId)
-          : null;
-        const connectedProviders = new Set(
-          (info?.agents ?? [])
-            .filter((agent) => agent.connected)
-            .map((agent) => agent.provider),
-        );
-        const availableAgents: AgentSpec[] = AGENT_CHOICES.map((choice) =>
-          choiceToAgent(choice.value),
-        ).filter((agent) => connectedProviders.has(agent.provider));
+      <ThreadComposer
+        status={project.status}
+        onSendMessage={handleSendMessage}
+        onPauseAndWrite={() => void requestPause()}
+        allowedAgents={selectedChat?.allowedAgents}
+        availableAgents={availableAgents}
+        onUpdateAllowedAgents={handleUpdateAllowedAgents}
+        loading={busy === "message"}
+      />
 
-        return (
-          <ThreadComposer
-            status={project.status}
-            onSendMessage={handleSendMessage}
-            onPauseAndWrite={() => void requestPause()}
-            allowedAgents={selectedChat?.allowedAgents}
-            availableAgents={availableAgents}
-            onUpdateAllowedAgents={handleUpdateAllowedAgents}
-            disabled={!selectedChatId}
-          />
-        );
-      })()}
-
-      {/* Modals and dialogs */}
       {editor && (
         <TaskEditor
           mode={editor.mode}
@@ -314,15 +319,6 @@ export function ProjectWorkspace({
         />
       )}
 
-      <ProjectSettingsDialog
-        project={project}
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onSaved={() => {
-          void refresh();
-        }}
-      />
-
       <Dialog
         open={confirmStart}
         onClose={() => setConfirmStart(false)}
@@ -331,8 +327,8 @@ export function ProjectWorkspace({
       >
         <p className="text-sm text-ink-3">
           La ejecución puede modificar código, crear commits y ejecutar tests en
-          worktrees aislados. El resultado se deja en una branch aislada y nunca
-          se integra automáticamente a <code className="font-mono">main</code>.
+          worktrees aislados. El resultado se deja en una rama aparte y nunca se
+          integra automáticamente a <code className="font-mono">main</code>.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button onClick={() => setConfirmStart(false)}>Cancelar</Button>
@@ -352,16 +348,16 @@ export function ProjectWorkspace({
       <Dialog
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
-        title="Cancelar proyecto"
+        title="Cancelar ejecución"
         width="max-w-md"
       >
         <p className="text-sm text-ink-3">
           Se detendrá la ejecución: las tareas en curso se interrumpen y no se
-          lanzan nuevas tareas. DeepSeek finalizará su lote actual. El proyecto
-          quedará en estado <span className="font-medium">Cancelled</span>.
+          lanzan nuevas. DeepSeek terminará su lote actual. El proyecto quedará
+          cancelado.
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button onClick={() => setConfirmCancel(false)}>Continuar</Button>
+          <Button onClick={() => setConfirmCancel(false)}>Seguir</Button>
           <Button
             variant="danger"
             loading={busy === "cancel"}
@@ -370,28 +366,49 @@ export function ProjectWorkspace({
               void run("cancel", () => api.cancel(id));
             }}
           >
-            Cancelar proyecto
+            Cancelar ejecución
           </Button>
         </div>
       </Dialog>
 
       <Dialog
         open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
+        onClose={() => {
+          setConfirmDelete(false);
+          setDeleteConfirmName("");
+        }}
         title="Borrar proyecto"
         width="max-w-md"
       >
         <p className="text-sm text-ink-3">
           Se borrará <span className="font-medium">{project.name}</span> de la
-          app, junto con sus tareas, eventos y reviews. El directorio en disco{" "}
+          app, junto con sus tareas, eventos y reviews. La carpeta en disco{" "}
           <span className="font-medium">no</span> se toca. Esta acción no se
           puede deshacer.
         </p>
+        <label className="mt-4 block text-sm text-ink-3">
+          Escribe <span className="font-mono text-ink-2">{project.name}</span>{" "}
+          para confirmar:
+          <input
+            type="text"
+            value={deleteConfirmName}
+            onChange={(event) => setDeleteConfirmName(event.target.value)}
+            className="mt-1.5 w-full rounded-btn border border-line-strong bg-surface px-3 py-2 font-mono text-sm text-ink outline-none focus:border-primary"
+          />
+        </label>
         <div className="mt-5 flex justify-end gap-2">
-          <Button onClick={() => setConfirmDelete(false)}>Cancelar</Button>
+          <Button
+            onClick={() => {
+              setConfirmDelete(false);
+              setDeleteConfirmName("");
+            }}
+          >
+            Cancelar
+          </Button>
           <Button
             variant="danger"
             loading={busy === "delete"}
+            disabled={deleteConfirmName !== project.name}
             onClick={() => void deleteCurrentProject()}
           >
             Borrar proyecto

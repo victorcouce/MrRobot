@@ -1,77 +1,87 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function createProject(page: Page, goal: string): Promise<void> {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Nuevo proyecto" }).first().click();
+
+  const modal = page.getByRole("dialog");
+  await modal.getByLabel("Objetivo", { exact: true }).fill(goal);
+  await modal.getByRole("button", { name: "Crear y planificar" }).click();
+
+  await expect(page).toHaveURL(/\/projects\/[a-z0-9-]+$/);
+}
 
 test("flujo completo: crear → planificar → ejecutar → completado", async ({
   page,
 }) => {
-  await page.goto("/");
+  await createProject(
+    page,
+    "Crear una librería TypeScript con una función sum, tests y README.",
+  );
 
-  await page.getByRole("link", { name: "New Project" }).first().click();
+  // El proyecto nace en borrador: el plan se genera desde la cabecera del hilo.
+  await page.getByRole("button", { name: "Planificar" }).click();
 
-  await page.getByLabel("Name").fill("Librería sum");
-  await page
-    .getByLabel("Goal")
-    .fill("Crear una librería TypeScript con una función sum, tests y README.");
+  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+    timeout: 30_000,
+  });
 
-  await page.getByRole("button", { name: "Create project" }).click();
-
-  // Espera a que se cree el proyecto y se redirija a la página
-  await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
-
-  // Generar el plan desde el ThreadHeader
-  await page.getByRole("button", { name: "Plan" }).click();
-
-  // Espera a que el plan esté listo (botón Run visible).
-  await expect(
-    page.getByRole("button", { name: "Run" }),
-  ).toBeVisible({ timeout: 30_000 });
-
-  // Revisar el plan: verificar que se muestra en el hilo
+  // El plan aparece como un bloque dentro del hilo.
   await expect(page.getByText("Implementar sum(a, b)")).toBeVisible();
 
-  // Cambiar a vista Grafo
   await page.getByRole("button", { name: "Grafo" }).click();
   await expect(page.getByText("Implementar sum(a, b)")).toBeVisible();
-
-  // Volver a vista Lista
   await page.getByRole("button", { name: "Lista" }).click();
 
-  // Iniciar la ejecución con confirmación.
-  await page.getByRole("button", { name: "Run" }).click();
+  await page.getByRole("button", { name: "Ejecutar" }).first().click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Start project" })
+    .getByRole("button", { name: "Ejecutar" })
     .click();
 
-  // El proyecto termina y se muestra la branch final.
-  await expect(page.getByText("Final branch")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  // Al terminar, el resultado ofrece el comando de merge.
+  await expect(page.getByText("Rama final")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^git merge agent\/project-/)).toBeVisible();
+  await expect(page.getByText("Completado", { exact: true })).toBeVisible();
 });
 
-test("refresh durante ejecución reconstruye el estado", async ({ page }) => {
-  await page.goto("/");
+test("el hilo conserva la conversación tras recargar", async ({ page }) => {
+  await createProject(page, "Librería TypeScript simple");
 
-  await page.getByRole("link", { name: "New Project" }).first().click();
-  await page.getByLabel("Goal").fill("Librería TypeScript simple");
-  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByRole("button", { name: "Planificar" }).click();
+  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+    timeout: 30_000,
+  });
 
-  // Espera a que se cree el proyecto y se redirija a la página
-  await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
-
-  // Generar el plan
-  await page.getByRole("button", { name: "Plan" }).click();
-
-  await expect(
-    page.getByRole("button", { name: "Run" }),
-  ).toBeVisible({ timeout: 30_000 });
-
-  await page.getByRole("button", { name: "Run" }).click();
+  await page.getByRole("button", { name: "Ejecutar" }).first().click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Start project" })
+    .getByRole("button", { name: "Ejecutar" })
     .click();
 
-  // Refrescar a mitad de la ejecución (el mock es instantáneo, por lo que
-  // puede que ya haya terminado; en cualquier caso el estado debe recuperarse).
   await page.reload();
-  await expect(page.getByText("Final branch")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Rama final")).toBeVisible({ timeout: 30_000 });
+});
+
+test("un mensaje en el chat añade tareas al plan sin perder el hilo", async ({
+  page,
+}) => {
+  await createProject(page, "Librería TypeScript con una función sum");
+
+  await page.getByRole("button", { name: "Planificar" }).click();
+  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const message = "Añade también un workflow de CI";
+  await page.getByPlaceholder("Escribe un mensaje…").fill(message);
+  await page.getByRole("button", { name: "Enviar" }).click();
+
+  // El hilo conserva el turno del usuario y la respuesta del planner, y el
+  // bloque del plan sigue debajo con el estado actual.
+  await expect(page.getByText(message)).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText("Librería TypeScript con función sum, tests y README."),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Plan", { exact: true })).toBeVisible();
 });

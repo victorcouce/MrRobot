@@ -31,8 +31,8 @@ describe("TaskTable", () => {
     expect(screen.getAllByText("TASK-001").length).toBeGreaterThan(0);
     expect(screen.getByText("Define architecture")).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
-    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(screen.getByText("Lista")).toBeInTheDocument();
+    expect(screen.getByText("Hecha")).toBeInTheDocument();
   });
 
   it("llama a onSelect al hacer click en una fila", () => {

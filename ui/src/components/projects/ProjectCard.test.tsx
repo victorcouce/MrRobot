@@ -27,7 +27,7 @@ describe("ProjectCard", () => {
   it("muestra nombre, estado, progreso y tareas", () => {
     render(<ProjectCard project={project} />);
     expect(screen.getByText("Poketo")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Ejecutando")).toBeInTheDocument();
     expect(screen.getByText("18 / 25 tasks")).toBeInTheDocument();
     expect(screen.getByText(/3 agents running/)).toBeInTheDocument();
     expect(screen.getByText("72%")).toBeInTheDocument();

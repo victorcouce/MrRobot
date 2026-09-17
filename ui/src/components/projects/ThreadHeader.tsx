@@ -1,83 +1,71 @@
 "use client";
 
+import Link from "next/link";
 import type { Project } from "../../lib/types";
 import { PROJECT_STATUS } from "../../lib/status";
 import { Button } from "../ui/Button";
-import { StatusBadge, LoadingState } from "../ui/Badge";
+import { StatusBadge } from "../ui/Badge";
 import { ProgressBar } from "../ui/Progress";
 
 interface ThreadHeaderProps {
   project: Project;
   chatName?: string;
-  onSettings?: () => void;
   onStart?: (() => void) | (() => Promise<void>);
   onPause?: () => void;
   onResume?: () => void;
   onCancel?: () => void;
   onDelete?: () => void;
-  onActivityClick?: () => void;
   busy?: string | null;
   pauseRequested?: boolean;
   actionError?: string | null;
-  canEditConfig?: boolean;
 }
 
 export function ThreadHeader({
   project,
   chatName,
-  onSettings,
   onStart,
   onPause,
   onResume,
   onCancel,
   onDelete,
-  onActivityClick,
   busy,
   pauseRequested,
   actionError,
-  canEditConfig,
 }: ThreadHeaderProps) {
   const status = PROJECT_STATUS[project.status];
   const { stats } = project;
 
   return (
-    <div className="border-b border-line bg-surface px-4 py-4 shadow-sm sm:px-6">
-      <div className="mx-auto flex max-w-[820px] flex-wrap items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-ink">
-              {project.name}
-              {chatName && <span className="text-ink-3"> / {chatName}</span>}
-            </h1>
-            <StatusBadge
-              label={status.label}
-              color={status.color}
-              pulse={status.pulse}
-            />
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <div className="flex min-w-[200px] flex-1 items-center gap-3">
-              <ProgressBar value={stats.progress} className="flex-1" />
-              <span className="text-xs font-medium tabular-nums text-ink-3">
-                {stats.done} / {stats.total}
-              </span>
-            </div>
-            {stats.activeAgents > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-ink-3">
-                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-blue-500" />
-                {stats.activeAgents} agent{stats.activeAgents === 1 ? "" : "s"}
-              </span>
+    <div className="border-b border-line bg-surface px-4 sm:px-6">
+      <div className="mx-auto flex min-h-14 max-w-[1060px] flex-wrap items-center justify-between gap-4 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <h1 className="min-w-0 truncate text-sm font-semibold text-ink">
+            {project.name}
+            {chatName && (
+              <span className="font-normal text-ink-3"> / {chatName}</span>
             )}
+          </h1>
+          <StatusBadge
+            label={status.label}
+            color={status.color}
+            pulse={status.pulse}
+          />
+          <div className="hidden min-w-[160px] max-w-[240px] flex-1 items-center gap-2 sm:flex">
+            <ProgressBar value={stats.progress} className="flex-1" />
+            <span className="text-xs tabular-nums text-ink-4">
+              {stats.done}/{stats.total}
+            </span>
           </div>
+          {stats.activeAgents > 0 && (
+            <span className="hidden items-center gap-1.5 text-xs text-ink-3 md:inline-flex">
+              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-primary" />
+              {stats.activeAgents}{" "}
+              {stats.activeAgents === 1 ? "agente" : "agentes"}
+            </span>
+          )}
         </div>
 
-        <div className="flex flex-wrap justify-end gap-2">
-          {canEditConfig && (
-            <Button onClick={onSettings} size="sm">
-              Settings
-            </Button>
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {project.status === "draft" && (
             <Button
               variant="primary"
@@ -85,7 +73,7 @@ export function ThreadHeader({
               loading={busy === "plan"}
               size="sm"
             >
-              Plan
+              Planificar
             </Button>
           )}
           {project.status === "ready" && (
@@ -95,7 +83,7 @@ export function ThreadHeader({
               loading={busy === "start"}
               size="sm"
             >
-              Run
+              Ejecutar
             </Button>
           )}
           {project.status === "running" && (
@@ -103,8 +91,9 @@ export function ThreadHeader({
               onClick={onPause}
               loading={busy === "pause" || pauseRequested}
               size="sm"
+              title="La pausa es cooperativa: se aplica tras el lote en curso."
             >
-              {pauseRequested ? "Pausing…" : "Pause"}
+              {pauseRequested ? "Pausando tras este lote…" : "Pausar"}
             </Button>
           )}
           {project.status === "paused" && (
@@ -114,7 +103,7 @@ export function ThreadHeader({
               loading={busy === "resume"}
               size="sm"
             >
-              Resume
+              Reanudar
             </Button>
           )}
           {(project.status === "running" || project.status === "paused") && (
@@ -124,48 +113,36 @@ export function ThreadHeader({
               loading={busy === "cancel"}
               size="sm"
             >
-              Cancel
+              Cancelar
             </Button>
           )}
-          <Button
-            variant="ghost"
-            aria-label="Activity"
-            title="Activity"
-            onClick={onActivityClick}
-            size="sm"
-            className="text-ink-3 hover:text-ink"
+
+          <Link
+            href="/activity"
+            aria-label="Actividad"
+            title="Actividad"
+            className="focus-ring inline-flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path
-                d="M2 2h12M2 7h12M2 12h12"
+                d="M2 8h2l1.5-4 3 8L10 8h4"
                 stroke="currentColor"
-                strokeWidth="1.2"
+                strokeWidth="1.5"
                 strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </svg>
-          </Button>
+          </Link>
           <Button
             variant="ghost"
-            aria-label="Delete"
-            title="Delete"
+            aria-label="Borrar proyecto"
+            title="Borrar proyecto"
             onClick={onDelete}
             loading={busy === "delete"}
             size="sm"
-            className="text-ink-3 hover:text-red-600"
+            className="text-ink-3 hover:text-danger"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path
                 d="M3 4h10M6.5 4V3h3v1M5 4l.5 8.5h5L11 4"
                 stroke="currentColor"
@@ -179,7 +156,7 @@ export function ThreadHeader({
       </div>
 
       {actionError && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <div className="mx-auto mb-3 max-w-[1060px] rounded-btn border border-danger bg-danger-soft px-4 py-2 text-sm text-danger-text">
           {actionError}
         </div>
       )}
