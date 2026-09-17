@@ -1,0 +1,23 @@
+ui/src/app/activity/page.tsx
+  s_459badd90cbec1::t_186993ba08a232 3,5,9-19,22-25,27-41,43-67,69,71-81,83-145,148-152
+ui/src/app/agents/page.tsx
+  s_459badd90cbec1::t_52a1113a3e3237 3,7,10-18,21-45,47-64,66-71,73-124,126,128,130-133,136-180
+ui/src/app/settings/page.tsx
+  s_459badd90cbec1::t_2a6d38d7e18c62 3,10-11,14-15,20,24,28,36,42-46,57,63,72-84,86-88,90-124,126-154,156,160-212,215-384,387-468,472-495
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a9e1f7a5620f9ae6de5221c3878ec6975f7148c",
+  "prompts": {},
+  "sessions": {
+    "s_459badd90cbec1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d80b5a6-fc30-4f97-ac86-a689a8032d6b",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
