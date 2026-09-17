@@ -31,7 +31,7 @@ export function Tabs({
           className={clsx(
             "focus-ring -mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
             active === tab.id
-              ? "border-accent text-zinc-900 dark:text-zinc-100"
+              ? "border-primary text-zinc-900 dark:text-zinc-100"
               : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200",
           )}
         >

@@ -444,9 +444,17 @@ export async function updateChatAllowedAgents(
   const chat = await loadChat(projectId, chatId, deps);
   const updated: Chat = {
     ...chat,
-    ...(agents.length > 0 && { allowedAgents: agents }),
     updatedAt: new Date(),
   };
+
+  // Una lista vacía significa "sin restricción": hay que borrar la anterior,
+  // no conservarla.
+  if (agents.length > 0) {
+    updated.allowedAgents = agents;
+  } else {
+    delete updated.allowedAgents;
+  }
+
   await deps.storage.saveChat(updated);
   await emitProjectEvent(deps.storage, projectId, "chat.updated", undefined, {
     chatId,

@@ -143,6 +143,10 @@ async function roundTrip(storage: Storage): Promise<void> {
     projectId: "proj-1",
     title: "Iterar la UI",
     seq: 1,
+    allowedAgents: [
+      { provider: "codex" },
+      { provider: "claude", model: "sonnet" },
+    ],
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:03:00Z"),
   });
@@ -153,6 +157,17 @@ async function roundTrip(storage: Storage): Promise<void> {
     role: "user",
     content: "añade tests de UI",
     taskIds: [],
+    attachments: [
+      {
+        id: "att-1",
+        name: "mockup.png",
+        type: "image",
+        mimeType: "image/png",
+        size: 1234,
+        data: "aGVsbG8=",
+        createdAt: new Date("2026-01-01T00:01:00Z"),
+      },
+    ],
     createdAt: new Date("2026-01-01T00:02:00Z"),
   });
   await storage.appendChatMessage({
@@ -173,10 +188,25 @@ async function roundTrip(storage: Storage): Promise<void> {
 
   const loadedChat = await storage.getChat("chat-1");
   assert.equal(loadedChat?.projectId, "proj-1");
+  assert.deepEqual(loadedChat?.allowedAgents, [
+    { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
+  ]);
 
   const messages = await storage.listChatMessages("chat-1");
   assert.equal(messages.length, 2);
   assert.equal(messages[0]?.role, "user");
+  assert.deepEqual(messages[0]?.attachments, [
+    {
+      id: "att-1",
+      name: "mockup.png",
+      type: "image",
+      mimeType: "image/png",
+      size: 1234,
+      data: "aGVsbG8=",
+      createdAt: new Date("2026-01-01T00:01:00Z"),
+    },
+  ]);
   assert.deepEqual(messages[1]?.taskIds, ["TASK-002"]);
   assert.deepEqual(messages[1]?.agent, { provider: "claude", model: "opus" });
 

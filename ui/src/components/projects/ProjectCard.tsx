@@ -22,7 +22,7 @@ export function ProjectCard({
         className="focus-ring block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
       >
         <div className="flex items-center justify-between gap-2 pr-7">
-          <h3 className="truncate text-sm font-semibold text-zinc-900 group-hover:text-accent dark:text-zinc-100">
+          <h3 className="truncate text-sm font-semibold text-zinc-900 group-hover:text-primary dark:text-zinc-100">
             {project.name}
           </h3>
           <StatusBadge

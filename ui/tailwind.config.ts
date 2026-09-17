@@ -6,10 +6,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        accent: {
-          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
-          fg: "rgb(var(--accent-fg) / <alpha-value>)",
-        },
         bg: "#FAFAF8",
         surface: "#FFFFFF",
         sidebar: "#F5F4F0",

@@ -83,7 +83,7 @@ export function ThemeToggle() {
               className={clsx(
                 "focus-ring flex w-full items-center justify-between px-3 py-1.5 text-sm",
                 theme === option.value
-                  ? "text-accent"
+                  ? "text-primary"
                   : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
               )}
             >

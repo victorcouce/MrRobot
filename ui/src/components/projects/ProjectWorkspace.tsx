@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
-import { choiceToAgent } from "../../lib/agents";
+import { AGENT_CHOICES, choiceToAgent } from "../../lib/agents";
 import { useProject, useAppInfo } from "../../lib/hooks";
 import type { AgentSpec, Task } from "../../lib/types";
 import { Button } from "../ui/Button";
@@ -279,25 +279,14 @@ export function ProjectWorkspace({
         const selectedChat = selectedChatId
           ? chats?.find((c) => c.id === selectedChatId)
           : null;
-        const availableAgents: AgentSpec[] = info?.agents
-          ?.filter((a) => a.connected)
-          .map((a) => {
-            if (a.provider === "codex") return { provider: "codex" };
-            if (a.provider === "claude") {
-              return {
-                provider: "claude",
-                model: "sonnet",
-              };
-            }
-            if (a.provider === "deepseek") {
-              return {
-                provider: "deepseek",
-                model: "deepseek-flash",
-              };
-            }
-            return null;
-          })
-          .filter((a) => a !== null) ?? [];
+        const connectedProviders = new Set(
+          (info?.agents ?? [])
+            .filter((agent) => agent.connected)
+            .map((agent) => agent.provider),
+        );
+        const availableAgents: AgentSpec[] = AGENT_CHOICES.map((choice) =>
+          choiceToAgent(choice.value),
+        ).filter((agent) => connectedProviders.has(agent.provider));
 
         return (
           <ThreadComposer

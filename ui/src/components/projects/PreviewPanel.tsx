@@ -107,7 +107,7 @@ export function PreviewPanel({ project }: { project: Project }) {
               href={runningUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring inline-flex h-9 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors hover:brightness-110"
+              className="focus-ring inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-surface transition-colors hover:bg-primary-hover"
             >
               Abrir preview
             </a>

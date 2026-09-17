@@ -36,6 +36,20 @@ const MIME_TO_TYPE = {
 const MAX_SIZE = 2 * 1024 * 1024;
 const TOTAL_MAX_SIZE = 5 * 1024 * 1024;
 
+// `Buffer` no existe en el navegador: se codifica por bloques para no desbordar
+// la pila al pasar los bytes a String.fromCharCode.
+function toBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
 export function AttachmentUpload({
   attachments,
   onAdd,
@@ -73,8 +87,7 @@ export function AttachmentUpload({
       }
 
       try {
-        const data = await file.arrayBuffer();
-        const base64 = Buffer.from(data).toString("base64");
+        const base64 = toBase64(await file.arrayBuffer());
 
         onAdd({
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
