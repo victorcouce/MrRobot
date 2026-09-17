@@ -1,0 +1,58 @@
+ui/design/HANDOFF.md
+  h_ad3fecde412ca5 1-172
+ui/design/PROMPTS.md
+  h_ad3fecde412ca5 1-57
+ui/design/screens/1-1-Main.html
+  h_ad3fecde412ca5 1-114
+ui/design/screens/1-2-EmptyChat.html
+  h_ad3fecde412ca5 1-180
+ui/design/screens/1-3-PlanSidebar.html
+  h_ad3fecde412ca5 1-213
+ui/design/screens/1-4-Projects.html
+  h_ad3fecde412ca5 1-217
+ui/design/screens/1-5-Search.html
+  h_ad3fecde412ca5 1-177
+ui/design/screens/2-1-NewModal.html
+  h_ad3fecde412ca5 1-213
+ui/design/screens/2-2-NewModalError.html
+  h_ad3fecde412ca5 1-215
+ui/design/screens/2-3-NewModalCreating.html
+  h_ad3fecde412ca5 1-201
+ui/design/screens/3-1-Planning.html
+  h_ad3fecde412ca5 1-188
+ui/design/screens/3-2-Plan.html
+  h_ad3fecde412ca5 1-200
+ui/design/screens/3-3-Run.html
+  h_ad3fecde412ca5 1-228
+ui/design/screens/3-4-Result.html
+  h_ad3fecde412ca5 1-222
+ui/design/screens/3-5-Failed.html
+  h_ad3fecde412ca5 1-210
+ui/design/screens/4-1-Blocks.html
+  h_ad3fecde412ca5 1-134
+ui/design/screens/4-2-Attach.html
+  h_ad3fecde412ca5 1-230
+ui/design/screens/4-3-TaskEditor.html
+  h_ad3fecde412ca5 1-184
+ui/design/screens/4-4-Import.html
+  h_ad3fecde412ca5 1-181
+ui/design/screens/4-5-Dialogs.html
+  h_ad3fecde412ca5 1-161
+ui/design/screens/5-1-Settings.html
+  h_ad3fecde412ca5 1-223
+ui/design/screens/5-2-Agents.html
+  h_ad3fecde412ca5 1-189
+ui/design/screens/5-3-Activity.html
+  h_ad3fecde412ca5 1-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83c41a79d9021f4c5c0738557316830992216e09",
+  "prompts": {},
+  "humans": {
+    "h_ad3fecde412ca5": {
+      "author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
