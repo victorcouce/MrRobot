@@ -210,7 +210,13 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  onNewProject,
+}: {
+  children: ReactNode;
+  onNewProject?: () => void;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -259,69 +265,80 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        <button
-          onClick={toggleCollapsed}
-          className="focus-ring mx-3 flex items-center justify-center rounded-btn border border-line bg-surface p-1.5 text-ink-3 hover:bg-muted hover:text-ink-2 mb-2"
-          aria-label={collapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            {collapsed ? (
-              <path d="M9 4v16M13 10l2 2-2 2" strokeLinecap="round" />
-            ) : (
-              <path d="M15 4v16M11 10l-2 2 2 2" strokeLinecap="round" />
-            )}
-          </svg>
-        </button>
+        <div className="flex flex-col gap-2 px-2 mb-2">
+          <button
+            onClick={toggleCollapsed}
+            className="focus-ring flex items-center justify-center rounded-btn border border-line bg-surface p-1.5 text-ink-3 hover:bg-muted hover:text-ink-2"
+            aria-label={collapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              {collapsed ? (
+                <path d="M9 4v16M13 10l2 2-2 2" strokeLinecap="round" />
+              ) : (
+                <path d="M15 4v16M11 10l-2 2 2 2" strokeLinecap="round" />
+              )}
+            </svg>
+          </button>
+          {collapsed && (
+            <button
+              onClick={() => onNewProject?.()}
+              className="focus-ring flex items-center justify-center rounded-btn bg-primary p-2 text-surface hover:bg-primary-hover"
+              aria-label="Nuevo proyecto"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
 
         {!collapsed && (
-          <nav className="space-y-0.5 px-3 py-2" aria-label="Principal">
-            <NavLink
-              href="/projects"
-              active={pathname === "/projects"}
-              collapsed={collapsed}
+          <>
+            <button
+              onClick={() => onNewProject?.()}
+              className="focus-ring w-full flex items-center justify-center gap-2 rounded-btn bg-primary px-3 py-2 text-sm font-medium text-surface hover:bg-primary-hover mx-3 mb-3"
             >
-              {NAV_ICONS.projects}
-              <span>Proyectos</span>
-            </NavLink>
-            <NavLink
-              href="/agents"
-              active={pathname === "/agents"}
-              collapsed={collapsed}
-            >
-              {NAV_ICONS.agents}
-              <span>Agentes</span>
-            </NavLink>
-            <NavLink
-              href="/activity"
-              active={pathname === "/activity"}
-              collapsed={collapsed}
-            >
-              {NAV_ICONS.activity}
-              <span>Actividad</span>
-            </NavLink>
-          </nav>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+              </svg>
+              Nuevo proyecto
+            </button>
+            <nav className="space-y-0.5 px-3 py-2" aria-label="Principal">
+              <NavLink
+                href="/projects"
+                active={pathname === "/projects"}
+                collapsed={collapsed}
+              >
+                {NAV_ICONS.projects}
+                <span>Proyectos</span>
+              </NavLink>
+              <NavLink
+                href="/agents"
+                active={pathname === "/agents"}
+                collapsed={collapsed}
+              >
+                {NAV_ICONS.agents}
+                <span>Agentes</span>
+              </NavLink>
+              <NavLink
+                href="/activity"
+                active={pathname === "/activity"}
+                collapsed={collapsed}
+              >
+                {NAV_ICONS.activity}
+                <span>Actividad</span>
+              </NavLink>
+            </nav>
+          </>
         )}
 
         <div className={clsx("flex-1 overflow-y-auto", collapsed ? "px-2" : "px-3")}>
           {!collapsed && (
-            <>
-              <p className="px-2.5 pb-2 text-xs font-semibold uppercase tracking-wider text-ink-4">
-                Proyectos
-              </p>
-              <div className="mb-4">
-                <button
-                  onClick={() => (typeof window !== "undefined") && window.dispatchEvent(new CustomEvent("open-new-project"))}
-                  className="focus-ring w-full flex items-center justify-center gap-2 rounded-btn bg-primary px-3 py-2 text-sm font-medium text-surface hover:bg-primary-hover"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                  </svg>
-                  Nuevo proyecto
-                </button>
-              </div>
-            </>
+            <p className="px-2.5 pb-2 text-xs font-semibold uppercase tracking-wider text-ink-4">
+              Proyectos
+            </p>
           )}
-          {collapsed && <div className="mb-3" />}
+          {collapsed && <div className="mb-2" />}
           <ProjectChatGroups collapsed={collapsed} />
         </div>
 
