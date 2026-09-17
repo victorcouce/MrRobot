@@ -1,0 +1,21 @@
+ui/src/app/globals.css
+  s_5dc678e61792a5::t_f5816230ee95d8 1-2,8-12,22-23,25,29
+ui/tailwind.config.ts
+  s_5dc678e61792a5::t_bf7cad34d9c6d2 13-39,58-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "061a6875fcd9bae4d06f0b5d26a65c6fff69400a",
+  "prompts": {},
+  "sessions": {
+    "s_5dc678e61792a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b77faf4-ae79-441a-9a9e-c5e75796c4da",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
