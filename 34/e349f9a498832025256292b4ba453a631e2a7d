@@ -1,0 +1,19 @@
+ui/e2e/project.spec.ts
+  s_298ed3db8b08be::t_41a6bb3b029a16 15,17-23,25,28,30-32,35-37,39,55-61,64,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34e349f9a498832025256292b4ba453a631e2a7d",
+  "prompts": {},
+  "sessions": {
+    "s_298ed3db8b08be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "59ab8ad5-1a44-4a12-9dbf-e3d22b88db92",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
