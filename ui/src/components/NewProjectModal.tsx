@@ -12,6 +12,8 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const [goal, setGoal] = useState("");
   const [name, setName] = useState("");
   const [repoPath, setRepoPath] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [planOnCreate, setPlanOnCreate] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<string[]>(["codex", "claude-sonnet"]);
   const [showMore, setShowMore] = useState(false);
   const [state, setState] = useState<ModalState>("idle");
@@ -48,12 +50,15 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
         goal: goal.trim(),
         name: name || autoName || "Sin título",
         repoPath: repoPath || undefined,
+        remoteUrl: remoteUrl || undefined,
       });
 
       setCreatedProjectId(project.id);
 
       // TODO: Plan generation when backend support is added
-      // await api.planProject(project.id);
+      // if (planOnCreate) {
+      //   await api.planProject(project.id);
+      // }
 
       // Pequeño delay antes de navegar
       setTimeout(() => {
@@ -72,6 +77,8 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
       setGoal("");
       setName("");
       setRepoPath("");
+      setRemoteUrl("");
+      setPlanOnCreate(true);
       setShowMore(false);
       setState("idle");
       setError(null);
@@ -231,18 +238,64 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
               </div>
             </label>
 
-            {/* Más opciones (collapsed) */}
+            {/* Más opciones */}
             <button
               type="button"
               onClick={() => setShowMore(!showMore)}
               className="flex items-center gap-1.5 text-sm font-medium text-ink-2 hover:text-ink p-0 border-0 bg-transparent"
+              aria-expanded={showMore}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden
+                style={{ transform: showMore ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 200ms' }}
+              >
                 <path d="m9 6 6 6-6 6" strokeLinecap="round" />
               </svg>
               Más opciones
               <span className="text-xs font-normal text-ink-4">· remoto de GitHub, planificar al crear</span>
             </button>
+
+            {/* Más opciones - Contenido expandible */}
+            {showMore && (
+              <div className="flex flex-col gap-3 pt-2 border-t border-line-soft">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-ink-2">Remoto de GitHub (opcional)</span>
+                  <input
+                    type="text"
+                    value={remoteUrl}
+                    onChange={(e) => setRemoteUrl(e.target.value)}
+                    placeholder="https://github.com/usuario/repo"
+                    disabled={state === "creating"}
+                    className="font-mono rounded-btn border border-line-strong bg-surface px-3 py-2 text-xs outline-none placeholder:text-ink-4 focus:border-primary focus:ring-1 focus:ring-primary-soft disabled:bg-muted"
+                  />
+                  <div className="text-xs text-warning-text bg-warning-soft rounded px-2 py-1.5">
+                    ⚠️ Requiere <span className="font-mono">GITHUB_TOKEN</span> en variables de entorno
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-2.5 p-2.5 border border-line rounded-btn cursor-pointer hover:bg-subtle transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={planOnCreate}
+                    onChange={(e) => setPlanOnCreate(e.target.checked)}
+                    disabled={state === "creating"}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-ink-2">
+                    Generar el plan al crear
+                    <div className="text-xs font-normal text-ink-4 mt-0.5">
+                      Si lo activas, el proyecto pasará a estado "planning" tras crearse
+                    </div>
+                  </span>
+                </label>
+              </div>
+            )}
 
             {/* Error */}
             {state === "error" && error && (
