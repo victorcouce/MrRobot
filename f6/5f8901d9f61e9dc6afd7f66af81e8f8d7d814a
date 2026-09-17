@@ -1,0 +1,19 @@
+ui/src/components/NewProjectModal.tsx
+  s_5dc678e61792a5::t_5e43bf835cf492 6,24,26-45,48-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f65f8901d9f61e9dc6afd7f66af81e8f8d7d814a",
+  "prompts": {},
+  "sessions": {
+    "s_5dc678e61792a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b77faf4-ae79-441a-9a9e-c5e75796c4da",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
