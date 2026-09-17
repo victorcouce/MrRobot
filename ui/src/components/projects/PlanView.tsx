@@ -14,7 +14,7 @@ export function PlanView({
 }: {
   tasks: Task[];
   onSelectTask: (id: string) => void;
-  onAddTask: () => void;
+  onAddTask?: () => void;
 }) {
   const [view, setView] = useState<"list" | "graph">("list");
 
@@ -29,9 +29,11 @@ export function PlanView({
           active={view}
           onChange={(id) => setView(id as "list" | "graph")}
         />
-        <Button size="sm" onClick={onAddTask}>
-          Add task
-        </Button>
+        {onAddTask && (
+          <Button size="sm" onClick={onAddTask}>
+            Add task
+          </Button>
+        )}
       </div>
 
       {view === "list" ? (

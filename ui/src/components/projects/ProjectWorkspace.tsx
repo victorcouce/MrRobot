@@ -5,31 +5,23 @@ import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { choiceToAgent } from "../../lib/agents";
 import { useProject } from "../../lib/hooks";
-import { PROJECT_STATUS } from "../../lib/status";
 import type { Task } from "../../lib/types";
 import { Button } from "../ui/Button";
-import { StatusBadge, LoadingState } from "../ui/Badge";
-import { ProgressBar } from "../ui/Progress";
+import { LoadingState } from "../ui/Badge";
 import { Dialog } from "../ui/Dialog";
-import { Tabs } from "../ui/Tabs";
-import { ActivityLog } from "./ActivityLog";
-import { AgentsPanel } from "./AgentsPanel";
+import { ChatThread } from "./ChatThread";
+import { ThreadComposer } from "./ThreadComposer";
+import { ThreadHeader } from "./ThreadHeader";
 import { ChatsPanel } from "./ChatsPanel";
-import { DagView } from "./DagView";
-import { ExecutionView } from "./ExecutionView";
-import { PlanView } from "./PlanView";
-import { PlanningState } from "./PlanningState";
 import { ProjectSettingsDialog } from "./ProjectSettingsDialog";
-import { ResultView } from "./ResultView";
-import { SupervisorBanner } from "./SupervisorBanner";
-import { TaskDetail } from "./TaskDetail";
 import { TaskEditor, type TaskFormData } from "./TaskEditor";
-import { TaskTable } from "./TaskTable";
 
 type EditorState =
   | { mode: "edit"; task: Task }
   | { mode: "create" }
   | null;
+
+type ViewMode = "list" | "graph" | "board";
 
 export function ProjectWorkspace({
   id,
@@ -42,7 +34,6 @@ export function ProjectWorkspace({
     useProject(id);
   const router = useRouter();
 
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
   const [confirmStart, setConfirmStart] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -50,14 +41,9 @@ export function ProjectWorkspace({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState(initialChatId ? "chats" : "board");
   const [pauseRequested, setPauseRequested] = useState(false);
-
-  useEffect(() => {
-    if (initialChatId) {
-      setActiveTab("chats");
-    }
-  }, [initialChatId]);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(initialChatId ?? null);
 
   useEffect(() => {
     if (notFound) {
@@ -99,6 +85,20 @@ export function ProjectWorkspace({
     }
   }
 
+  async function handleSendMessage(message: string) {
+    if (!selectedChatId) return;
+    setBusy("message");
+    setActionError(null);
+    try {
+      await api.sendChatMessage(id, selectedChatId, message);
+      await refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -119,14 +119,11 @@ export function ProjectWorkspace({
 
   if (!project) return null;
 
-  const status = PROJECT_STATUS[project.status];
-  const { stats } = project;
   const isEditable = project.status === "ready";
   const canEditConfig =
     project.status === "draft" ||
     project.status === "ready" ||
     project.status === "paused";
-  const selectedTask = project.tasks.find((task) => task.id === selectedTaskId);
 
   async function submitTask(data: TaskFormData) {
     setBusy("task");
@@ -179,271 +176,68 @@ export function ProjectWorkspace({
     }
   }
 
-  async function removeSelectedTask() {
-    if (!selectedTask) return;
-    setBusy("task");
-    setActionError(null);
-    try {
-      await api.removeTask(id, selectedTask.id);
-      setSelectedTaskId(null);
-      await refresh();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const isRunningLike =
-    project.status === "running" ||
-    project.status === "paused" ||
-    project.status === "blocked";
-  const isFinished =
-    project.status === "completed" ||
-    project.status === "failed" ||
-    project.status === "cancelled";
-  const effectiveTab = isFinished
-    ? ["graph", "tasks", "activity", "chats"].includes(activeTab)
-      ? activeTab
-      : "graph"
-    : ["board", "graph", "activity", "chats"].includes(activeTab)
-      ? activeTab
-      : "board";
-
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
-      <header className="mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight">
-            {project.name}
-          </h1>
-          <StatusBadge
-            label={status.label}
-            color={status.color}
-            pulse={status.pulse}
-          />
-          <div className="ml-auto flex items-center gap-2">
-            {canEditConfig && (
-              <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
-            )}
-            {project.status === "ready" && (
-              <Button
-                variant="primary"
-                onClick={() => setConfirmStart(true)}
-              >
-                Start project
-              </Button>
-            )}
-            {project.status === "running" && (
-              <Button
-                onClick={() => void requestPause()}
-                loading={busy === "pause" || pauseRequested}
-              >
-                {pauseRequested ? "Pausing…" : "Pause"}
-              </Button>
-            )}
-            {project.status === "paused" && (
-              <Button
-                variant="primary"
-                onClick={() => run("resume", () => api.resume(id))}
-                loading={busy === "resume"}
-              >
-                Resume
-              </Button>
-            )}
-            {(project.status === "running" || project.status === "paused") && (
-              <Button
-                variant="danger"
-                onClick={() => setConfirmCancel(true)}
-              >
-                Cancel
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              aria-label="Borrar proyecto"
-              title="Borrar proyecto"
-              className="px-2 text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-              onClick={() => setConfirmDelete(true)}
-              loading={busy === "delete"}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M3 4h10M6.5 4V3h3v1M5 4l.5 8.5h5L11 4"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </Button>
-          </div>
-        </div>
+    <div className="flex h-full flex-col">
+      <ThreadHeader
+        project={project}
+        chatName={selectedChatId ? chats.find((c) => c.id === selectedChatId)?.title : undefined}
+        onSettings={() => setSettingsOpen(true)}
+        onStart={async () => {
+          if (project.status === "draft") {
+            await run("plan", () => api.generatePlan(id));
+          } else {
+            setConfirmStart(true);
+          }
+        }}
+        onPause={() => void requestPause()}
+        onResume={() => run("resume", () => api.resume(id))}
+        onCancel={() => setConfirmCancel(true)}
+        onDelete={() => setConfirmDelete(true)}
+        busy={busy}
+        pauseRequested={pauseRequested}
+        actionError={actionError}
+        canEditConfig={canEditConfig}
+      />
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex min-w-[200px] flex-1 items-center gap-3">
-            <ProgressBar value={stats.progress} className="flex-1" />
-            <span className="text-sm font-medium tabular-nums text-zinc-600 dark:text-zinc-300">
-              {stats.done} / {stats.total} tasks
-            </span>
-            <span className="text-xs tabular-nums text-zinc-400">
-              {stats.progress}%
-            </span>
-          </div>
-          {stats.activeAgents > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
-              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-blue-500" />
-              {stats.activeAgents} agent{stats.activeAgents === 1 ? "" : "s"} active
-            </span>
-          )}
-        </div>
-
-        {actionError && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-            {actionError}
-          </div>
-        )}
-      </header>
-
-      {project.status === "draft" && (
-        <div className="rounded-lg border border-dashed border-zinc-300 p-10 text-center dark:border-zinc-700">
-          <h2 className="text-base font-semibold">Genera el plan</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500 dark:text-zinc-400">
-            MrRobot descompondrá el objetivo en un DAG de tareas.
-          </p>
-          <div className="mt-4 flex justify-center">
-            <Button
-              variant="primary"
-              onClick={() => run("plan", () => api.generatePlan(id))}
-              loading={busy === "plan"}
-            >
-              Generate plan
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {project.status === "planning" && <PlanningState />}
-
-      {project.status === "ready" && (
-        <PlanView
-          tasks={project.tasks}
-          onSelectTask={setSelectedTaskId}
-          onAddTask={() => setEditor({ mode: "create" })}
-        />
-      )}
-
+      {/* Show ChatsPanel for draft/planning/ready states */}
       {(project.status === "draft" ||
         project.status === "planning" ||
         project.status === "ready") && (
-        <div className="mt-6">
-          <ChatsPanel
-            project={project}
-            chats={chats}
-            initialChatId={initialChatId}
-            onRefresh={refresh}
-          />
-        </div>
-      )}
-
-      {isRunningLike && (
-        <div className="space-y-4">
-          <SupervisorBanner runs={supervisorRuns} />
-
-          <Tabs
-            tabs={[
-              { id: "board", label: "Board" },
-              { id: "graph", label: "Graph" },
-              { id: "activity", label: "Activity", count: events.length },
-              { id: "chats", label: "Chats", count: chats.length },
-            ]}
-            active={effectiveTab}
-            onChange={setActiveTab}
-          />
-
-          {effectiveTab === "board" && (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_280px]">
-              <ExecutionView tasks={project.tasks} onSelect={setSelectedTaskId} />
-              <aside>
-                <AgentsPanel tasks={project.tasks} />
-              </aside>
-            </div>
-          )}
-
-          {effectiveTab === "graph" && (
-            <DagView tasks={project.tasks} onSelect={setSelectedTaskId} />
-          )}
-
-          {effectiveTab === "activity" && <ActivityLog events={events} />}
-
-          {effectiveTab === "chats" && (
+        <div className="border-b border-line">
+          <div className="mx-auto max-w-[820px] px-4 py-4 sm:px-6">
             <ChatsPanel
               project={project}
               chats={chats}
               initialChatId={initialChatId}
               onRefresh={refresh}
             />
-          )}
+          </div>
         </div>
       )}
 
-      {isFinished && (
-        <div className="space-y-4">
-          {project.status === "cancelled" && (
-            <div className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-              Project cancelled. La ejecución se detuvo y no se generó una branch
-              final.
-            </div>
-          )}
-          {project.status !== "cancelled" && <ResultView project={project} />}
-          <SupervisorBanner runs={supervisorRuns} />
+      {/* Main chat thread */}
+      <ChatThread
+        project={project}
+        events={events}
+        supervisorRuns={supervisorRuns}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onSelectTask={(taskId) => {
+          // TaskDetail will be handled in Fase 4 as expandible blocks
+        }}
+        isEditable={isEditable}
+        onAddTask={() => setEditor({ mode: "create" })}
+      />
 
-          <Tabs
-            tabs={[
-              { id: "graph", label: "Graph" },
-              { id: "tasks", label: "Tasks", count: project.tasks.length },
-              { id: "activity", label: "Activity", count: events.length },
-              { id: "chats", label: "Chats", count: chats.length },
-            ]}
-            active={effectiveTab}
-            onChange={setActiveTab}
-          />
+      {/* Composer (always at bottom) */}
+      <ThreadComposer
+        status={project.status}
+        onSendMessage={handleSendMessage}
+        onPauseAndWrite={() => void requestPause()}
+        disabled={!selectedChatId}
+      />
 
-          {effectiveTab === "graph" && (
-            <DagView tasks={project.tasks} onSelect={setSelectedTaskId} />
-          )}
-          {effectiveTab === "tasks" && (
-            <TaskTable tasks={project.tasks} onSelect={setSelectedTaskId} />
-          )}
-          {effectiveTab === "activity" && <ActivityLog events={events} />}
-          {effectiveTab === "chats" && (
-            <ChatsPanel
-              project={project}
-              chats={chats}
-              initialChatId={initialChatId}
-              onRefresh={refresh}
-            />
-          )}
-        </div>
-      )}
-
-      {selectedTask && (
-        <TaskDetail
-          task={selectedTask}
-          reviews={reviews}
-          onClose={() => setSelectedTaskId(null)}
-          editable={isEditable}
-          onEdit={() => setEditor({ mode: "edit", task: selectedTask })}
-          onDelete={removeSelectedTask}
-        />
-      )}
-
+      {/* Modals and dialogs */}
       {editor && (
         <TaskEditor
           mode={editor.mode}
