@@ -55,7 +55,7 @@ test("chat: enviar mensaje genera tareas asociadas con ids únicos", async () =>
 
   assert.equal(chat.title, "añade una feature");
 
-  await sendChatMessage(draft.id, chat.id, "añade una feature", deps);
+  await sendChatMessage(draft.id, chat.id, "añade una feature", undefined, deps);
 
   const project = await storage.getProject(draft.id);
   assert.ok(project);
@@ -88,7 +88,7 @@ test("chat: iterar conserva las tareas done y no duplica ids", async () => {
   const draft = await createProjectDraft({ goal: "objetivo" }, deps);
   const chat = await createChat(draft.id, { title: "iterar" }, deps);
 
-  await sendChatMessage(draft.id, chat.id, "primer paso", deps);
+  await sendChatMessage(draft.id, chat.id, "primer paso", undefined, deps);
 
   const project = await storage.getProject(draft.id);
   assert.ok(project);
@@ -100,7 +100,7 @@ test("chat: iterar conserva las tareas done y no duplica ids", async () => {
   );
   await storage.saveProject({ ...project, tasks });
 
-  await sendChatMessage(draft.id, chat.id, "segundo paso", deps);
+  await sendChatMessage(draft.id, chat.id, "segundo paso", undefined, deps);
 
   const updated = await storage.getProject(draft.id);
   assert.ok(updated);
@@ -123,8 +123,8 @@ test("chat: varios chats tienen tareas independientes", async () => {
   const chat1 = await createChat(draft.id, { title: "uno" }, deps);
   const chat2 = await createChat(draft.id, { title: "dos" }, deps);
 
-  await sendChatMessage(draft.id, chat1.id, "mensaje uno", deps);
-  await sendChatMessage(draft.id, chat2.id, "mensaje dos", deps);
+  await sendChatMessage(draft.id, chat1.id, "mensaje uno", undefined, deps);
+  await sendChatMessage(draft.id, chat2.id, "mensaje dos", undefined, deps);
 
   const project = await storage.getProject(draft.id);
   assert.ok(project);
@@ -146,7 +146,7 @@ test("chat: iterar sobre un proyecto completed lo reactiva a ready", async () =>
   const draft = await createProjectDraft({ goal: "objetivo" }, deps);
   const chat = await createChat(draft.id, { title: "extra" }, deps);
 
-  await sendChatMessage(draft.id, chat.id, "primer paso", deps);
+  await sendChatMessage(draft.id, chat.id, "primer paso", undefined, deps);
 
   const project = await storage.getProject(draft.id);
   assert.ok(project);
@@ -159,7 +159,7 @@ test("chat: iterar sobre un proyecto completed lo reactiva a ready", async () =>
     finishedAt: new Date(),
   });
 
-  await sendChatMessage(draft.id, chat.id, "una mejora más", deps);
+  await sendChatMessage(draft.id, chat.id, "una mejora más", undefined, deps);
 
   const updated = await storage.getProject(draft.id);
   assert.equal(updated?.status, "ready");
@@ -175,7 +175,7 @@ test("chat: borrar el chat elimina sus tareas", async () => {
   const draft = await createProjectDraft({ goal: "objetivo" }, deps);
   const chat = await createChat(draft.id, { title: "borrar" }, deps);
 
-  await sendChatMessage(draft.id, chat.id, "mensaje", deps);
+  await sendChatMessage(draft.id, chat.id, "mensaje", undefined, deps);
   await deleteChat(draft.id, chat.id, deps);
 
   const project = await storage.getProject(draft.id);
@@ -192,8 +192,8 @@ test("chat: incluye la conversación previa en el prompt del planner", async () 
   const draft = await createProjectDraft({ goal: "objetivo" }, deps);
   const chat = await createChat(draft.id, { title: "contexto" }, deps);
 
-  await sendChatMessage(draft.id, chat.id, "primer mensaje", deps);
-  await sendChatMessage(draft.id, chat.id, "segundo mensaje", deps);
+  await sendChatMessage(draft.id, chat.id, "primer mensaje", undefined, deps);
+  await sendChatMessage(draft.id, chat.id, "segundo mensaje", undefined, deps);
 
   assert.ok(prompts[0]?.includes("primer mensaje"));
   assert.ok(prompts[1]?.includes("primer mensaje"));

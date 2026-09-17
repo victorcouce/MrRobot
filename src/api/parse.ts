@@ -318,7 +318,13 @@ export function parseChatMessage(body: Record<string, unknown>): ParsedChatMessa
         throw new Error(`El adjunto "${name}" excede 2MB.`);
       }
 
-      validated.push({ name: name.trim(), type, mimeType: mimeType.trim(), size, data });
+      validated.push({
+        name: name.trim(),
+        type: type as "image" | "markdown",
+        mimeType: mimeType.trim(),
+        size,
+        data,
+      });
     }
 
     if (validated.length > 0) {

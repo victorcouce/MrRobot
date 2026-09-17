@@ -313,7 +313,7 @@ export async function sendChatMessage(
     role: "user",
     content: trimmed,
     taskIds: [],
-    attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
+    ...(processedAttachments.length > 0 && { attachments: processedAttachments }),
     createdAt: new Date(),
   };
 
@@ -442,7 +442,11 @@ export async function updateChatAllowedAgents(
   deps: ProjectDeps,
 ): Promise<Chat> {
   const chat = await loadChat(projectId, chatId, deps);
-  const updated: Chat = { ...chat, allowedAgents: agents.length > 0 ? agents : undefined, updatedAt: new Date() };
+  const updated: Chat = {
+    ...chat,
+    ...(agents.length > 0 && { allowedAgents: agents }),
+    updatedAt: new Date(),
+  };
   await deps.storage.saveChat(updated);
   await emitProjectEvent(deps.storage, projectId, "chat.updated", undefined, {
     chatId,

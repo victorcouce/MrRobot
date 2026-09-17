@@ -557,7 +557,13 @@ export class Runtime {
     const chat = await createChatInService(projectId, input, deps);
 
     if (input.message?.trim()) {
-      await sendChatMessageInService(projectId, chat.id, input.message, deps);
+      await sendChatMessageInService(
+        projectId,
+        chat.id,
+        input.message,
+        undefined,
+        deps,
+      );
     }
 
     return this.getChat(projectId, chat.id);
