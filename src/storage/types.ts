@@ -67,6 +67,7 @@ export interface Storage {
   saveChat(chat: Chat): Promise<void>;
   getChat(id: string): Promise<Chat | undefined>;
   listChats(projectId: string): Promise<Chat[]>;
+  listAllChats(): Promise<Chat[]>;
   deleteChat(id: string): Promise<void>;
 
   appendChatMessage(message: ChatMessage): Promise<void>;

@@ -290,8 +290,11 @@ Si el proyecto estaba `draft` o en estado terminal (`completed`/`failed`/
 poder lanzar una nueva ejecución. Borrar un chat elimina sus tareas y mensajes.
 
 Los chats se exponen en la UI como pestaña **Chats** (disponible en todos los
-estados salvo `running`); el backend es la fuente de verdad y el SSE refresca el
-hilo en vivo.
+estados salvo `running`) y, además, en la **barra lateral**: cada proyecto
+reciente muestra sus chats agrupados, con un botón `+` para crear uno nuevo.
+Al pulsar un chat de la barra lateral se abre el proyecto en la pestaña Chats
+con ese chat seleccionado (`/projects/:id?chat=:chatId`). El backend es la
+fuente de verdad y el SSE refresca el hilo en vivo.
 
 ## Git
 
@@ -341,6 +344,7 @@ POST   /api/projects/:id/chats         crea un chat (opcional `message`)
 GET    /api/projects/:id/chats/:chatId detalle del chat + mensajes
 DELETE /api/projects/:id/chats/:chatId borra el chat y sus tareas
 POST   /api/projects/:id/chats/:chatId/messages envía un mensaje (planner → tareas)
+GET    /api/chats                      chats de todos los proyectos (sidebar)
 GET    /api/activity                   actividad global reciente
 ```
 

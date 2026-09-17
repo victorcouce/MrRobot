@@ -715,6 +715,19 @@ export class SqlStorage implements Storage {
     return rows.map((row) => this.rowToChat(row));
   }
 
+  async listAllChats(): Promise<Chat[]> {
+    const rows = await this.db.query<{
+      id: string;
+      project_id: string;
+      title: string;
+      seq: number;
+      created_at: string;
+      updated_at: string;
+    }>(`SELECT * FROM chats ORDER BY updated_at DESC`);
+
+    return rows.map((row) => this.rowToChat(row));
+  }
+
   async deleteChat(id: string): Promise<void> {
     await this.db.query(`DELETE FROM chat_messages WHERE chat_id = $1`, [id]);
     await this.db.query(`DELETE FROM chats WHERE id = $1`, [id]);

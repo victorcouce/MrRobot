@@ -184,6 +184,34 @@ export async function listChats(
   return results;
 }
 
+export async function listAllChats(
+  deps: ProjectDeps,
+): Promise<ChatSummaryResult[]> {
+  const projects = await deps.storage.listProjects();
+  const chats = await deps.storage.listAllChats();
+  const tasksByProject = new Map<string, Task[]>();
+
+  for (const project of projects) {
+    tasksByProject.set(project.id, project.tasks);
+  }
+
+  const results: ChatSummaryResult[] = [];
+
+  for (const chat of chats) {
+    const messages = await deps.storage.listChatMessages(chat.id);
+    const tasks = tasksByProject.get(chat.projectId) ?? [];
+    results.push({
+      chat,
+      messageCount: messages.length,
+      taskIds: tasks
+        .filter((task) => task.chatId === chat.id)
+        .map((task) => task.id),
+    });
+  }
+
+  return results;
+}
+
 export async function getChatDetail(
   projectId: string,
   chatId: string,

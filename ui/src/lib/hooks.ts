@@ -77,6 +77,42 @@ export function useProjects() {
   return { projects, error, loading, refresh };
 }
 
+export function useAllChats() {
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      setChats(await api.listAllChats());
+      setError(null);
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    return subscribeProjectsChanged(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  useEffect(() => {
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refresh]);
+
+  return { chats, error, loading, refresh };
+}
+
 export function useActivity(intervalMs = 5000) {
   const [events, setEvents] = useState<ProjectEvent[]>([]);
   const [error, setError] = useState<string | null>(null);

@@ -158,6 +158,12 @@ async function dispatch(
     return;
   }
 
+  // /api/chats
+  if (req.method === "GET" && segments[1] === "chats") {
+    sendJson(res, 200, await runtime.listAllChats());
+    return;
+  }
+
   // /api/projects
   if (segments[1] === "projects") {
     if (req.method === "GET" && segments.length === 2) {

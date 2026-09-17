@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
-import { useProjects } from "../../lib/hooks";
+import { usePathname, useRouter } from "next/navigation";
+import { useMemo, useState, type ReactNode } from "react";
+import { api } from "../../lib/api";
+import { useAllChats, useProjects } from "../../lib/hooks";
 import { clsx } from "../../lib/cx";
+import type { ChatSummary, ProjectSummary } from "../../lib/types";
 import { ThemeToggle } from "./ThemeToggle";
 
 function NavLink({
@@ -60,21 +62,120 @@ const NAV_ICONS: Record<string, ReactNode> = {
   ),
 };
 
-function RecentProjects() {
+function ProjectChatGroups() {
   const { projects } = useProjects();
+  const { chats, refresh } = useAllChats();
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const chatsByProject = useMemo(() => {
+    const map = new Map<string, ChatSummary[]>();
+
+    for (const chat of chats) {
+      const list = map.get(chat.projectId) ?? [];
+      list.push(chat);
+      map.set(chat.projectId, list);
+    }
+
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+    }
+
+    return map;
+  }, [chats]);
+
   const recent = projects.slice(0, 5);
 
+  async function createChat(project: ProjectSummary) {
+    setBusyId(project.id);
+    setError(null);
+    try {
+      const chat = await api.createChat(project.id, {});
+      await refresh();
+      router.push(`/projects/${project.id}?chat=${chat.id}`);
+    } catch (createError) {
+      setError(
+        createError instanceof Error ? createError.message : String(createError),
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (recent.length === 0) {
+    return (
+      <p className="px-2.5 text-xs text-zinc-400 dark:text-zinc-500">
+        Sin proyectos.
+      </p>
+    );
+  }
+
   return (
-    <div className="space-y-0.5">
-      {recent.map((project) => (
-        <Link
-          key={project.id}
-          href={`/projects/${project.id}`}
-          className="focus-ring flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-        >
-          <span className="truncate">{project.name}</span>
-        </Link>
-      ))}
+    <div className="space-y-3">
+      {error && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </p>
+      )}
+
+      {recent.map((project) => {
+        const projectChats = chatsByProject.get(project.id) ?? [];
+        const isRunning = project.status === "running";
+        const busy = busyId === project.id;
+
+        return (
+          <div key={project.id} className="space-y-0.5">
+            <div className="flex items-center gap-0.5">
+              <Link
+                href={`/projects/${project.id}`}
+                className="focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                <span className="truncate">{project.name}</span>
+              </Link>
+              <button
+                type="button"
+                aria-label={`Nuevo chat en ${project.name}`}
+                title={
+                  isRunning
+                    ? "Pausa el proyecto para crear un chat"
+                    : "Nuevo chat"
+                }
+                disabled={isRunning || busy}
+                onClick={() => void createChat(project)}
+                className="focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+                  <path
+                    d="M6 1.5v9M1.5 6h9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {projectChats.slice(0, 8).map((chat) => (
+              <Link
+                key={chat.id}
+                href={`/projects/${project.id}?chat=${chat.id}`}
+                className="focus-ring ml-3 flex items-center gap-2 rounded-md px-2.5 py-1 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                <span className="truncate">{chat.title}</span>
+                {chat.taskIds.length > 0 && (
+                  <span className="ml-auto shrink-0 text-xs tabular-nums text-zinc-400">
+                    {chat.taskIds.length}
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -109,9 +210,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="mt-4 flex-1 overflow-y-auto px-3">
           <p className="px-2.5 pb-1 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-            Recent projects
+            Projects & chats
           </p>
-          <RecentProjects />
+          <ProjectChatGroups />
         </div>
 
         <div className="space-y-0.5 border-t border-zinc-200 px-3 py-3 dark:border-zinc-800">

@@ -164,4 +164,32 @@ describe("ChatsPanel", () => {
     await waitFor(() => expect(mocks.createChat).toHaveBeenCalledWith("p1", {}));
     expect(onRefresh).toHaveBeenCalled();
   });
+
+  it("selecciona el chat indicado por initialChatId", async () => {
+    const other: ChatSummary = {
+      ...chat,
+      id: "c2",
+      title: "Otro chat",
+      taskIds: [],
+    };
+    mocks.getChat.mockResolvedValue({
+      ...detail,
+      id: "c2",
+      title: "Otro chat",
+      messages: [],
+      taskIds: [],
+    });
+
+    render(
+      <ChatsPanel
+        project={project}
+        chats={[chat, other]}
+        initialChatId="c2"
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.getChat).toHaveBeenCalledWith("p1", "c2"));
+    expect(mocks.getChat).not.toHaveBeenCalledWith("p1", "c1");
+  });
 });

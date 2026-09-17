@@ -4,6 +4,7 @@ import {
   createChat as createChatInService,
   deleteChat as deleteChatInService,
   getChatDetail,
+  listAllChats as listAllChatsInService,
   listChats as listChatsInService,
   sendChatMessage as sendChatMessageInService,
   type CreateChatInput,
@@ -534,6 +535,18 @@ export class Runtime {
     return results.map((result) =>
       serializeChatSummary(result.chat, result.messageCount, result.taskIds),
     );
+  }
+
+  async listAllChats() {
+    const results = await listAllChatsInService(this.baseDeps());
+    return results
+      .map((result) =>
+        serializeChatSummary(result.chat, result.messageCount, result.taskIds),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
   }
 
   async createChat(projectId: string, input: CreateChatInput) {

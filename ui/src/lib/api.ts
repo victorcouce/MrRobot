@@ -169,26 +169,40 @@ export const api = {
   listChats: (id: string) =>
     request<ChatSummary[]>(`/api/projects/${id}/chats`),
 
-  createChat: (id: string, input: { title?: string; message?: string }) =>
-    request<ChatDetail>(`/api/projects/${id}/chats`, {
+  listAllChats: () => request<ChatSummary[]>("/api/chats"),
+
+  createChat: async (id: string, input: { title?: string; message?: string }) => {
+    const chat = await request<ChatDetail>(`/api/projects/${id}/chats`, {
       method: "POST",
       body: JSON.stringify(input),
-    }),
+    });
+    notifyProjectsChanged();
+    return chat;
+  },
 
   getChat: (id: string, chatId: string) =>
     request<ChatDetail>(`/api/projects/${id}/chats/${chatId}`),
 
-  deleteChat: (id: string, chatId: string) =>
-    request<{ id: string; deleted: boolean }>(
+  deleteChat: async (id: string, chatId: string) => {
+    const result = await request<{ id: string; deleted: boolean }>(
       `/api/projects/${id}/chats/${chatId}`,
       { method: "DELETE" },
-    ),
+    );
+    notifyProjectsChanged();
+    return result;
+  },
 
-  sendChatMessage: (id: string, chatId: string, content: string) =>
-    request<ChatDetail>(`/api/projects/${id}/chats/${chatId}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content }),
-    }),
+  sendChatMessage: async (id: string, chatId: string, content: string) => {
+    const chat = await request<ChatDetail>(
+      `/api/projects/${id}/chats/${chatId}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      },
+    );
+    notifyProjectsChanged();
+    return chat;
+  },
 
   activity: (limit = 100) =>
     request<ProjectEvent[]>(`/api/activity?limit=${limit}`),

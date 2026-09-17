@@ -591,3 +591,58 @@ test("api server: chats generan tareas y se pueden iterar", async () => {
   await runtime.shutdown();
 });
 
+test("api server: GET /api/chats lista los chats de todos los proyectos", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const first = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "uno" }),
+    })
+  ).json();
+  const second = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "dos" }),
+    })
+  ).json();
+
+  const chat = await (
+    await fetch(`${base}/api/projects/${first.id}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+  ).json();
+
+  const chats = await (await fetch(`${base}/api/chats`)).json();
+  assert.equal(chats.length, 1);
+  assert.equal(chats[0].id, chat.id);
+  assert.equal(chats[0].projectId, first.id);
+  assert.equal(chats[0].title, "Chat 1");
+
+  await fetch(`${base}/api/projects/${second.id}/chats`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "en el segundo" }),
+  });
+
+  const all = await (await fetch(`${base}/api/chats`)).json();
+  assert.equal(all.length, 2);
+  assert.ok(all.some((item: { projectId: string }) => item.projectId === second.id));
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+

@@ -31,7 +31,13 @@ type EditorState =
   | { mode: "create" }
   | null;
 
-export function ProjectWorkspace({ id }: { id: string }) {
+export function ProjectWorkspace({
+  id,
+  initialChatId,
+}: {
+  id: string;
+  initialChatId?: string;
+}) {
   const { project, events, reviews, supervisorRuns, chats, loading, error, notFound, refresh } =
     useProject(id);
   const router = useRouter();
@@ -44,8 +50,14 @@ export function ProjectWorkspace({ id }: { id: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("board");
+  const [activeTab, setActiveTab] = useState(initialChatId ? "chats" : "board");
   const [pauseRequested, setPauseRequested] = useState(false);
+
+  useEffect(() => {
+    if (initialChatId) {
+      setActiveTab("chats");
+    }
+  }, [initialChatId]);
 
   useEffect(() => {
     if (notFound) {
@@ -331,7 +343,12 @@ export function ProjectWorkspace({ id }: { id: string }) {
         project.status === "planning" ||
         project.status === "ready") && (
         <div className="mt-6">
-          <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+          <ChatsPanel
+            project={project}
+            chats={chats}
+            initialChatId={initialChatId}
+            onRefresh={refresh}
+          />
         </div>
       )}
 
@@ -366,7 +383,12 @@ export function ProjectWorkspace({ id }: { id: string }) {
           {effectiveTab === "activity" && <ActivityLog events={events} />}
 
           {effectiveTab === "chats" && (
-            <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+            <ChatsPanel
+              project={project}
+              chats={chats}
+              initialChatId={initialChatId}
+              onRefresh={refresh}
+            />
           )}
         </div>
       )}
@@ -401,7 +423,12 @@ export function ProjectWorkspace({ id }: { id: string }) {
           )}
           {effectiveTab === "activity" && <ActivityLog events={events} />}
           {effectiveTab === "chats" && (
-            <ChatsPanel project={project} chats={chats} onRefresh={refresh} />
+            <ChatsPanel
+              project={project}
+              chats={chats}
+              initialChatId={initialChatId}
+              onRefresh={refresh}
+            />
           )}
         </div>
       )}

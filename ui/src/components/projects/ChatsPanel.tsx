@@ -11,13 +11,17 @@ import { Textarea } from "../ui/Field";
 export function ChatsPanel({
   project,
   chats,
+  initialChatId,
   onRefresh,
 }: {
   project: Project;
   chats: ChatSummary[];
+  initialChatId?: string;
   onRefresh: () => Promise<void> | void;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialChatId ?? null,
+  );
   const [detail, setDetail] = useState<ChatDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [sending, setSending] = useState(false);
@@ -26,6 +30,12 @@ export function ChatsPanel({
   const [error, setError] = useState<string | null>(null);
 
   const isRunning = project.status === "running";
+
+  useEffect(() => {
+    if (initialChatId && chats.some((chat) => chat.id === initialChatId)) {
+      setSelectedId(initialChatId);
+    }
+  }, [initialChatId, chats]);
 
   useEffect(() => {
     if (chats.length === 0) {

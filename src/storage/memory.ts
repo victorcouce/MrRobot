@@ -115,6 +115,10 @@ export class InMemoryStorage implements Storage {
       .map((chat) => structuredClone(chat));
   }
 
+  async listAllChats(): Promise<Chat[]> {
+    return [...this.chats.values()].map((chat) => structuredClone(chat));
+  }
+
   async deleteChat(id: string): Promise<void> {
     this.chats.delete(id);
 
