@@ -12,21 +12,31 @@ test("flujo completo: crear → planificar → ejecutar → completado", async (
     .getByLabel("Goal")
     .fill("Crear una librería TypeScript con una función sum, tests y README.");
 
-  await page.getByRole("button", { name: "Generate plan" }).click();
+  await page.getByRole("button", { name: "Create project" }).click();
 
-  // Espera a que el plan esté listo (botón Start project visible).
+  // Espera a que se cree el proyecto y se redirija a la página
+  await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
+
+  // Generar el plan desde el ThreadHeader
+  await page.getByRole("button", { name: "Plan" }).click();
+
+  // Espera a que el plan esté listo (botón Run visible).
   await expect(
-    page.getByRole("button", { name: "Start project" }),
+    page.getByRole("button", { name: "Run" }),
   ).toBeVisible({ timeout: 30_000 });
 
-  // Revisar el plan: lista y DAG.
-  await expect(page.getByText("Implementar sum(a, b)")).toBeVisible();
-  await page.getByRole("tab", { name: "Graph" }).click();
+  // Revisar el plan: verificar que se muestra en el hilo
   await expect(page.getByText("Implementar sum(a, b)")).toBeVisible();
 
+  // Cambiar a vista Grafo
+  await page.getByRole("button", { name: "Grafo" }).click();
+  await expect(page.getByText("Implementar sum(a, b)")).toBeVisible();
+
+  // Volver a vista Lista
+  await page.getByRole("button", { name: "Lista" }).click();
+
   // Iniciar la ejecución con confirmación.
-  await page.getByRole("tab", { name: "List" }).click();
-  await page.getByRole("button", { name: "Start project" }).click();
+  await page.getByRole("button", { name: "Run" }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Start project" })
@@ -42,13 +52,19 @@ test("refresh durante ejecución reconstruye el estado", async ({ page }) => {
 
   await page.getByRole("link", { name: "New Project" }).first().click();
   await page.getByLabel("Goal").fill("Librería TypeScript simple");
-  await page.getByRole("button", { name: "Generate plan" }).click();
+  await page.getByRole("button", { name: "Create project" }).click();
+
+  // Espera a que se cree el proyecto y se redirija a la página
+  await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
+
+  // Generar el plan
+  await page.getByRole("button", { name: "Plan" }).click();
 
   await expect(
-    page.getByRole("button", { name: "Start project" }),
+    page.getByRole("button", { name: "Run" }),
   ).toBeVisible({ timeout: 30_000 });
 
-  await page.getByRole("button", { name: "Start project" }).click();
+  await page.getByRole("button", { name: "Run" }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Start project" })
