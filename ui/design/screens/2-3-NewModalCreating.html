@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <!-- handoff: stub para abrir el archivo fuera del editor de Diseño -->
+  <script>window.DCLogic = window.DCLogic || class { constructor(p){ this.props = p || {}; this.state = {}; } setState(s){ Object.assign(this.state, s); } };</script>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Instrument+Serif&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FAFAF8; color: #16161A; font-family: 'Geist', -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    a { color: #3346E0; text-decoration: none; } a:hover { color: #2233B8; }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: 'Geist Mono', ui-monospace, Menlo, monospace; }
+    .side { width: 272px; flex-shrink: 0; border-right: 1px solid #ECEBE6; display: flex; flex-direction: column; padding: 16px 12px; gap: 16px; background: #F5F4F0; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+    .mark { width: 26px; height: 26px; border-radius: 8px; background: #16161A; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .mark i { width: 4px; height: 4px; border-radius: 2px; background: #FAFAF8; display: block; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 10px; border: 1px solid #DCDAD3; background: #FFFFFF; font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .btn-dark { background: #3346E0; border-color: #3346E0; color: #FFFFFF; }
+    .btn-accent { background: #3346E0; border-color: #3346E0; color: #FFFFFF; }
+    .btn-ghost { background: transparent; border-color: transparent; color: #55555C; }
+    .kbd { font-family: 'Geist Mono', monospace; font-size: 11px; color: #6E6E76; border: 1px solid #DCDAD3; border-radius: 5px; padding: 1px 5px; background: #FFFFFF; }
+    .search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 10px; background: #EDECE7; color: #6E6E76; font-size: 13px; }
+    .search input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; font-size: 13px; }
+    .navlabel { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #6E6E76; padding: 0 8px; }
+    .proj { display: flex; flex-direction: column; gap: 1px; }
+    .projrow { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 10px; border-radius: 8px; font-size: 13.5px; font-weight: 500; }
+    .projrow .name { flex: 1; }
+    .iconbtn { width: 28px; height: 28px; border-radius: 7px; border: 0; background: transparent; color: #6E6E76; display: inline-flex; align-items: center; justify-content: center; }
+    .chatrow { display: flex; align-items: center; height: 32px; padding: 0 10px 0 25px; border-radius: 8px; border: 0; background: transparent; text-align: left; font-size: 13px; color: #55555C; width: 100%; }
+    .chatrow.on { background: #FFFFFF; color: #16161A; box-shadow: 0 0 0 1px #E6E5DF; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+    .footrow { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; border: 0; background: transparent; font-size: 13.5px; color: #44444B; width: 100%; text-align: left; }
+    .top { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 20px 0 28px; border-bottom: 1px solid #ECEBE6; }
+    .crumb { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+    .thread { flex-grow: 1; display: flex; flex-direction: column; align-items: center; padding: 36px 24px 0; gap: 28px; overflow: hidden; }
+    .col { width: 820px; display: flex; flex-direction: column; gap: 12px; }
+    .umsg { align-self: flex-end; max-width: 560px; background: #EFEEEA; border-radius: 18px 18px 4px 18px; padding: 11px 16px; font-size: 15px; line-height: 1.5; }
+    .amsg { margin: 0; font-size: 15px; line-height: 1.6; }
+    .who { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6E6E76; }
+    .av { width: 20px; height: 20px; border-radius: 6px; background: #16161A; display: flex; align-items: center; justify-content: center; gap: 3px; }
+    .av i { width: 3px; height: 3px; border-radius: 2px; background: #FAFAF8; display: block; }
+    .block { background: #FFFFFF; border: 1px solid #ECEBE6; border-radius: 16px; box-shadow: 0 1px 2px rgba(22,22,26,0.04), 0 12px 32px -18px rgba(22,22,26,0.14); overflow: hidden; }
+    .bhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 12px 18px; border-bottom: 1px solid #ECEBE6; }
+    .btitle { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+    .bfoot { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 10px 18px; border-top: 1px solid #ECEBE6; background: #FCFCFA; }
+    .seg { display: inline-flex; padding: 3px; background: #F2F1ED; border-radius: 9px; gap: 2px; }
+    .seg button { height: 26px; padding: 0 10px; border-radius: 7px; border: 0; background: transparent; font-size: 12.5px; color: #55555C; }
+    .seg button.on { background: #FFFFFF; color: #16161A; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 6px; background: #F2F1ED; font-size: 12px; color: #44444B; white-space: nowrap; }
+    .thd { display: grid; grid-template-columns: 112px minmax(0, 1fr) 150px 130px 120px; align-items: center; gap: 12px; padding: 0 18px; height: 34px; font-size: 11.5px; font-weight: 500; color: #6E6E76; border-bottom: 1px solid #F0EFEA; }
+    .trow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 150px 130px 120px; align-items: center; gap: 12px; padding: 0 18px; height: 48px; border-bottom: 1px solid #F3F2EE; font-size: 13.5px; }
+    .tid { font-family: 'Geist Mono', monospace; font-size: 12px; color: #6E6E76; }
+    .lvl { display: inline-flex; gap: 2px; align-items: flex-end; }
+    .lvl i { width: 3px; border-radius: 1px; background: #D6D4CC; display: block; }
+    .lvl i.on { background: #16161A; }
+    .composer { width: 820px; background: #FFFFFF; border: 1px solid #DCDAD3; border-radius: 18px; box-shadow: 0 1px 2px rgba(22,22,26,0.04), 0 12px 32px -18px rgba(22,22,26,0.18); padding: 14px 12px 10px 18px; display: flex; flex-direction: column; gap: 8px; }
+    .composer textarea { border: 0; outline: 0; resize: none; background: transparent; font-size: 15px; height: 44px; line-height: 1.5; }
+    .send { width: 36px; height: 36px; border-radius: 10px; background: #3346E0; color: #FFFFFF; border: 0; display: inline-flex; align-items: center; justify-content: center; }
+    .cchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid #E6E5DF; background: #FFFFFF; font-size: 12.5px; color: #44444B; }
+    .rail { width: 64px; flex-shrink: 0; border-right: 1px solid #ECEBE6; background: #F5F4F0; display: flex; flex-direction: column; align-items: center; padding: 16px 0; gap: 8px; }
+    .rail .mark { margin-bottom: 6px; }
+    .rbtn { width: 40px; height: 40px; border-radius: 10px; border: 0; background: transparent; color: #55555C; display: inline-flex; align-items: center; justify-content: center; position: relative; }
+    .rdark { background: #3346E0; color: #FFFFFF; }
+    .rsep { width: 24px; height: 1px; background: #E6E5DF; margin: 4px 0; }
+    .rproj { width: 40px; height: 40px; border-radius: 10px; border: 1px solid #E6E5DF; background: #FFFFFF; font-size: 12px; font-weight: 600; color: #44444B; position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .rproj.on { border-color: #16161A; box-shadow: 0 0 0 1px #16161A; color: #16161A; }
+    .rdot { position: absolute; right: -3px; top: -3px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #F5F4F0; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .live { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes flash { from { background: #E4E8FD; } to { background: #F4F6FE; } }
+    .new { background: #F4F6FE; animation: flash 1.2s ease-out; }
+      .rbtn.on { background: #FFFFFF; color: #16161A; box-shadow: 0 0 0 1px #E6E5DF; }
+    .page { padding: 32px 56px 48px; display: flex; flex-direction: column; gap: 22px; }
+    .ptitle { margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 38px; letter-spacing: -0.01em; line-height: 1.1; }
+    .psub { margin: 4px 0 0; font-size: 14px; color: #6E6E76; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .inp { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid #DCDAD3; background: #FFFFFF; color: #6E6E76; font-size: 13px; }
+    .inp input, .inp select { border: 0; outline: 0; background: transparent; font-size: 13px; color: #16161A; }
+    .tbl { background: #FFFFFF; border: 1px solid #ECEBE6; border-radius: 16px; overflow: hidden; }
+    .th { display: grid; align-items: center; gap: 16px; height: 38px; padding: 0 20px; font-size: 11.5px; font-weight: 500; color: #6E6E76; border-bottom: 1px solid #ECEBE6; background: #FCFCFA; }
+    .tr { display: grid; align-items: center; gap: 16px; min-height: 64px; padding: 10px 20px; font-size: 13.5px; border-bottom: 1px solid #F3F2EE; }
+    .tr:last-child { border-bottom: 0; }
+    .sub { font-size: 12.5px; color: #6E6E76; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar2 { flex-grow: 1; height: 4px; border-radius: 2px; background: #EFEEEA; overflow: hidden; display: flex; }
+    .ib { width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; color: #6E6E76; display: inline-flex; align-items: center; justify-content: center; }
+    .card { background: #FFFFFF; border: 1px solid #ECEBE6; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+    .ico { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .overlay { position: absolute; inset: 0; background: rgba(22, 22, 26, 0.30); display: flex; align-items: center; justify-content: center; z-index: 5; }
+    .modal { width: 600px; background: #FFFFFF; border-radius: 18px; box-shadow: 0 4px 12px rgba(22,22,26,0.08), 0 32px 80px -24px rgba(22,22,26,0.4); display: flex; flex-direction: column; overflow: hidden; }
+    .mhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 4px 24px; }
+    .mtitle { margin: 0; font-size: 17px; font-weight: 600; }
+    .mdesc { margin: 4px 0 0; font-size: 13.5px; color: #55555C; line-height: 1.5; }
+    .mbody { padding: 16px 24px 20px; display: flex; flex-direction: column; gap: 16px; }
+    .mfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px 14px 24px; border-top: 1px solid #ECEBE6; background: #FCFCFA; }
+    .fl { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 500; color: #44444B; }
+    .fl input, .fl select, .fl textarea { height: 38px; border-radius: 10px; border: 1px solid #DCDAD3; background: #FFFFFF; padding: 0 12px; font-size: 13.5px; color: #16161A; font-weight: 400; outline: 0; }
+    .fl textarea { height: 76px; padding: 10px 12px; resize: none; line-height: 1.5; }
+    .hint { font-size: 12px; font-weight: 400; color: #6E6E76; }
+    .tagx { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 9px; border-radius: 8px; background: #F2F1ED; font-family: 'Geist Mono', monospace; font-size: 12px; }
+    .tagx button { width: 22px; height: 22px; border: 0; background: transparent; color: #6E6E76; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; }
+    .radio { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid #ECEBE6; border-radius: 12px; font-size: 13.5px; cursor: pointer; }
+    .radio.on { border-color: #3346E0; box-shadow: 0 0 0 3px #EEF0FD; }
+    .radio input { width: 16px; height: 16px; margin: 0; accent-color: #3346E0; }
+    .info { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #F5F4F0; font-size: 13px; color: #44444B; line-height: 1.5; }
+    .btn-danger { background: #B42318; border-color: #B42318; color: #FFFFFF; }
+    .evt { display: grid; grid-template-columns: 56px 22px 110px 170px minmax(0, 1fr); align-items: center; gap: 14px; height: 48px; padding: 0 20px; border-bottom: 1px solid #F3F2EE; font-size: 13.5px; }
+    .pchip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: #F2F1ED; font-size: 12px; color: #44444B; width: fit-content; }
+    .step { display: flex; align-items: center; gap: 10px; font-size: 13.5px; height: 30px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #D5DAFA; border-top-color: #3346E0; animation: spin 0.9s linear infinite; display: inline-block; }
+    @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+    .shimmer { position: relative; height: 2px; background: #EEF0FD; overflow: hidden; }
+    .shimmer i { position: absolute; top: 0; left: 0; width: 40%; height: 100%; background: #3346E0; animation: slide 1.8s ease-in-out infinite; display: block; }
+    .node { position: absolute; width: 200px; height: 58px; border-radius: 12px; border: 1px solid #E6E5DF; background: #FFFFFF; padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; }
+    .kmd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 5px; border: 1px solid #DCDAD3; background: #FFFFFF; font-family: 'Geist Mono', monospace; font-size: 11px; color: #55555C; }
+    .prow { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
+    .prow.on { background: #EEF0FD; }
+    .glabel { font-size: 11.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #6E6E76; padding: 10px 12px 4px; }
+    .banner { display: flex; align-items: center; justify-content: center; gap: 10px; height: 36px; background: #FBF1DE; color: #6B4000; font-size: 13px; border-bottom: 1px solid #F1E2C4; flex-shrink: 0; }
+    .stepper { display: flex; align-items: center; gap: 10px; }
+    .stp { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #6E6E76; }
+    .stp b { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #DCDAD3; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #6E6E76; background: #FFFFFF; }
+    .stp.on { color: #16161A; font-weight: 500; }
+    .stp.on b { border-color: #3346E0; background: #3346E0; color: #FFFFFF; }
+    .stp.done b { border-color: #3346E0; color: #3346E0; background: #EEF0FD; }
+    .sline { width: 48px; height: 1.5px; background: #DCDAD3; }
+    .sline.done { background: #3346E0; }
+    .ncard { background: #FFFFFF; border: 1px solid #ECEBE6; border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; }
+    .ctitle { margin: 0; font-size: 15px; font-weight: 600; }
+    .cdesc { margin: 3px 0 0; font-size: 13px; color: #6E6E76; line-height: 1.5; }
+    .summary { width: 300px; flex-shrink: 0; background: #FFFFFF; border: 1px solid #ECEBE6; border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 0; }
+    .srow2 { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-bottom: 1px solid #F3F2EE; font-size: 13px; }
+    .srow2:last-child { border-bottom: 0; }
+    .sk { font-size: 11.5px; color: #6E6E76; }
+    .sv { color: #16161A; line-height: 1.45; }
+    .sv.empty { color: #9A988F; }
+    .footbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 32px; border-top: 1px solid #ECEBE6; background: #FFFFFF; flex-shrink: 0; }
+    .detect { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: #F4FAF6; border: 1px solid #D7ECDD; font-size: 13px; color: #24452F; }
+    .err { font-size: 12.5px; font-weight: 400; color: #A11F15; display: flex; align-items: center; gap: 6px; }
+    .fl input.bad { border-color: #B42318; box-shadow: 0 0 0 3px #FCEBEA; }
+    .warnbox { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #FBF1DE; border: 1px solid #F1E2C4; font-size: 13px; color: #6B4000; line-height: 1.5; }
+    .agc { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid #ECEBE6; border-radius: 12px; cursor: pointer; }
+    .agc.on { border-color: #C9D0FA; background: #FAFBFF; }
+    .agc input { width: 16px; height: 16px; margin: 0; accent-color: #3346E0; }
+    .agc.dis { opacity: 0.55; cursor: not-allowed; }
+    .chk { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; }
+    .chk input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: #3346E0; }
+    .agpick { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border-radius: 999px; border: 1px solid #DCDAD3; background: #FFFFFF; font-family: 'Geist Mono', monospace; font-size: 12px; color: #44444B; cursor: pointer; }
+    .agpick input { width: 14px; height: 14px; margin: 0; accent-color: #3346E0; }
+    .agpick.on { border-color: #3346E0; background: #EEF0FD; color: #2F3FC8; }
+    .agpick.dis { opacity: 0.5; cursor: not-allowed; }
+    .more { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 500; color: #44444B; }
+    .okline { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 400; color: #1E6B43; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #FAFAF8; overflow: hidden; position: relative;">
+  <aside class="rail" aria-label="Navegación (barra lateral colapsada)">
+    <span class="mark" role="img" aria-label="MrRobot"><i></i><i></i></span>
+    <button class="rbtn" type="button" aria-label="Expandir barra lateral"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16M13 10l2 2-2 2"></path></svg></button>
+    <div class="rsep"></div>
+    <button class="rbtn rdark" type="button" aria-label="Nuevo proyecto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+    <button class="rbtn" type="button" aria-label="Buscar en chats"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></button>
+    <div class="rsep"></div>
+    <button class="rproj" type="button" aria-label="calc-web">CW<span class="rdot" style="background: #3346E0;"></span></button>
+    <button class="rproj" type="button" aria-label="sum-lib">SL<span class="rdot" style="background: #1E7A4C;"></span></button>
+    <button class="rproj" type="button" aria-label="landing-docs">LD<span class="rdot" style="background: #B7B5AD;"></span></button>
+    <div style="margin-top: auto;"></div>
+    <button class="rbtn" type="button" aria-label="Agentes: codex y claude conectados, deepseek sin clave"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path></svg><span class="rdot" style="background: #1E7A4C; width: 8px; height: 8px; right: 5px; top: 5px;"></span></button>
+    <button class="rbtn" type="button" aria-label="Actividad"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg></button>
+    <button class="rbtn" type="button" aria-label="Ajustes"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg></button>
+  </aside>
+  <main style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; padding: 120px 48px 40px; gap: 16px; min-width: 0;">
+    <h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 56px;">¿Qué construimos hoy?</h1>
+    <div style="width: 780px; height: 150px; border: 1px solid #DCDAD3; border-radius: 20px; background: #FFFFFF;"></div>
+  </main>
+  <div class="overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="np" style="width: 640px;">
+      <div class="mhead"><div><h2 id="np" class="mtitle">Creando calc-web</h2><p class="mdesc">Te llevamos al chat en cuanto el plan esté listo.</p></div><button class="ib" type="button" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+      <div class="mbody"><div class="shimmer" aria-hidden="true"><i></i></div><div aria-live="polite" style="display: flex; flex-direction: column;"><div style="display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px; color: #16161A;"><span class="ico" style="background: #1E7A4C; color: #FFFFFF; width: 20px; height: 20px; border-radius: 50%;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span><span style="flex-grow: 1;">Preparar el repositorio</span><span style="font-size: 12.5px; color: #6E6E76;">~/proyectos/calc</span></div><div style="display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px; color: #16161A;"><span class="ico" style="background: #1E7A4C; color: #FFFFFF; width: 20px; height: 20px; border-radius: 50%;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></span><span style="flex-grow: 1;">Crear el proyecto</span><span style="font-size: 12.5px; color: #6E6E76;">calc-web</span></div><div style="display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px; color: #16161A;"><span class="spin" style="width: 18px; height: 18px; margin: 1px;" aria-hidden="true"></span><span style="flex-grow: 1;">Generar el plan</span><span style="font-size: 12.5px; color: #6E6E76;">claude / opus · intento 1 de 2</span></div><div style="display: flex; align-items: center; gap: 12px; height: 40px; font-size: 14px; color: #9A988F;"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #DCDAD3; display: inline-block;"></span><span style="flex-grow: 1;">Abrir el chat</span><span style="font-size: 12.5px; color: #6E6E76;"></span></div></div></div>
+      <div class="mfoot"><span style="font-size: 12.5px; color: #6E6E76;">Puedes cerrar: seguirá en segundo plano.</span><button class="btn" type="button">Ir al chat ahora</button></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
