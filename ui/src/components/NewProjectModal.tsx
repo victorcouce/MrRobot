@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import type { AppInfo } from "@/lib/types";
 import { clsx } from "@/lib/cx";
 
 type ModalState = "idle" | "error" | "creating";
@@ -20,13 +21,35 @@ export function NewProjectModal({ open, onClose }: { open: boolean; onClose: () 
   const [error, setError] = useState<string | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [pickingFolder, setPickingFolder] = useState(false);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
-  const agents = [
-    { id: "codex", label: "codex", available: true },
-    { id: "claude-sonnet", label: "claude / sonnet", available: true },
-    { id: "claude-opus", label: "claude / opus", available: true },
-    { id: "deepseek-flash", label: "deepseek-flash", available: false },
+  useEffect(() => {
+    const loadAppInfo = async () => {
+      try {
+        const info = await api.info();
+        setAppInfo(info);
+      } catch (err) {
+        console.error("Error loading app info:", err);
+      }
+    };
+
+    if (open) {
+      loadAppInfo();
+    }
+  }, [open]);
+
+  const defaultAgents = [
+    { id: "codex", label: "codex", provider: "codex" as const },
+    { id: "claude-sonnet", label: "claude / sonnet", provider: "claude" as const },
+    { id: "claude-opus", label: "claude / opus", provider: "claude" as const },
+    { id: "deepseek-flash", label: "deepseek-flash", provider: "deepseek" as const },
   ];
+
+  const agents = defaultAgents.map((agent) => ({
+    ...agent,
+    available:
+      appInfo?.agents?.some((a) => a.provider === agent.provider && a.connected) ?? false,
+  }));
 
   const autoName =
     goal
