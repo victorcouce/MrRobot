@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/hooks";
 import { useAllChats } from "@/lib/hooks";
@@ -15,7 +15,11 @@ type CommandItem = {
   onSelect: () => void;
 };
 
-export function CommandPalette() {
+export function CommandPalette({
+  onNewProject,
+}: {
+  onNewProject?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(0);
@@ -30,8 +34,8 @@ export function CommandPalette() {
       description: "Crear un nuevo proyecto",
       category: "action",
       onSelect: () => {
-        router.push("/");
         setOpen(false);
+        onNewProject?.();
       },
     },
     {

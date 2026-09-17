@@ -178,6 +178,11 @@ export async function createChat(
     updatedAt: now,
   };
 
+  // Los chats nuevos arrancan con los agentes elegidos al crear el proyecto.
+  if (project.defaultAllowedAgents?.length) {
+    chat.allowedAgents = project.defaultAllowedAgents;
+  }
+
   await deps.storage.saveChat(chat);
   await emitProjectEvent(deps.storage, projectId, "chat.created", undefined, {
     chatId: chat.id,

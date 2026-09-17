@@ -646,3 +646,78 @@ test("api server: GET /api/chats lista los chats de todos los proyectos", async 
   await runtime.shutdown();
 });
 
+
+test("api server: los agentes del proyecto y los adjuntos llegan al cliente", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        goal: "librería TS",
+        defaultAllowedAgents: [
+          { provider: "codex" },
+          { provider: "claude", model: "opus" },
+        ],
+      }),
+    })
+  ).json();
+
+  assert.deepEqual(created.defaultAllowedAgents, [
+    { provider: "codex" },
+    { provider: "claude", model: "opus" },
+  ]);
+
+  // Un chat nuevo hereda los agentes elegidos al crear el proyecto.
+  const chat = await (
+    await fetch(`${base}/api/projects/${created.id}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+  ).json();
+
+  assert.deepEqual(chat.allowedAgents, [
+    { provider: "codex" },
+    { provider: "claude", model: "opus" },
+  ]);
+
+  // Y los adjuntos del mensaje vuelven serializados.
+  const detail = await (
+    await fetch(`${base}/api/projects/${created.id}/chats/${chat.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "mira la especificación",
+        attachments: [
+          {
+            name: "spec.md",
+            type: "markdown",
+            mimeType: "text/markdown",
+            size: 8,
+            data: "IyBIb2xh",
+          },
+        ],
+      }),
+    })
+  ).json();
+
+  const userMessage = detail.messages.find(
+    (message: { role: string }) => message.role === "user",
+  );
+  assert.equal(userMessage.attachments?.length, 1);
+  assert.equal(userMessage.attachments[0].name, "spec.md");
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});

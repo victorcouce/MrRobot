@@ -1,18 +1,25 @@
-import { CreateProjectForm } from "@/components/projects/CreateProjectForm";
+"use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useNewProject } from "@/components/layout/LayoutContent";
+
+/**
+ * La creación vive en el modal desde el rediseño. La ruta se mantiene para que
+ * los enlaces antiguos no den 404: redirige al inicio y abre el modal.
+ */
 export default function NewProjectPage() {
-  return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold tracking-tight">New Project</h1>
-        <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-          Describe qué quieres construir. MrRobot generará un plan ejecutable.
-        </p>
-      </div>
+  const router = useRouter();
+  const { openNewProject } = useNewProject();
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-        <CreateProjectForm />
-      </div>
+  useEffect(() => {
+    router.replace("/");
+    openNewProject();
+  }, [router, openNewProject]);
+
+  return (
+    <div className="flex h-full items-center justify-center">
+      <p className="text-sm text-ink-3">Abriendo el formulario de proyecto…</p>
     </div>
   );
 }

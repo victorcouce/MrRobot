@@ -19,9 +19,7 @@ test("flujo completo: crear → planificar → ejecutar → completado", async (
     "Crear una librería TypeScript con una función sum, tests y README.",
   );
 
-  // El proyecto nace en borrador: el plan se genera desde la cabecera del hilo.
-  await page.getByRole("button", { name: "Planificar" }).click();
-
+  // El modal planifica al crear, así que el proyecto llega listo para ejecutar.
   await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
     timeout: 30_000,
   });
@@ -48,7 +46,6 @@ test("flujo completo: crear → planificar → ejecutar → completado", async (
 test("el hilo conserva la conversación tras recargar", async ({ page }) => {
   await createProject(page, "Librería TypeScript simple");
 
-  await page.getByRole("button", { name: "Planificar" }).click();
   await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
     timeout: 30_000,
   });
@@ -68,7 +65,6 @@ test("un mensaje en el chat añade tareas al plan sin perder el hilo", async ({
 }) => {
   await createProject(page, "Librería TypeScript con una función sum");
 
-  await page.getByRole("button", { name: "Planificar" }).click();
   await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
     timeout: 30_000,
   });

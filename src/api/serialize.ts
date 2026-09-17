@@ -230,6 +230,10 @@ export function serializeProject(project: DomainProject): Project {
   if (finishedAt) serialized.finishedAt = finishedAt;
   if (project.repoPath) serialized.repoPath = project.repoPath;
   if (project.remoteUrl) serialized.remoteUrl = project.remoteUrl;
+  if (project.defaultAllowedAgents?.length) {
+    serialized.defaultAllowedAgents =
+      project.defaultAllowedAgents.map(serializeAgent);
+  }
   if (project.resultBranch) serialized.resultBranch = project.resultBranch;
   if (project.resultCommit) serialized.resultCommit = project.resultCommit;
 
@@ -320,6 +324,17 @@ export function serializeChatMessage(message: DomainChatMessage): ChatMessage {
     taskIds: message.taskIds,
     createdAt: message.createdAt.toISOString(),
   };
+  if (message.attachments?.length) {
+    result.attachments = message.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      type: attachment.type,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      ...(attachment.data ? { data: attachment.data } : {}),
+      createdAt: attachment.createdAt.toISOString(),
+    }));
+  }
   if (message.agent) result.agent = serializeAgent(message.agent);
   if (message.error) result.error = message.error;
   return result;
@@ -330,7 +345,7 @@ export function serializeChatSummary(
   messageCount: number,
   taskIds: string[],
 ): ChatSummary {
-  return {
+  const summary: ChatSummary = {
     id: chat.id,
     projectId: chat.projectId,
     title: chat.title,
@@ -339,6 +354,12 @@ export function serializeChatSummary(
     messageCount,
     taskIds,
   };
+
+  if (chat.allowedAgents?.length) {
+    summary.allowedAgents = chat.allowedAgents.map(serializeAgent);
+  }
+
+  return summary;
 }
 
 export function serializeChatDetail(

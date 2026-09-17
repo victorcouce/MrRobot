@@ -269,6 +269,25 @@ export interface ConfigInfo {
   supervisorAgent: AgentSpec;
 }
 
+export interface FolderCheck {
+  path: string;
+  exists: boolean;
+  creatable: boolean;
+  isRepo: boolean;
+  root?: string;
+  branch?: string;
+  dirty?: boolean;
+  error?: string;
+}
+
+export interface RemoteCheck {
+  url: string;
+  checked: boolean;
+  ok: boolean;
+  needsToken: boolean;
+  error?: string;
+}
+
 export interface AppInfo {
   repoRoot: string;
   baseRef: string;

@@ -25,6 +25,7 @@ function makeProject(): Project {
     goal: "crear app de hábitos",
     status: "running",
     baseRef: "base0",
+    defaultAllowedAgents: [{ provider: "codex" }],
     config: {
       concurrency: 4,
       maxRetriesPerAgent: 2,
@@ -83,6 +84,7 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.equal(loaded.config?.concurrency, 4);
   assert.deepEqual(loaded.config?.plannerAgent, { provider: "claude", model: "opus" });
   assert.deepEqual(loaded.config?.supervisorAgent, { provider: "codex" });
+  assert.deepEqual(loaded.defaultAllowedAgents, [{ provider: "codex" }]);
 
   const task1 = loaded.tasks.find((task) => task.id === "TASK-001");
   assert.ok(task1);

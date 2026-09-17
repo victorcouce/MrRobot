@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS projects (
   result_branch TEXT,
   result_commit TEXT,
   config JSONB,
+  default_allowed_agents JSONB,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
@@ -186,6 +187,7 @@ interface ProjectRow {
   result_branch: string | null;
   result_commit: string | null;
   config: unknown;
+  default_allowed_agents: unknown;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -259,6 +261,9 @@ export class SqlStorage implements Storage {
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS config JSONB");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS remote_url TEXT");
+    await this.db.exec(
+      "ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_allowed_agents JSONB",
+    );
     await this.db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS chat_id TEXT");
     await this.db.exec(
       "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_ids JSONB",
@@ -277,8 +282,8 @@ export class SqlStorage implements Storage {
     await this.db.query(
       `INSERT INTO projects
         (id, name, goal, status, base_ref, repo_path, remote_url, result_branch, result_commit,
-         config, created_at, updated_at, started_at, finished_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14)
+         config, default_allowed_agents, created_at, updated_at, started_at, finished_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14,$15)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          goal = EXCLUDED.goal,
@@ -289,6 +294,7 @@ export class SqlStorage implements Storage {
          result_branch = EXCLUDED.result_branch,
          result_commit = EXCLUDED.result_commit,
          config = EXCLUDED.config,
+         default_allowed_agents = EXCLUDED.default_allowed_agents,
          updated_at = EXCLUDED.updated_at,
          started_at = EXCLUDED.started_at,
          finished_at = EXCLUDED.finished_at`,
@@ -303,6 +309,7 @@ export class SqlStorage implements Storage {
         project.resultBranch ?? null,
         project.resultCommit ?? null,
         toJson(project.config),
+        toJson(project.defaultAllowedAgents),
         project.createdAt.toISOString(),
         project.updatedAt.toISOString(),
         iso(project.startedAt),
@@ -456,6 +463,12 @@ export class SqlStorage implements Storage {
     if (row.result_commit) project.resultCommit = row.result_commit;
     const config = fromJson<Project["config"]>(row.config);
     if (config) project.config = config;
+    const defaultAllowedAgents = fromJson<AgentSpec[]>(
+      row.default_allowed_agents,
+    );
+    if (defaultAllowedAgents?.length) {
+      project.defaultAllowedAgents = defaultAllowedAgents;
+    }
     const startedAt = date(row.started_at);
     const finishedAt = date(row.finished_at);
     if (startedAt) project.startedAt = startedAt;

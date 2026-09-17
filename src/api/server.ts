@@ -11,6 +11,7 @@ import {
   parseTaskPatch,
 } from "./parse.js";
 import { pickFolder } from "./pick-folder.js";
+import { checkFolder, checkRemote } from "../workspace/validate.js";
 import {
   ProjectNotFoundError,
   Runtime,
@@ -152,6 +153,42 @@ async function dispatch(
     return;
   }
 
+  // /api/fs/check-folder
+  if (
+    req.method === "POST" &&
+    segments[1] === "fs" &&
+    segments[2] === "check-folder"
+  ) {
+    const body = await readJson(req);
+    const path = body["path"];
+
+    if (typeof path !== "string" || !path.trim()) {
+      sendJson(res, 400, { error: 'El campo "path" es obligatorio.' });
+      return;
+    }
+
+    sendJson(res, 200, await checkFolder(path));
+    return;
+  }
+
+  // /api/fs/check-remote
+  if (
+    req.method === "POST" &&
+    segments[1] === "fs" &&
+    segments[2] === "check-remote"
+  ) {
+    const body = await readJson(req);
+    const url = body["url"];
+
+    if (typeof url !== "string" || !url.trim()) {
+      sendJson(res, 400, { error: 'El campo "url" es obligatorio.' });
+      return;
+    }
+
+    sendJson(res, 200, await checkRemote(url));
+    return;
+  }
+
   // /api/activity
   if (req.method === "GET" && segments[1] === "activity") {
     const limit = Number(query.get("limit") ?? "100");
@@ -192,9 +229,15 @@ async function dispatch(
           : {};
 
       const repo = parseRepoOptions(body);
+      const defaultAllowedAgents = parseAllowedAgents(body["defaultAllowedAgents"]);
 
       const project = await runtime.createProject(
-        { goal, ...(name ? { name } : {}), ...repo },
+        {
+          goal,
+          ...(name ? { name } : {}),
+          ...repo,
+          ...(defaultAllowedAgents.length > 0 ? { defaultAllowedAgents } : {}),
+        },
         config,
       );
       sendJson(res, 201, project);

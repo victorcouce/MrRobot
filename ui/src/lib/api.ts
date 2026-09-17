@@ -5,10 +5,12 @@ import type {
   ChatDetail,
   ChatSummary,
   ConfigInfo,
+  FolderCheck,
   Project,
   ProjectEvent,
   ProjectPreview,
   ProjectSummary,
+  RemoteCheck,
   StoredReview,
   SupervisorRun,
   Task,
@@ -69,6 +71,7 @@ export const api = {
     repoPath?: string;
     remoteUrl?: string;
     config?: Record<string, unknown>;
+    defaultAllowedAgents?: AgentSpec[];
   }) =>
     request<Project>("/api/projects", {
       method: "POST",
@@ -77,6 +80,18 @@ export const api = {
 
   pickFolder: () =>
     request<{ path: string | null }>("/api/fs/pick-folder", { method: "POST" }),
+
+  checkFolder: (path: string) =>
+    request<FolderCheck>("/api/fs/check-folder", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  checkRemote: (url: string) =>
+    request<RemoteCheck>("/api/fs/check-remote", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
 
   importProject: (input: {
     repoPath: string;

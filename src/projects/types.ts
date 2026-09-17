@@ -1,3 +1,4 @@
+import type { AgentSpec } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/types.js";
 import type { Task } from "../tasks/types.js";
 
@@ -27,6 +28,9 @@ export interface Project {
   tasks: Task[];
 
   config?: OrchestratorConfig;
+
+  /** Agentes que heredan los chats nuevos del proyecto. */
+  defaultAllowedAgents?: AgentSpec[];
 
   createdAt: Date;
   updatedAt: Date;

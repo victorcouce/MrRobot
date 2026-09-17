@@ -35,6 +35,7 @@ export interface CreateProjectInput {
   repoPath?: string;
   remoteUrl?: string;
   config?: OrchestratorConfig;
+  defaultAllowedAgents?: AgentSpec[];
 }
 
 export interface ProjectRoundResult {
@@ -126,6 +127,9 @@ export async function createProject(
 
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
+  if (input.defaultAllowedAgents?.length) {
+    project.defaultAllowedAgents = input.defaultAllowedAgents;
+  }
 
   await deps.storage.saveProject(project);
   await emit(deps.storage, project.id, "project.created");
@@ -161,6 +165,9 @@ export async function createProjectDraft(
 
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
+  if (input.defaultAllowedAgents?.length) {
+    project.defaultAllowedAgents = input.defaultAllowedAgents;
+  }
 
   await deps.storage.saveProject(project);
   await emit(deps.storage, project.id, "project.created");
