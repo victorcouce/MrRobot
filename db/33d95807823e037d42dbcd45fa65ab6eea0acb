@@ -1,0 +1,25 @@
+src/chats/service.test.ts
+  s_87df841214afdc::t_5735216f831517 58,91,103,126-127,149,162,178,195-196
+src/api/parse.ts
+  s_87df841214afdc::t_7409443012cdd5 321-327
+src/api/runtime.ts
+  s_87df841214afdc::t_a82ac910c37701 560-566
+src/chats/service.ts
+  s_87df841214afdc::t_e2eb676f666042 316,445-449
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "db33d95807823e037d42dbcd45fa65ab6eea0acb",
+  "prompts": {},
+  "sessions": {
+    "s_87df841214afdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12ecf92a-b2db-4268-810b-b5c5fb1a08a0",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
