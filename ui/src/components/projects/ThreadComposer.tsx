@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
+import { AttachmentUpload } from "../AttachmentUpload";
+import { ChatAgentSelector } from "../ChatAgentSelector";
+import type { AgentSpec } from "@/lib/types";
+
+interface ProcessedAttachment {
+  id: string;
+  name: string;
+  type: "image" | "markdown";
+  mimeType: string;
+  size: number;
+  data: string;
+}
 
 interface ThreadComposerProps {
   status: string;
-  onSendMessage: (message: string) => Promise<void>;
+  onSendMessage: (
+    message: string,
+    attachments?: ProcessedAttachment[],
+  ) => Promise<void>;
   onPauseAndWrite?: (() => Promise<void>) | (() => void);
+  allowedAgents?: AgentSpec[];
+  availableAgents?: AgentSpec[];
+  onUpdateAllowedAgents?: (agents: AgentSpec[]) => Promise<void>;
   disabled?: boolean;
   loading?: boolean;
 }
@@ -15,11 +33,15 @@ export function ThreadComposer({
   status,
   onSendMessage,
   onPauseAndWrite,
+  allowedAgents,
+  availableAgents = [],
+  onUpdateAllowedAgents,
   disabled,
   loading,
 }: ThreadComposerProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [attachments, setAttachments] = useState<ProcessedAttachment[]>([]);
 
   const isRunning = status === "running";
   const isPlanning = status === "planning";
@@ -30,12 +52,33 @@ export function ThreadComposer({
 
     setSubmitting(true);
     try {
-      await onSendMessage(message);
+      await onSendMessage(
+        message,
+        attachments.length > 0 ? attachments : undefined,
+      );
       setMessage("");
+      setAttachments([]);
     } finally {
       setSubmitting(false);
     }
   }
+
+  const handleAddAttachment = useCallback((att: ProcessedAttachment) => {
+    setAttachments((prev) => [...prev, att]);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const handleUpdateAgents = useCallback(
+    async (agents: AgentSpec[]) => {
+      if (onUpdateAllowedAgents) {
+        await onUpdateAllowedAgents(agents);
+      }
+    },
+    [onUpdateAllowedAgents],
+  );
 
   if (isRunning) {
     return (
@@ -87,8 +130,18 @@ export function ThreadComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-line bg-surface px-4 py-4 sm:px-6">
-      <div className="mx-auto max-w-[820px]">
+    <form
+      onSubmit={handleSubmit}
+      className="border-t border-line bg-surface px-4 py-4 sm:px-6"
+    >
+      <div className="mx-auto max-w-[820px] space-y-3">
+        <AttachmentUpload
+          attachments={attachments}
+          onAdd={handleAddAttachment}
+          onRemove={handleRemoveAttachment}
+          disabled={disabled || submitting}
+        />
+
         <div className="flex gap-2">
           <textarea
             value={message}
@@ -108,6 +161,17 @@ export function ThreadComposer({
               Enviar
             </Button>
           </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 text-xs text-ink-3">
+          {availableAgents.length > 0 && (
+            <ChatAgentSelector
+              allowedAgents={allowedAgents}
+              availableAgents={availableAgents}
+              onSelect={handleUpdateAgents}
+              disabled={disabled || submitting}
+            />
+          )}
         </div>
       </div>
     </form>

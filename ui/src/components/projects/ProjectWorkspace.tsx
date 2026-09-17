@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import { choiceToAgent } from "../../lib/agents";
-import { useProject } from "../../lib/hooks";
-import type { Task } from "../../lib/types";
+import { useProject, useAppInfo } from "../../lib/hooks";
+import type { AgentSpec, Task } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/Badge";
 import { Dialog } from "../ui/Dialog";
@@ -32,6 +32,7 @@ export function ProjectWorkspace({
 }) {
   const { project, events, reviews, supervisorRuns, chats, loading, error, notFound, refresh } =
     useProject(id);
+  const { info } = useAppInfo();
   const router = useRouter();
 
   const [editor, setEditor] = useState<EditorState>(null);
@@ -86,17 +87,37 @@ export function ProjectWorkspace({
     }
   }
 
-  async function handleSendMessage(message: string) {
+  async function handleSendMessage(
+    message: string,
+    attachments?: Array<{
+      name: string;
+      type: "image" | "markdown";
+      mimeType: string;
+      size: number;
+      data: string;
+    }>,
+  ) {
     if (!selectedChatId) return;
     setBusy("message");
     setActionError(null);
     try {
-      await api.sendChatMessage(id, selectedChatId, message);
+      await api.sendChatMessage(id, selectedChatId, message, attachments);
       await refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleUpdateAllowedAgents(agents: AgentSpec[]) {
+    if (!selectedChatId) return;
+    setActionError(null);
+    try {
+      await api.updateChatAllowedAgents(id, selectedChatId, agents);
+      await refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -254,12 +275,42 @@ export function ProjectWorkspace({
       />
 
       {/* Composer (always at bottom) */}
-      <ThreadComposer
-        status={project.status}
-        onSendMessage={handleSendMessage}
-        onPauseAndWrite={() => void requestPause()}
-        disabled={!selectedChatId}
-      />
+      {(() => {
+        const selectedChat = selectedChatId
+          ? chats?.find((c) => c.id === selectedChatId)
+          : null;
+        const availableAgents: AgentSpec[] = info?.agents
+          ?.filter((a) => a.connected)
+          .map((a) => {
+            if (a.provider === "codex") return { provider: "codex" };
+            if (a.provider === "claude") {
+              return {
+                provider: "claude",
+                model: "sonnet",
+              };
+            }
+            if (a.provider === "deepseek") {
+              return {
+                provider: "deepseek",
+                model: "deepseek-flash",
+              };
+            }
+            return null;
+          })
+          .filter((a) => a !== null) ?? [];
+
+        return (
+          <ThreadComposer
+            status={project.status}
+            onSendMessage={handleSendMessage}
+            onPauseAndWrite={() => void requestPause()}
+            allowedAgents={selectedChat?.allowedAgents}
+            availableAgents={availableAgents}
+            onUpdateAllowedAgents={handleUpdateAllowedAgents}
+            disabled={!selectedChatId}
+          />
+        );
+      })()}
 
       {/* Modals and dialogs */}
       {editor && (

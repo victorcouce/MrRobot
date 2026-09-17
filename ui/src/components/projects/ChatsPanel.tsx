@@ -7,6 +7,7 @@ import type { ChatDetail, ChatSummary, Project } from "../../lib/types";
 import { StatusBadge, LoadingState } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Textarea } from "../ui/Field";
+import { AttachmentPreview } from "../AttachmentPreview";
 
 export function ChatsPanel({
   project,
@@ -211,6 +212,7 @@ export function ChatsPanel({
                   }
                 >
                   <p className="whitespace-pre-wrap">{message.content}</p>
+                  <AttachmentPreview attachments={message.attachments} />
                   {message.taskIds.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {message.taskIds.map((taskId) => (
