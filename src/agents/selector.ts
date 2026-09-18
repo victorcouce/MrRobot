@@ -1,4 +1,4 @@
-import type { Task, TaskComplexity } from "../tasks/types.js";
+import type { Task, TaskComplexity, TaskType } from "../tasks/types.js";
 import type { AgentProvider, AgentSpec } from "./types.js";
 
 export type AgentSelection = AgentSpec;
@@ -116,6 +116,45 @@ export function resolveAgent(
   }
 
   return selectAgent(task, allowed);
+}
+
+export const TASK_TYPES: TaskType[] = [
+  "architecture",
+  "planning",
+  "coding",
+  "review",
+  "testing",
+  "research",
+];
+
+export const TASK_COMPLEXITIES: TaskComplexity[] = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
+
+export interface AgentMatrixRow {
+  type: TaskType;
+  agents: Record<TaskComplexity, AgentSelection>;
+}
+
+/**
+ * Recorre los `TaskType` por las `TaskComplexity` llamando a `autoSelect`, la
+ * misma función que usa `selectAgent`. Es la fuente real de la tabla
+ * "Asignación: Tipo × Complejidad" de la página de Agentes: si el motor
+ * cambia, la matriz cambia con él en vez de desincronizarse en silencio.
+ */
+export function buildAgentMatrix(): AgentMatrixRow[] {
+  return TASK_TYPES.map((type) => {
+    const agents = {} as Record<TaskComplexity, AgentSelection>;
+
+    for (const complexity of TASK_COMPLEXITIES) {
+      agents[complexity] = autoSelect({ type, complexity } as Task);
+    }
+
+    return { type, agents };
+  });
 }
 
 export function describeAgent(agent: AgentSelection): string {

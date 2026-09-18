@@ -78,14 +78,14 @@ function assertString(value: unknown, field: string): string {
   return value;
 }
 
-function parseType(value: unknown): TaskType {
+export function parseType(value: unknown): TaskType {
   if (typeof value !== "string" || !TASK_TYPES.has(value as TaskType)) {
     throw new Error(`type inválido: ${String(value)}`);
   }
   return value as TaskType;
 }
 
-function parseComplexity(value: unknown): TaskComplexity {
+export function parseComplexity(value: unknown): TaskComplexity {
   if (
     typeof value !== "string" ||
     !COMPLEXITIES.has(value as TaskComplexity)
@@ -286,6 +286,15 @@ export function parseAttachments(
       throw new Error('El campo "data" es obligatorio.');
     }
 
+    // `size` lo declara el cliente: si no coincide con el tamaño real del
+    // base64, un cliente podría declarar size:0 y saltarse el límite de abajo.
+    const actualSize = Buffer.byteLength(data, "base64");
+    if (actualSize !== size) {
+      throw new Error(
+        `El adjunto "${name}" declara un tamaño que no coincide con sus datos.`,
+      );
+    }
+
     if (size > 2 * 1024 * 1024) {
       throw new Error(`El adjunto "${name}" excede 2MB.`);
     }
@@ -358,6 +367,33 @@ export function parseChatMessage(body: Record<string, unknown>): ParsedChatMessa
   }
 
   return parsed;
+}
+
+export interface FallbackChainInput {
+  type: TaskType;
+  complexity: TaskComplexity;
+  agent?: AgentSpec;
+  allowedAgents?: AgentSpec[];
+}
+
+export function parseFallbackChainInput(
+  body: Record<string, unknown>,
+): FallbackChainInput {
+  const input: FallbackChainInput = {
+    type: parseType(body["type"]),
+    complexity: parseComplexity(body["complexity"]),
+  };
+
+  if ("agent" in body) {
+    const agent = parseAgent(body["agent"]);
+    if (agent) input.agent = agent;
+  }
+
+  if (body["allowedAgents"] !== undefined) {
+    input.allowedAgents = parseAllowedAgents(body["allowedAgents"]);
+  }
+
+  return input;
 }
 
 export function parseAllowedAgents(value: unknown): AgentSpec[] {

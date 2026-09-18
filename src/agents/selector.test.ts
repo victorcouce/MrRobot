@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Task } from "../tasks/types.js";
-import { isAgentAllowed, resolveAgent, selectAgent } from "./selector.js";
+import {
+  buildAgentMatrix,
+  isAgentAllowed,
+  resolveAgent,
+  selectAgent,
+  TASK_COMPLEXITIES,
+  TASK_TYPES,
+} from "./selector.js";
 
 function makeTask(overrides: Partial<Task>): Task {
   return {
@@ -161,6 +168,22 @@ test("resolveAgent descarta el agente explícito si el chat no lo permite", () =
     provider: "codex",
   });
   assert.deepEqual(resolveAgent(task), { provider: "claude", model: "opus" });
+});
+
+test("buildAgentMatrix coincide con selectAgent en todas las combinaciones", () => {
+  const matrix = buildAgentMatrix();
+  assert.equal(matrix.length, TASK_TYPES.length);
+
+  for (const row of matrix) {
+    for (const complexity of TASK_COMPLEXITIES) {
+      const task = makeTask({ type: row.type, complexity });
+      assert.deepEqual(
+        row.agents[complexity],
+        selectAgent(task),
+        `${row.type} × ${complexity} desincronizado con selectAgent`,
+      );
+    }
+  }
 });
 
 test("isAgentAllowed iguala el modelo por defecto de cada proveedor", () => {

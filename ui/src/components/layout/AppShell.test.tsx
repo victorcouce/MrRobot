@@ -30,6 +30,7 @@ vi.mock("../../lib/hooks", () => ({
     loading: false,
     refresh: mocks.refresh,
   }),
+  useAppInfo: () => ({ info: null, error: null, refresh: vi.fn() }),
 }));
 
 vi.mock("../../lib/api", () => ({

@@ -2,13 +2,41 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useAppInfo, useProjects } from "@/lib/hooks";
+import { useAgentMatrix, useAppInfo, useProjects } from "@/lib/hooks";
 import { LoadingState } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import type { AgentSpec, TaskComplexity, TaskType } from "@/lib/types";
+
+const TYPE_LABELS: Record<TaskType, string> = {
+  architecture: "Arquitectura",
+  planning: "Planificación",
+  coding: "Programación",
+  review: "Revisión",
+  testing: "Pruebas",
+  research: "Investigación",
+};
+
+const COMPLEXITY_ORDER: TaskComplexity[] = ["low", "medium", "high", "critical"];
+
+const COMPLEXITY_LABELS: Record<TaskComplexity, string> = {
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  critical: "Crítica",
+};
+
+function shortAgentLabel(agent: AgentSpec): string {
+  if (agent.provider === "codex") return "Codex";
+  if (agent.provider === "claude") {
+    return agent.model === "opus" ? "Opus" : "Sonnet";
+  }
+  return agent.model === "deepseek-v4-pro" ? "V4 Pro" : "Flash";
+}
 
 export default function AgentsPage() {
   const { info, refresh } = useAppInfo();
   const { projects } = useProjects();
+  const { matrix } = useAgentMatrix();
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -148,27 +176,20 @@ export default function AgentsPage() {
               <thead>
                 <tr className="border-b border-line bg-subtle">
                   <th className="px-4 py-2 text-left font-semibold text-ink-3 text-xs">Tipo</th>
-                  {["low", "medium", "high", "critical"].map((c) => (
+                  {COMPLEXITY_ORDER.map((c) => (
                     <th key={c} className="px-4 py-2 text-center font-semibold text-ink-3 text-xs">
-                      {c === "low" ? "Baja" : c === "medium" ? "Media" : c === "high" ? "Alta" : "Crítica"}
+                      {COMPLEXITY_LABELS[c]}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { type: "Arquitectura", agents: ["Opus", "Opus", "Opus", "Opus"] },
-                  { type: "Planificación", agents: ["Sonnet", "Sonnet", "Opus", "Opus"] },
-                  { type: "Coding", agents: ["Flash", "Sonnet", "Codex", "Codex"] },
-                  { type: "Review", agents: ["Sonnet", "Sonnet", "Opus", "Opus"] },
-                  { type: "Testing", agents: ["Flash", "Sonnet", "Sonnet", "Sonnet"] },
-                  { type: "Research", agents: ["Flash", "Sonnet", "Opus", "Opus"] },
-                ].map((row) => (
+                {matrix.map((row) => (
                   <tr key={row.type} className="border-b border-line-soft last:border-0">
-                    <td className="px-4 py-3 font-medium text-ink-2">{row.type}</td>
-                    {row.agents.map((agent, i) => (
-                      <td key={i} className="px-4 py-3 text-center text-xs text-ink-3">
-                        {agent}
+                    <td className="px-4 py-3 font-medium text-ink-2">{TYPE_LABELS[row.type]}</td>
+                    {COMPLEXITY_ORDER.map((complexity) => (
+                      <td key={complexity} className="px-4 py-3 text-center text-xs text-ink-3">
+                        {shortAgentLabel(row.agents[complexity])}
                       </td>
                     ))}
                   </tr>

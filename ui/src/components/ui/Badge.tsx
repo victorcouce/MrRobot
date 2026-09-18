@@ -14,7 +14,7 @@ const COLOR_CLASSES: Record<StatusColor, string> = {
   red: "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300",
 };
 
-const DOT_CLASSES: Record<StatusColor, string> = {
+export const DOT_CLASSES: Record<StatusColor, string> = {
   zinc: "bg-zinc-400",
   amber: "bg-amber-500",
   sky: "bg-sky-500",

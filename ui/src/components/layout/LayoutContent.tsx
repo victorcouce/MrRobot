@@ -28,6 +28,7 @@ export function useNewProject(): NewProjectContextValue {
 export function LayoutContent({ children }: { children: ReactNode }) {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [initialGoal, setInitialGoal] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const openNewProject = useCallback((goal = "") => {
     setInitialGoal(goal);
@@ -48,8 +49,17 @@ export function LayoutContent({ children }: { children: ReactNode }) {
 
   return (
     <NewProjectContext.Provider value={{ openNewProject }}>
-      <AppShell onNewProject={() => openNewProject()}>{children}</AppShell>
-      <CommandPalette onNewProject={() => openNewProject()} />
+      <AppShell
+        onNewProject={() => openNewProject()}
+        onOpenSearch={() => setPaletteOpen(true)}
+      >
+        {children}
+      </AppShell>
+      <CommandPalette
+        onNewProject={() => openNewProject()}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+      />
       <NewProjectModal
         open={newProjectOpen}
         initialGoal={initialGoal}

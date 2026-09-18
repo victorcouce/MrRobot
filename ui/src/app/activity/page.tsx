@@ -7,6 +7,7 @@ import { describeEvent } from "@/lib/events";
 import { clockTime, relativeTime } from "@/lib/format";
 import { LoadingState } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import type { ProjectEvent } from "@/lib/types";
 
 type EventCategory = "all" | "tasks" | "reviews" | "git" | "system";
 
@@ -23,8 +24,9 @@ export default function ActivityPage() {
   const { projects } = useProjects();
   const [category, setCategory] = useState<EventCategory>("all");
   const [search, setSearch] = useState("");
+  const [projectId, setProjectId] = useState<string>("all");
 
-  const categoryFilters: Record<EventCategory, (event: any) => boolean> = {
+  const categoryFilters: Record<EventCategory, (event: ProjectEvent) => boolean> = {
     all: () => true,
     tasks: (event) => event.type.startsWith("task."),
     reviews: (event) => event.type === "task.review_passed" || event.type === "task.review_failed",
@@ -34,6 +36,7 @@ export default function ActivityPage() {
 
   const filtered = events.filter((event) => {
     if (!categoryFilters[category](event)) return false;
+    if (projectId !== "all" && event.projectId !== projectId) return false;
     if (search && !describeEvent(event).title.toLowerCase().includes(search.toLowerCase())) {
       return false;
     }
@@ -72,7 +75,7 @@ export default function ActivityPage() {
       <div className="flex-1 overflow-hidden px-7 py-6">
         {/* Toolbar */}
         <div className="mb-6 space-y-4">
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {(["all", "tasks", "reviews", "git", "system"] as EventCategory[]).map((cat) => (
               <Button
                 key={cat}
@@ -83,6 +86,19 @@ export default function ActivityPage() {
                 {CATEGORY_LABELS[cat]}
               </Button>
             ))}
+            <select
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              className="rounded-btn border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label="Filtrar por proyecto"
+            >
+              <option value="all">Todos los proyectos</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-ink-3">

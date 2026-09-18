@@ -66,7 +66,7 @@ describe("ImportProjectDialog", () => {
       ).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     await waitFor(() =>
       expect(api.importProject).toHaveBeenCalledWith({
@@ -79,7 +79,7 @@ describe("ImportProjectDialog", () => {
 
   it("valida que la carpeta no esté vacía", async () => {
     render(<ImportProjectDialog open onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Importar" }));
 
     await waitFor(() =>
       expect(

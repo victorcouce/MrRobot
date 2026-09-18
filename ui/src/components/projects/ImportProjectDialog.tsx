@@ -101,7 +101,7 @@ export function ImportProjectDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Import completed project">
+    <Dialog open={open} onClose={onClose} title="Importar proyecto completado">
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="rounded-md border border-danger-text bg-danger-soft px-3 py-2 text-sm text-danger-text">
@@ -158,7 +158,7 @@ export function ImportProjectDialog({
           </Select>
         </Field>
 
-        <Field id="import-name" label="Name" hint="Opcional.">
+        <Field id="import-name" label="Nombre" hint="Opcional.">
           <Input
             id="import-name"
             value={name}
@@ -169,10 +169,10 @@ export function ImportProjectDialog({
 
         <div className="flex justify-end gap-2">
           <Button type="button" onClick={onClose}>
-            Cancel
+            Cancelar
           </Button>
           <Button type="submit" variant="primary" loading={submitting}>
-            Import
+            Importar
           </Button>
         </div>
       </form>

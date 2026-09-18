@@ -312,6 +312,7 @@ export function ProjectWorkspace({
           mode={editor.mode}
           task={editor.mode === "edit" ? editor.task : undefined}
           tasks={project.tasks}
+          allowedAgents={selectedChat?.allowedAgents}
           onClose={() => setEditor(null)}
           onSubmit={submitTask}
           submitting={busy === "task"}

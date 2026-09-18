@@ -8,6 +8,7 @@ import {
 } from "./project-store";
 import { subscribeProject } from "./sse";
 import type {
+  AgentMatrixRow,
   AppInfo,
   ChatMessage,
   ChatSummary,
@@ -112,6 +113,29 @@ export function useAllChats() {
   }, [refresh]);
 
   return { chats, error, loading, refresh };
+}
+
+export function useAgentMatrix() {
+  const [matrix, setMatrix] = useState<AgentMatrixRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      setMatrix(await api.agentMatrix());
+      setError(null);
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { matrix, error, loading, refresh };
 }
 
 export function useActivity(intervalMs = 5000) {

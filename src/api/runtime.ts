@@ -10,6 +10,8 @@ import {
   updateChatAllowedAgents as updateChatAllowedAgentsInService,
   type CreateChatInput,
 } from "../chats/service.js";
+import { buildAgentMatrix, TASK_COMPLEXITIES } from "../agents/selector.js";
+import { getFallbackChain } from "../agents/fallback.js";
 import type { OrchestratorConfig } from "../config/index.js";
 import { loadConfig, mergeConfig } from "../config/index.js";
 import type { Project } from "../projects/types.js";
@@ -48,15 +50,19 @@ import type {
 import { createGitWorkspaceManager, prepareProjectRepo } from "../workspace/manager.js";
 import type { WorkspaceManager } from "../workspace/types.js";
 import type {
+  AgentMatrixRow,
   AgentSpec,
   AppInfo,
   ConfigInfo,
   ProjectEvent as WireEvent,
   ProjectPreview,
   ProjectSummary,
+  SearchResults,
 } from "../../shared/types.js";
+import type { Task } from "../tasks/types.js";
 import { checkAgentAvailability } from "./availability.js";
 import { createMockDeps, createMockWorkspace, type MockScenario } from "./mock.js";
+import type { FallbackChainInput } from "./parse.js";
 import {
   computeStats,
   serializeAgent,
@@ -242,6 +248,79 @@ export class Runtime {
   updateConfig(overrides: Partial<OrchestratorConfig>): ConfigInfo {
     this.config = mergeConfig(this.config, overrides);
     return this.configInfo();
+  }
+
+  /** Fuente real de la tabla "Asignación: Tipo × Complejidad" de Agentes. */
+  agentMatrix(): AgentMatrixRow[] {
+    return buildAgentMatrix().map((row) => ({
+      type: row.type,
+      agents: Object.fromEntries(
+        TASK_COMPLEXITIES.map((complexity) => [
+          complexity,
+          serializeAgent(row.agents[complexity]),
+        ]),
+      ) as AgentMatrixRow["agents"],
+    }));
+  }
+
+  /**
+   * Cadena de fallback para un tipo/complejidad dados, calculada por el mismo
+   * motor que usa la ejecución (`getFallbackChain`). No requiere que la tarea
+   * exista: el editor la pide en vivo mientras se elige tipo/complejidad.
+   */
+  fallbackChain(input: FallbackChainInput): AgentSpec[] {
+    const task = {
+      id: "",
+      title: "",
+      description: "",
+      status: "todo",
+      type: input.type,
+      complexity: input.complexity,
+      ...(input.agent ? { agent: input.agent } : {}),
+    } as Task;
+
+    return getFallbackChain(task, input.allowedAgents ?? []).map(serializeAgent);
+  }
+
+  async search(rawQuery: string): Promise<SearchResults> {
+    const query = rawQuery.trim().toLowerCase();
+
+    if (!query) {
+      return { chats: [], tasks: [] };
+    }
+
+    const projects = await this.storage.listProjects();
+    const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+
+    const chats = await this.storage.listAllChats();
+    const matchedChats = chats
+      .filter((chat) => chat.title.toLowerCase().includes(query))
+      .slice(0, 20)
+      .map((chat) => ({
+        id: chat.id,
+        projectId: chat.projectId,
+        projectName: projectNames.get(chat.projectId) ?? "",
+        title: chat.title,
+      }));
+
+    const matchedTasks = projects
+      .flatMap((project) =>
+        project.tasks
+          .filter(
+            (task) =>
+              task.title.toLowerCase().includes(query) ||
+              task.id.toLowerCase().includes(query),
+          )
+          .map((task) => ({
+            id: task.id,
+            projectId: project.id,
+            projectName: project.name,
+            title: task.title,
+          })),
+      )
+      .slice(0, 20);
+
+    return { chats: matchedChats, tasks: matchedTasks };
   }
 
   async listProjects(): Promise<ProjectSummary[]> {

@@ -301,3 +301,21 @@ export interface AppInfo {
   /** Si GITHUB_TOKEN está definido en el proceso del backend. */
   githubToken: boolean;
 }
+
+/** Fila de la matriz tipo × complejidad, derivada de `selectAgent`. */
+export interface AgentMatrixRow {
+  type: TaskType;
+  agents: Record<TaskComplexity, AgentSpec>;
+}
+
+export interface SearchResultItem {
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+}
+
+export interface SearchResults {
+  chats: SearchResultItem[];
+  tasks: SearchResultItem[];
+}

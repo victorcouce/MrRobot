@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import type { Task } from "../../lib/types";
-import { AGENT_CHOICES, agentToChoice, type AgentChoice } from "../../lib/agents";
+import { useEffect, useState } from "react";
+import type { AgentSpec, Task, TaskComplexity, TaskType } from "../../lib/types";
+import { AGENT_CHOICES, agentToChoice, choiceToAgent, type AgentChoice } from "../../lib/agents";
 import { TASK_TYPE_LABELS, COMPLEXITY_LABELS } from "../../lib/status";
+import { api, agentLabel } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { Field, Input, Select, Textarea } from "../ui/Field";
 import { Dialog } from "../ui/Dialog";
@@ -22,6 +23,7 @@ export function TaskEditor({
   mode,
   task,
   tasks,
+  allowedAgents,
   onClose,
   onSubmit,
   submitting,
@@ -30,6 +32,7 @@ export function TaskEditor({
   mode: "edit" | "create";
   task?: Task;
   tasks: Task[];
+  allowedAgents?: AgentSpec[];
   onClose: () => void;
   onSubmit: (data: TaskFormData) => void;
   submitting: boolean;
@@ -48,8 +51,33 @@ export function TaskEditor({
   const [criteria, setCriteria] = useState(
     (task?.acceptanceCriteria ?? []).join("\n"),
   );
+  const [fallbackChain, setFallbackChain] = useState<AgentSpec[]>([]);
 
   const otherTasks = tasks.filter((candidate) => candidate.id !== task?.id);
+
+  // La cadena la calcula `getFallbackChain` en el backend: se pide en vivo
+  // según cambian tipo/complejidad/agente, en vez de replicar la lógica aquí.
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .fallbackChain({
+        type: type as TaskType,
+        complexity: complexity as TaskComplexity,
+        ...(agent !== "auto" ? { agent: choiceToAgent(agent) } : {}),
+        ...(allowedAgents?.length ? { allowedAgents } : {}),
+      })
+      .then((chain) => {
+        if (!cancelled) setFallbackChain(chain);
+      })
+      .catch(() => {
+        if (!cancelled) setFallbackChain([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [type, complexity, agent, allowedAgents]);
 
   function toggleDependency(id: string) {
     setDependsOn((current) =>
@@ -89,7 +117,7 @@ export function TaskEditor({
           </div>
         )}
 
-        <Field id="task-title" label="Title">
+        <Field id="task-title" label="Título">
           <Input
             id="task-title"
             value={title}
@@ -98,7 +126,7 @@ export function TaskEditor({
           />
         </Field>
 
-        <Field id="task-description" label="Description">
+        <Field id="task-description" label="Descripción">
           <Textarea
             id="task-description"
             rows={3}
@@ -109,7 +137,7 @@ export function TaskEditor({
         </Field>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field id="task-type" label="Type">
+          <Field id="task-type" label="Tipo">
             <Select
               id="task-type"
               value={type}
@@ -123,7 +151,7 @@ export function TaskEditor({
             </Select>
           </Field>
 
-          <Field id="task-complexity" label="Complexity">
+          <Field id="task-complexity" label="Complejidad">
             <Select
               id="task-complexity"
               value={complexity}
@@ -138,7 +166,7 @@ export function TaskEditor({
           </Field>
         </div>
 
-        <Field id="task-agent" label="Agent" hint="Auto usa el selector del motor según tipo y complejidad.">
+        <Field id="task-agent" label="Agente" hint="Auto usa el selector del motor según tipo y complejidad.">
           <Select
             id="task-agent"
             value={agent}
@@ -153,7 +181,27 @@ export function TaskEditor({
           </Select>
         </Field>
 
-        <Field id="task-acceptance" label="Acceptance criteria" hint="Uno por línea.">
+        {fallbackChain.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">Cadena de fallback</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {fallbackChain.map((candidate, index) => (
+                <span key={index} className="flex items-center gap-1.5">
+                  <span className="rounded-chip border border-line-strong bg-subtle px-2 py-1 text-xs text-ink-2">
+                    {agentLabel(candidate)}
+                  </span>
+                  {index < fallbackChain.length - 1 && (
+                    <span className="text-xs text-ink-4" aria-hidden>
+                      →
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Field id="task-acceptance" label="Criterios de aceptación" hint="Uno por línea.">
           <Textarea
             id="task-acceptance"
             rows={3}
@@ -163,7 +211,7 @@ export function TaskEditor({
         </Field>
 
         {otherTasks.length > 0 && (
-          <Field id="task-deps" label="Dependencies">
+          <Field id="task-deps" label="Dependencias">
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-line bg-subtle p-2">
               {otherTasks.map((candidate) => (
                 <label
@@ -187,9 +235,9 @@ export function TaskEditor({
         )}
 
         <div className="flex justify-end gap-2 border-t border-line pt-4">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>Cancelar</Button>
           <Button type="submit" variant="primary" loading={submitting}>
-            {mode === "edit" ? "Save" : "Add task"}
+            {mode === "edit" ? "Guardar" : "Añadir tarea"}
           </Button>
         </div>
       </form>

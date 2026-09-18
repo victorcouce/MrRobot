@@ -1,5 +1,6 @@
 import { notifyProjectsChanged } from "./project-store";
 import type {
+  AgentMatrixRow,
   AgentSpec,
   AppInfo,
   ChatDetail,
@@ -11,9 +12,12 @@ import type {
   ProjectPreview,
   ProjectSummary,
   RemoteCheck,
+  SearchResults,
   StoredReview,
   SupervisorRun,
   Task,
+  TaskComplexity,
+  TaskType,
 } from "./types";
 
 export const API_BASE =
@@ -272,6 +276,22 @@ export const api = {
 
   activity: (limit = 100) =>
     request<ProjectEvent[]>(`/api/activity?limit=${limit}`),
+
+  agentMatrix: () => request<AgentMatrixRow[]>("/api/agents/matrix"),
+
+  fallbackChain: (input: {
+    type: TaskType;
+    complexity: TaskComplexity;
+    agent?: AgentSpec;
+    allowedAgents?: AgentSpec[];
+  }) =>
+    request<AgentSpec[]>("/api/agents/fallback-chain", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  search: (q: string) =>
+    request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
 };
 
 export function streamUrl(projectId: string): string {

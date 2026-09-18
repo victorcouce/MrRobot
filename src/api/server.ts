@@ -5,6 +5,7 @@ import {
   parseChatInput,
   parseChatMessage,
   parseConfigOverrides,
+  parseFallbackChainInput,
   parseImportProject,
   parseNewTask,
   parseRepoOptions,
@@ -205,6 +206,33 @@ async function dispatch(
     }
 
     sendJson(res, 200, await checkAndApplyDeepSeekKey(apiKey));
+    return;
+  }
+
+  // /api/agents/matrix
+  if (
+    req.method === "GET" &&
+    segments[1] === "agents" &&
+    segments[2] === "matrix"
+  ) {
+    sendJson(res, 200, runtime.agentMatrix());
+    return;
+  }
+
+  // /api/agents/fallback-chain
+  if (
+    req.method === "POST" &&
+    segments[1] === "agents" &&
+    segments[2] === "fallback-chain"
+  ) {
+    const body = await readJson(req);
+    sendJson(res, 200, runtime.fallbackChain(parseFallbackChainInput(body)));
+    return;
+  }
+
+  // /api/search
+  if (req.method === "GET" && segments[1] === "search") {
+    sendJson(res, 200, await runtime.search(query.get("q") ?? ""));
     return;
   }
 

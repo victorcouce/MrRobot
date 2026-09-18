@@ -704,7 +704,7 @@ test("api server: los agentes del proyecto y los adjuntos llegan al cliente", as
             name: "spec.md",
             type: "markdown",
             mimeType: "text/markdown",
-            size: 8,
+            size: 6,
             data: "IyBIb2xh",
           },
         ],
@@ -717,6 +717,138 @@ test("api server: los agentes del proyecto y los adjuntos llegan al cliente", as
   );
   assert.equal(userMessage.attachments?.length, 1);
   assert.equal(userMessage.attachments[0].name, "spec.md");
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: GET /api/agents/matrix coincide con selectAgent", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const matrix = await (await fetch(`${base}/api/agents/matrix`)).json();
+  assert.equal(matrix.length, 6);
+
+  const coding = matrix.find((row: { type: string }) => row.type === "coding");
+  assert.deepEqual(coding.agents.low, {
+    provider: "deepseek",
+    model: "deepseek-flash",
+  });
+  assert.deepEqual(coding.agents.high, { provider: "codex" });
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const chain = await (
+    await fetch(`${base}/api/agents/fallback-chain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "coding", complexity: "low" }),
+    })
+  ).json();
+
+  assert.deepEqual(chain, [
+    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "claude", model: "sonnet" },
+    { provider: "codex" },
+  ]);
+
+  const restricted = await (
+    await fetch(`${base}/api/agents/fallback-chain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "coding",
+        complexity: "high",
+        allowedAgents: [{ provider: "claude", model: "sonnet" }, { provider: "codex" }],
+      }),
+    })
+  ).json();
+
+  assert.deepEqual(restricted, [
+    { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
+  ]);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: GET /api/search encuentra chats y tareas de todos los proyectos", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const created = await (
+    await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "librería TS con login" }),
+    })
+  ).json();
+
+  await fetch(`${base}/api/projects/${created.id}/chats`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "añade login" }),
+  });
+
+  await waitFor(runtime, created.id, (status) => status === "ready");
+
+  const empty = await (await fetch(`${base}/api/search?q=`)).json();
+  assert.deepEqual(empty, { chats: [], tasks: [] });
+
+  const results = await (
+    await fetch(`${base}/api/search?q=${encodeURIComponent("login")}`)
+  ).json();
+
+  assert.ok(results.chats.length > 0);
+  assert.equal(results.chats[0].projectId, created.id);
+  assert.equal(results.chats[0].projectName, created.name);
+
+  const project = await (
+    await fetch(`${base}/api/projects/${created.id}`)
+  ).json();
+  const byTitle = project.tasks.find((task: { title: string }) =>
+    task.title.toLowerCase().includes("login"),
+  );
+
+  if (byTitle) {
+    const taskResults = await (
+      await fetch(`${base}/api/search?q=${encodeURIComponent(byTitle.title)}`)
+    ).json();
+    assert.ok(
+      taskResults.tasks.some((task: { id: string }) => task.id === byTitle.id),
+    );
+  }
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();

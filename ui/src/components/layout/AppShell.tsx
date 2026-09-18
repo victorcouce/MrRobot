@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode, useEffect } from "react";
 import { api } from "../../lib/api";
-import { useAllChats, useProjects } from "../../lib/hooks";
+import { useAllChats, useAppInfo, useProjects } from "../../lib/hooks";
 import { clsx } from "../../lib/cx";
+import { PROJECT_STATUS } from "../../lib/status";
+import { DOT_CLASSES } from "../ui/Badge";
 import type { ChatSummary, ProjectSummary } from "../../lib/types";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -65,7 +67,20 @@ const NAV_ICONS: Record<string, ReactNode> = {
   ),
 };
 
-function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
+const SEARCH_ICON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+  </svg>
+);
+
+function ProjectChatGroups({
+  collapsed,
+  pathname,
+}: {
+  collapsed: boolean;
+  pathname: string;
+}) {
   const { projects } = useProjects();
   const { chats, refresh } = useAllChats();
   const router = useRouter();
@@ -91,7 +106,7 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
     return map;
   }, [chats]);
 
-  const recent = projects.slice(0, 5);
+  const visibleProjects = projects;
 
   async function createChat(project: ProjectSummary) {
     setBusyId(project.id);
@@ -112,23 +127,25 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="flex flex-col items-center gap-2">
-        {recent.map((project) => {
-          const isRunning = project.status === "running";
-          const statusColor = clsx(
-            "w-2 h-2 rounded-full",
-            isRunning ? "bg-primary" : "bg-success",
-          );
+        {visibleProjects.map((project) => {
+          const isActive = pathname === `/projects/${project.id}`;
+          const dotColor = DOT_CLASSES[PROJECT_STATUS[project.status].color];
           return (
             <Link
               key={project.id}
               href={`/projects/${project.id}`}
               title={project.name}
-              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn border border-line text-ink-2 hover:border-ink hover:text-ink"
+              className={clsx(
+                "focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn border text-ink-2 hover:border-ink hover:text-ink",
+                isActive ? "border-ink" : "border-line",
+              )}
             >
               <span className="text-xs font-semibold">
                 {project.name.substring(0, 2).toUpperCase()}
               </span>
-              <span className={clsx(statusColor, "absolute bottom-0 right-0")} />
+              <span
+                className={clsx("h-2 w-2 rounded-full absolute bottom-0 right-0", dotColor)}
+              />
             </Link>
           );
         })}
@@ -136,7 +153,7 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
     );
   }
 
-  if (recent.length === 0) {
+  if (visibleProjects.length === 0) {
     return (
       <p className="px-2.5 text-xs text-ink-4">
         Sin proyectos.
@@ -152,9 +169,10 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
         </p>
       )}
 
-      {recent.map((project) => {
+      {visibleProjects.map((project) => {
         const projectChats = chatsByProject.get(project.id) ?? [];
         const isRunning = project.status === "running";
+        const isActive = pathname === `/projects/${project.id}`;
         const busy = busyId === project.id;
 
         return (
@@ -162,7 +180,10 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
             <div className="flex items-center gap-0.5">
               <Link
                 href={`/projects/${project.id}`}
-                className="focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-2 hover:bg-muted hover:text-ink"
+                className={clsx(
+                  "focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm font-medium hover:bg-muted hover:text-ink",
+                  isActive ? "border-ink text-ink" : "border-transparent text-ink-2",
+                )}
               >
                 <span className="truncate">{project.name}</span>
               </Link>
@@ -213,11 +234,15 @@ function ProjectChatGroups({ collapsed }: { collapsed: boolean }) {
 export function AppShell({
   children,
   onNewProject,
+  onOpenSearch,
 }: {
   children: ReactNode;
   onNewProject?: () => void;
+  onOpenSearch?: () => void;
 }) {
   const pathname = usePathname();
+  const { info } = useAppInfo();
+  const anyAgentConnected = (info?.agents ?? []).some((agent) => agent.connected);
   const [collapsed, setCollapsed] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -290,18 +315,44 @@ export function AppShell({
               </svg>
             </button>
           )}
+          {collapsed && (
+            <button
+              onClick={() => onOpenSearch?.()}
+              className="focus-ring flex items-center justify-center rounded-btn border border-line bg-surface p-1.5 text-ink-3 hover:bg-muted hover:text-ink-2"
+              aria-label="Buscar"
+            >
+              {SEARCH_ICON}
+            </button>
+          )}
         </div>
 
         {!collapsed && (
           <>
+            <div className="px-3 mb-3">
+              <button
+                onClick={() => onNewProject?.()}
+                className="focus-ring flex w-full items-center justify-between gap-2 rounded-btn bg-primary px-3 py-2 text-sm font-medium text-surface hover:bg-primary-hover"
+              >
+                <span className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                  </svg>
+                  Nuevo proyecto
+                </span>
+                <kbd className="rounded border border-white/30 px-1.5 py-0.5 font-mono text-[11px] text-surface/80">
+                  ⌘N
+                </kbd>
+              </button>
+            </div>
             <button
-              onClick={() => onNewProject?.()}
-              className="focus-ring w-full flex items-center justify-center gap-2 rounded-btn bg-primary px-3 py-2 text-sm font-medium text-surface hover:bg-primary-hover mx-3 mb-3"
+              onClick={() => onOpenSearch?.()}
+              className="focus-ring mx-3 mb-3 flex items-center gap-2 rounded-btn border border-line-strong bg-surface px-3 py-2 text-sm text-ink-3 hover:bg-muted hover:text-ink-2"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-              Nuevo proyecto
+              {SEARCH_ICON}
+              <span className="flex-1 text-left">Buscar</span>
+              <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-ink-4">
+                ⌘K
+              </kbd>
             </button>
             <nav className="space-y-0.5 px-3 py-2" aria-label="Principal">
               <NavLink
@@ -339,7 +390,7 @@ export function AppShell({
             </p>
           )}
           {collapsed && <div className="mb-2" />}
-          <ProjectChatGroups collapsed={collapsed} />
+          <ProjectChatGroups collapsed={collapsed} pathname={pathname} />
         </div>
 
         <div
@@ -363,6 +414,23 @@ export function AppShell({
           )}
           {collapsed && (
             <>
+              <Link
+                href="/agents"
+                title="Agentes"
+                className="focus-ring relative flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
+              >
+                {NAV_ICONS.agents}
+                {anyAgentConnected && (
+                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-success" />
+                )}
+              </Link>
+              <Link
+                href="/activity"
+                title="Actividad"
+                className="focus-ring flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
+              >
+                {NAV_ICONS.activity}
+              </Link>
               <Link
                 href="/settings"
                 title="Ajustes"

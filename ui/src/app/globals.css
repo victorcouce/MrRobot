@@ -1,15 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:wght@400&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * --font-sans, --font-mono y --font-display las define `next/font/google`
+ * como clases en <html> (ver ui/src/app/layout.tsx), no aquí: así Next
+ * autohospeda y precarga las fuentes en vez de pedirlas a Google Fonts en
+ * cada visita.
+ */
 :root {
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, "Liberation Mono", monospace;
-  --font-display: "Instrument Serif", Georgia, serif;
   color-scheme: light;
 }
 
