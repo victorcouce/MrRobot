@@ -1,0 +1,67 @@
+shared/types.ts
+  s_13568309968d02::t_d8647e69b6648d 304-321
+src/agents/selector.test.ts
+  s_13568309968d02::t_23b72d54ebab7b 4-11,173-188
+src/agents/selector.ts
+  s_13568309968d02::t_59b3cdeae7d053 1,121-159
+src/api/api.test.ts
+  s_13568309968d02::t_6034dbf5f6792b 707,724-855
+src/api/parse.test.ts
+  s_13568309968d02::t_be21ad5ebcf6e5 1-66
+src/api/parse.ts
+  s_13568309968d02::t_a1901310c10ad9 81,88,289-297,372-398
+src/api/runtime.ts
+  s_13568309968d02::t_f1909897bef1ad 13-14,53,60,62,65,253-325
+src/api/server.ts
+  s_13568309968d02::t_c7a7839ce58f7c 8,212-238
+ui/src/app/activity/page.tsx
+  s_13568309968d02::t_5be13be83c934f 10,27,29,39,78,89-101
+ui/src/app/agents/page.tsx
+  s_13568309968d02::t_62bf4105de92f4 5,8-34,39,179,181,187,189-192
+ui/src/app/globals.css
+  s_13568309968d02::t_da8285a9a72d61 5-10
+ui/src/app/layout.tsx
+  s_13568309968d02::t_2109c79f686a16 2,7-22,44-48
+ui/src/components/CommandPalette.test.tsx
+  s_13568309968d02::t_7706c7c5068f19 1-96
+ui/src/components/CommandPalette.tsx
+  s_13568309968d02::t_5470ac11e8631d 3,6,8,14,18-19,22-23,26-27,31,34-74,76-84,86-105,108,112,114,116-156,162,165,167-168,172,174,176-177,179-180,182-183,185,188,195-199,209,211-216,234,237,239,268-270,273-280
+ui/src/components/layout/AppShell.test.tsx
+  s_13568309968d02::t_4a35d12a908511 33
+ui/src/components/layout/AppShell.tsx
+  s_13568309968d02::t_b476ab25a92b2d 7,9-10,70-83,109,130-132,138-141,146-148,156,172,175,183-186,237,241,244-245,318-326,331-346,348-349,351-355,393,417-433
+ui/src/components/layout/LayoutContent.tsx
+  s_13568309968d02::t_70c7986b9d2c65 31,52-62
+ui/src/components/projects/ImportProjectDialog.test.tsx
+  s_13568309968d02::t_b0355c35b992cb 69,82
+ui/src/components/projects/ImportProjectDialog.tsx
+  s_13568309968d02::t_fc6d43b1678971 104,161,172,175
+ui/src/components/projects/ProjectWorkspace.tsx
+  s_13568309968d02::t_501127f6b987a2 315
+ui/src/components/projects/TaskEditor.test.tsx
+  s_13568309968d02::t_ca8be6a5603020 1-117
+ui/src/components/projects/TaskEditor.tsx
+  s_13568309968d02::t_01a57cb49de075 3-5,7,26,35,54,58-81,120,129,140,154,169,184-204,214,238,240
+ui/src/components/ui/Badge.tsx
+  s_13568309968d02::t_20aac25440c79c 17
+ui/src/lib/api.ts
+  s_13568309968d02::t_ee2a8445692a55 3,15,19-20,279-294
+ui/src/lib/hooks.ts
+  s_13568309968d02::t_510ea6c7ab2f98 11,118-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c6b4dfc0cf0d05b4b52a771b11b98673aec4060",
+  "prompts": {},
+  "sessions": {
+    "s_13568309968d02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e71ba7d-b027-4794-81bf-0e5e60fa7850",
+        "model": "unknown"
+      },
+      "human_author": "Víctor Couce Veiga <victorcv@ext.inditex.com>"
+    }
+  }
+}
