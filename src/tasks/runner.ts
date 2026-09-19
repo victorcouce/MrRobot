@@ -16,7 +16,7 @@ import {
   type LimitRetryPolicy,
 } from "../agents/limit-retry.js";
 import { canWriteFiles, describeAgent } from "../agents/selector.js";
-import type { AgentCandidate, Attachment } from "../agents/types.js";
+import type { AgentCandidate, Attachment, OnAgentEvent } from "../agents/types.js";
 import type { RunOptions } from "../providers/types.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
@@ -49,6 +49,12 @@ export interface RunTaskOptions {
   signal?: AbortSignal | undefined;
   /** Recibe la salida del agente en vivo (stdout/stderr). */
   onOutput?: ((chunk: string) => void) | undefined;
+  /**
+   * Notifica el inicio/éxito/fallo de cada intento de agente, con su duración.
+   * Pensado para monitorización (fichero .log, consola del navegador vía SSE),
+   * no cambia el flujo de ejecución.
+   */
+  onAgentEvent?: OnAgentEvent | undefined;
   /**
    * Se ejecuta en el worktree del intento exitoso, antes de eliminarlo. Sirve
    * para correr los checks allí y reutilizar el `node_modules` que el agente ya
@@ -303,6 +309,14 @@ async function runTaskOnce(
       console.log(`Agente:\n${label}`);
       console.log(`Intento ${attempt + 1}`);
 
+      await options.onAgentEvent?.({
+        phase: "start",
+        agent: candidate,
+        attempt: attempt + 1,
+        chainIndex: index,
+        chainLength: chain.length,
+      });
+
       try {
         const output = await execute(prompt, candidate, {
           cwd: workspace.path,
@@ -323,7 +337,9 @@ async function runTaskOnce(
           throw new Error(
             `${label} no creó ni modificó ningún archivo en el workspace. ` +
               `Los proveedores que solo devuelven texto (DeepSeek) no escriben en disco; ` +
-              `usa Codex o Claude para tareas de código.`,
+              `usa Codex o Claude para tareas de código. Si era Codex o Claude, ` +
+              `el CLI no tenía permiso para escribir: revisa su configuración ` +
+              `(en Claude, MRROBOT_CLAUDE_PERMISSION_MODE).`,
           );
         }
 
@@ -377,6 +393,15 @@ async function runTaskOnce(
 
         attempts.push(attemptRecord);
 
+        await options.onAgentEvent?.({
+          phase: "success",
+          agent: candidate,
+          attempt: attempt + 1,
+          chainIndex: index,
+          chainLength: chain.length,
+          durationMs: Date.now() - startedAt.getTime(),
+        });
+
         console.log(`\n✓ tarea completada`);
 
         if (resultCommit !== undefined) {
@@ -423,6 +448,17 @@ async function runTaskOnce(
         console.log(`Limpiando workspace...`);
 
         const availability = classifyAvailability(error);
+
+        await options.onAgentEvent?.({
+          phase: "failed",
+          agent: candidate,
+          attempt: attempt + 1,
+          chainIndex: index,
+          chainLength: chain.length,
+          durationMs: Date.now() - startedAt.getTime(),
+          error: message,
+          ...(availability.available ? {} : { reason: availability.reason }),
+        });
 
         if (!availability.available) {
           if (isLimitReason(availability.reason)) {

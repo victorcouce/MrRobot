@@ -10,6 +10,7 @@ import {
 } from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
+import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
 import type { GeneratedPlan, PlanContext } from "../planner/types.js";
 import { PREVIEW_SCRIPTS } from "../preview/preview.js";
@@ -284,6 +285,7 @@ export async function generatePlan(
     await emit(storage, projectId, "plan.started");
   }
 
+  const onPlannerAgentEvent = createAgentEventEmitter(storage, projectId, "planner");
   const plan = await planProject(project.goal, context, {
     execute: deps.plannerExecute,
     ...(project.defaultAllowedAgents?.length
@@ -292,6 +294,7 @@ export async function generatePlan(
     maxAttempts: config.plannerMaxAttempts,
     maxRetriesPerAgent: config.maxRetriesPerAgent,
     ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+    onAgentEvent: (info) => onPlannerAgentEvent(undefined, info),
   });
 
   const ready: Project = {
@@ -537,6 +540,92 @@ function collectDependencyCommits(
   return ordered;
 }
 
+function doneCommits(
+  project: Project,
+): Array<{ taskId: string; commit: string }> {
+  return project.tasks
+    .filter((task) => task.status === "done" && task.resultCommit)
+    .map((task) => ({
+      taskId: task.id,
+      commit: task.resultCommit as string,
+    }));
+}
+
+/**
+ * Vuelca `ref` en el directorio del proyecto y lo anota como evento. El
+ * resultado de las tareas vive en ramas `agent/*`; sin este paso el directorio
+ * que abre el usuario se queda vacío (solo `.git` y `.worktrees`) y el planner
+ * y el supervisor, que inspeccionan ese mismo directorio, deciden sobre un
+ * repositorio fantasma.
+ */
+async function syncWorkingTree(
+  project: Project,
+  workspace: WorkspaceManager,
+  storage: Storage,
+  ref: string,
+): Promise<void> {
+  if (!workspace.syncWorkingTree) {
+    return;
+  }
+
+  const sync = await workspace.syncWorkingTree(
+    ref,
+    `mrrobot: resultado de ${project.name}`,
+  );
+
+  if (sync.status === "failed" || sync.status === "skipped") {
+    await emit(storage, project.id, "worktree.sync_failed", undefined, {
+      status: sync.status,
+      message: sync.message,
+    });
+    return;
+  }
+
+  await emit(storage, project.id, "worktree.synced", undefined, {
+    status: sync.status,
+    ...(sync.ref ? { commit: sync.ref } : {}),
+    ...(sync.branch ? { branch: sync.branch } : {}),
+  });
+}
+
+/**
+ * Deja en el directorio del proyecto el trabajo completado hasta ahora, aunque
+ * el plan no haya terminado. Así el usuario ve los archivos de las tareas que
+ * sí salieron y la siguiente ronda (supervisor y replanificación) razona sobre
+ * el estado real del repositorio.
+ */
+async function syncProgress(
+  project: Project,
+  workspace: WorkspaceManager,
+  storage: Storage,
+): Promise<void> {
+  if (!workspace.syncWorkingTree || !workspace.integrateProgress) {
+    return;
+  }
+
+  const commits = doneCommits(project);
+
+  if (commits.length === 0) {
+    return;
+  }
+
+  const integration = await workspace.integrateProgress(
+    project.id,
+    commits,
+    project.baseRef,
+  );
+
+  if (!integration.ok) {
+    await emit(storage, project.id, "worktree.sync_failed", undefined, {
+      status: "failed",
+      message: integration.error.message,
+    });
+    return;
+  }
+
+  await syncWorkingTree(project, workspace, storage, integration.ref);
+}
+
 function makeTaskExecutor(
   pid: string,
   projectBaseRef: string,
@@ -551,6 +640,11 @@ function makeTaskExecutor(
   // La raíz se memoriza en el manager; se resuelve una vez por tarea y se usa
   // para reanclar los criterios con rutas absolutas dentro del repo.
   const repoRootPromise = workspace.getRepoRoot().catch(() => undefined);
+
+  // Monitorización: un intento de agente por tarea (worker) y por reviewer,
+  // cada uno con su duración (fichero .log + SSE → consola del navegador).
+  const onWorkerAgentEvent = createAgentEventEmitter(storage, pid, "worker");
+  const onReviewerAgentEvent = createAgentEventEmitter(storage, pid, "reviewer");
 
   /**
    * Corre el reviewer sobre el resultado real de la tarea. `cwd` es el worktree
@@ -579,6 +673,7 @@ function makeTaskExecutor(
       ...(allowedAgents.length ? { allowedAgents } : {}),
       maxRetriesPerAgent: config.maxRetriesPerAgent,
       ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+      onAgentEvent: (info) => onReviewerAgentEvent(target.id, info),
     });
   };
 
@@ -660,6 +755,7 @@ function makeTaskExecutor(
           ? { onOutput: (chunk: string) => outputBuffer.push(chunk) }
           : {}),
         ...(signal ? { signal } : {}),
+        onAgentEvent: (info) => onWorkerAgentEvent(task.id, info),
       });
       outputBuffer?.flush();
 
@@ -841,6 +937,11 @@ export async function runProject(
       break;
     }
 
+    // El supervisor y el planner inspeccionan el directorio del proyecto: si
+    // no se vuelca lo ya hecho, lo ven vacío y replanifican como si ninguna
+    // tarea hubiera producido nada.
+    await syncProgress(project, workspace, storage);
+
     if (roundResult.status === "paused") {
       project = { ...project, status: "paused", updatedAt: new Date() };
       await storage.saveProject(project);
@@ -867,6 +968,7 @@ export async function runProject(
       (task) => task.integrationError,
     );
 
+    const onSupervisorAgentEvent = createAgentEventEmitter(storage, pid, "supervisor");
     const decision = await superviseProject(
       project,
       {
@@ -881,6 +983,7 @@ export async function runProject(
           : {}),
         maxRetriesPerAgent: config.maxRetriesPerAgent,
         ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+        onAgentEvent: (info) => onSupervisorAgentEvent(undefined, info),
       },
     );
 
@@ -917,6 +1020,7 @@ export async function runProject(
       }
 
       try {
+        const onReplanAgentEvent = createAgentEventEmitter(storage, pid, "planner");
         const newPlan = await planProject(project.goal, context, {
           execute: deps.plannerExecute,
           ...(project.defaultAllowedAgents?.length
@@ -925,6 +1029,7 @@ export async function runProject(
           maxAttempts: config.plannerMaxAttempts,
           maxRetriesPerAgent: config.maxRetriesPerAgent,
           ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+          onAgentEvent: (info) => onReplanAgentEvent(undefined, info),
         });
 
         const merged = mergeReplan(project.tasks, newPlan);
@@ -1011,6 +1116,8 @@ export async function finalizeProjectRun(
         commit: integration.ref,
       });
 
+      await syncWorkingTree(project, workspace, storage, integration.ref);
+
       if (project.remoteUrl && workspace.push) {
         try {
           await workspace.push(integration.branchName);
@@ -1045,6 +1152,10 @@ export async function finalizeProjectRun(
       finishedAt: new Date(),
       updatedAt: new Date(),
     };
+
+    // Aunque el plan no haya terminado, lo que sí se completó se deja en el
+    // directorio del proyecto en vez de quedarse solo dentro de git.
+    await syncProgress(project, workspace, storage);
   }
 
   await storage.saveProject(project);

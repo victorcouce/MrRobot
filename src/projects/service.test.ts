@@ -72,7 +72,11 @@ const singleTaskPlan = {
   ],
 };
 
-function fakeWorkspace(conflictOn?: string): WorkspaceManager {
+function fakeWorkspace(
+  conflictOn?: string,
+  synced: string[] = [],
+  progressCommits: string[][] = [],
+): WorkspaceManager {
   let commits = 0;
   let workspaces = 0;
 
@@ -118,6 +122,18 @@ function fakeWorkspace(conflictOn?: string): WorkspaceManager {
       ref: "final-commit",
       branchName: "agent/project-final",
     }),
+    integrateProgress: async (_projectId, commits) => {
+      progressCommits.push(commits.map((entry) => entry.taskId));
+      return {
+        ok: true,
+        ref: "progress-commit",
+        branchName: "agent/project-progress",
+      };
+    },
+    syncWorkingTree: async (ref) => {
+      synced.push(ref);
+      return { status: "synced", ref, branch: "main" };
+    },
   };
 }
 
@@ -706,4 +722,45 @@ test("replanificación: el supervisor añade una tarea y el proyecto completa", 
 
   const events = await storage.listEvents(project.id);
   assert.ok(events.some((event) => event.type === "supervisor.replan"));
+});
+
+test("el resultado se vuelca en el directorio del proyecto al completar", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const synced: string[] = [];
+  const deps = baseDeps(storage, fakeWorkspace(undefined, synced));
+
+  const project = await createProject({ goal: "crear librería" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+
+  // Sin este volcado el trabajo se queda dentro de git y el directorio del
+  // proyecto no llega a tener ni un archivo.
+  assert.deepEqual(synced, ["final-commit"]);
+
+  const events = await storage.listEvents(project.id);
+  assert.ok(events.some((event) => event.type === "worktree.synced"));
+});
+
+test("un plan bloqueado deja en disco lo que sí se completó", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const synced: string[] = [];
+  const progressCommits: string[][] = [];
+  const deps = baseDeps(
+    storage,
+    fakeWorkspace("TASK-002", synced, progressCommits),
+  );
+
+  const project = await createProject({ goal: "x" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "blocked");
+
+  // TASK-001 terminó: su trabajo baja al directorio aunque el plan no acabe,
+  // para que el usuario lo vea y el supervisor no razone sobre un repo vacío.
+  assert.ok(progressCommits.length > 0);
+  assert.deepEqual(progressCommits[0], ["TASK-001"]);
+  assert.ok(synced.includes("progress-commit"));
 });

@@ -20,6 +20,24 @@ function taskLabel(event: ProjectEvent): string {
   return event.taskId ? ` ${event.taskId}` : "";
 }
 
+function agentLabel(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null) return "Agente";
+  const p = payload as { agent?: string; attempt?: number; scope?: string };
+  const attempt = typeof p.attempt === "number" ? ` · intento ${p.attempt}` : "";
+  return `${p.agent ?? "Agente"}${attempt}`;
+}
+
+function durationDetail(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined;
+  const ms = (payload as { durationMs?: number }).durationMs;
+  if (typeof ms !== "number") return undefined;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = ms / 1000;
+  return s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m${Math.round(s % 60)
+    .toString()
+    .padStart(2, "0")}s`;
+}
+
 function payloadString(payload: unknown): string | undefined {
   if (payload === undefined || payload === null) return undefined;
   if (typeof payload === "string") return payload;
@@ -80,6 +98,25 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
             ? (event.payload as { reply?: string }).reply
             : undefined,
       };
+    case "agent.started":
+      return {
+        category: "tasks",
+        title: `${agentLabel(event.payload)} en marcha${taskLabel(event)}`,
+      };
+    case "agent.completed":
+      return {
+        category: "tasks",
+        title: `${agentLabel(event.payload)} completado${taskLabel(event)}`,
+        detail: durationDetail(event.payload),
+      };
+    case "agent.failed":
+      return {
+        category: "tasks",
+        title: `${agentLabel(event.payload)} falló${taskLabel(event)}`,
+        detail: [durationDetail(event.payload), payloadString(event.payload)]
+          .filter(Boolean)
+          .join(" · "),
+      };
     case "git.conflict":
       return {
         category: "git",
@@ -119,6 +156,20 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
         detail: typeof event.payload === "object"
           ? (event.payload as { branch?: string }).branch
           : undefined,
+      };
+    case "worktree.synced":
+      return {
+        category: "git",
+        title: "Resultado volcado en el directorio del proyecto",
+        detail: typeof event.payload === "object"
+          ? (event.payload as { branch?: string }).branch
+          : undefined,
+      };
+    case "worktree.sync_failed":
+      return {
+        category: "git",
+        title: "No se pudo volcar el resultado en el directorio del proyecto",
+        detail: payloadString(event.payload),
       };
     case "project.recovered":
       return {

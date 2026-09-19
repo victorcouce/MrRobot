@@ -3,7 +3,7 @@ import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
 import { maxComplexity } from "../agents/selector.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, OnAgentEvent } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import {
   findCycle,
@@ -29,6 +29,8 @@ export interface PlannerDeps {
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
   /** Notifica qué agente generó el plan (para metadatos del mensaje de chat). */
   onAgent?: ((agent: AgentCandidate) => void) | undefined;
+  /** Monitorización: inicio/éxito/fallo de cada intento, con duración. */
+  onAgentEvent?: OnAgentEvent | undefined;
 }
 
 /**
@@ -252,6 +254,7 @@ export async function planProject(
         : {}),
       ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
       ...(deps.onAgent ? { onAgent: deps.onAgent } : {}),
+      ...(deps.onAgentEvent ? { onAgentEvent: deps.onAgentEvent } : {}),
     });
     const parsed = parsePlan(raw);
 

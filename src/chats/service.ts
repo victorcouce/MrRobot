@@ -3,6 +3,7 @@ import { resolveAttachmentRefs } from "../agents/attachments.js";
 import type { Attachment } from "../agents/types.js";
 import { assertFileWritingAgent } from "../agents/selector.js";
 import { defaultConfig } from "../config/index.js";
+import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
 import type {
   GeneratedPlan,
@@ -403,6 +404,11 @@ export async function sendChatMessage(
 
   try {
     let plannerAgentUsed: AgentSpec | undefined;
+    const onPlannerAgentEvent = createAgentEventEmitter(
+      deps.storage,
+      projectId,
+      "planner",
+    );
 
     const plan = await planProject(project.goal, context, {
       execute: deps.plannerExecute,
@@ -417,6 +423,7 @@ export async function sendChatMessage(
       onAgent: (agent) => {
         plannerAgentUsed = agent;
       },
+      onAgentEvent: (info) => onPlannerAgentEvent(undefined, info),
     });
 
     const generated = remapChatTasks(plan, chat.seq, chatId, chatAttachments);

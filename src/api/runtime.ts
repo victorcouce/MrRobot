@@ -50,6 +50,8 @@ import {
   listFinalBranches,
   type ImportProjectInput,
 } from "../projects/import.js";
+import { createAgentEventEmitter } from "../logging/agent-events.js";
+import { appendProjectLog } from "../logging/file-logger.js";
 import { PreviewManager } from "../preview/preview.js";
 import type { RunOptions } from "../providers/types.js";
 import { InMemoryStorage } from "../storage/memory.js";
@@ -176,6 +178,12 @@ export class Runtime {
 
     this.storage = broadcastStorage(storage, (event) => {
       this.bus.emit("event", event);
+    });
+    // Registro temporal por proyecto (fichero .log): mismo bus que alimenta el
+    // SSE, para que la consola del navegador y el fichero vean exactamente los
+    // mismos eventos con la misma duración.
+    this.bus.on("event", (event: ProjectEvent) => {
+      void appendProjectLog(event);
     });
     this.workspace = workspace;
     this.config = loadConfig();
@@ -783,6 +791,12 @@ export class Runtime {
       }
     }
 
+    const onInstructionAgentEvent = createAgentEventEmitter(
+      this.storage,
+      projectId,
+      "instructions",
+    );
+
     const outcome = this.mock
       ? mockTaskInstruction([
           ...history,
@@ -793,6 +807,7 @@ export class Runtime {
           maxRetriesPerAgent: this.config.maxRetriesPerAgent,
           ...(this.config.limitRetry ? { limitRetry: this.config.limitRetry } : {}),
           ...(allowedAgents.length ? { allowedAgents } : {}),
+          onAgentEvent: (info) => onInstructionAgentEvent(taskId, info),
         });
 
     await emitProjectEvent(

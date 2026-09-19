@@ -366,7 +366,7 @@ ejecutó), `attempts?`, `resultCommit?`, `output?`, `error?`, `startedAt?`,
 | Provider | Implementación | Invocación |
 |---|---|---|
 | **Codex** | `src/providers/codex.ts` | `codex exec --sandbox workspace-write <prompt>` (CLI, sin shell). |
-| **Claude** | `src/providers/claude.ts` | `claude -p <prompt>` + `--model sonnet|opus` si se indica modelo. |
+| **Claude** | `src/providers/claude.ts` | `claude -p <prompt> --permission-mode acceptEdits` + `--model sonnet|opus` si se indica modelo. Los roles de solo lectura (planner, reviewer, supervisor) van sin `--permission-mode`. |
 | **DeepSeek** | `src/providers/deepseek.ts` | HTTP con SDK `openai` apuntando a `https://api.deepseek.com`; `chat.completions.create` con un único mensaje de usuario. Modelo por defecto `deepseek-flash`. |
 
 Detalles de `execCli` (`src/providers/exec.ts`):

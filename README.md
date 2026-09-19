@@ -201,7 +201,17 @@ MRROBOT_REPO=...           # opcional, directorio del repositorio Git
 MRROBOT_MOCK=1             # modo mock (agentes y git simulados)
 MRROBOT_MOCK_SCENARIO=success|replan|fail
 MRROBOT_MOCK_DELAY_MS=0    # retardo artificial por ejecución de agente
+MRROBOT_LOG_DIR=.mrrobot/logs   # opcional, directorio de los ficheros .log de monitorización
+MRROBOT_CLAUDE_PERMISSION_MODE=acceptEdits   # permisos del CLI de Claude al ejecutar tareas
 ```
+
+`MRROBOT_CLAUDE_PERMISSION_MODE` (`default`, `acceptEdits`, `bypassPermissions`
+o `plan`) controla el `--permission-mode` con el que se lanza `claude -p` en las
+tareas de código. Por defecto `acceptEdits`: el agente escribe en su worktree
+sin preguntar, pero no ejecuta comandos. Súbelo a `bypassPermissions` si tus
+tareas también necesitan instalar dependencias o lanzar tests desde el agente.
+Con `default`, en modo no interactivo toda edición se deniega y las tareas
+fallan con "no creó ni modificó ningún archivo".
 
 ## PostgreSQL
 
@@ -330,8 +340,16 @@ fuente de verdad y el SSE refresca el hilo en vivo.
 - Dependencias: `integration/<task>` con `git cherry-pick` de los commits de las
   dependencias. Si hay conflicto, la tarea queda `blocked` con `integrationError`
   (`type: "git_conflict"`), sin tocar el repo principal.
-- Resultado final: branch aislada `agent/project-<id>-final`. **Nunca** se hace
-  merge a `main`/`master` ni operaciones destructivas sobre el repo principal.
+- Resultado final: branch aislada `agent/project-<id>-final`.
+- Volcado al directorio del proyecto: al terminar una ronda y al completar el
+  proyecto, el resultado acumulado se deja en el working tree de la carpeta
+  (avance rápido de la rama actual, o un commit nuevo encima si la historia ya
+  había divergido). Sin esto el trabajo solo existiría dentro de ramas de git:
+  la carpeta se quedaría con `.git` y `.worktrees` y nada más, y el planner y
+  el supervisor —que inspeccionan esa carpeta— decidirían sobre un repo vacío.
+  El volcado nunca es destructivo: si hay cambios sin commitear sobre archivos
+  versionados no se toca nada (evento `worktree.sync_failed` con
+  `status: "skipped"`), y lo ya volcado siempre queda en la historia de la rama.
 
 ## Event log
 
@@ -339,13 +357,38 @@ fuente de verdad y el SSE refresca el hilo en vivo.
 `project.config_updated`,
 `task.started`, `task.completed`, `task.failed`, `task.review_passed`,
 `task.review_failed`, `task.instruction`, `task.instruction_reply`,
-`git.conflict`, `supervisor.replan`, `project.paused`,
+`git.conflict`, `worktree.synced`, `worktree.sync_failed`,
+`supervisor.replan`, `project.paused`,
 `project.resumed`, `project.recovered`, `project.completed`,
 `project.cancelled`, `project.error`,
-`project.deleted`, `chat.created`, `chat.message`, `chat.deleted`.
+`project.deleted`, `chat.created`, `chat.message`, `chat.deleted`,
+`agent.started`, `agent.completed`, `agent.failed`.
 
 `task.output` (salida del agente en vivo) es efímero: va por SSE pero **no** se
 persiste en el event log.
+
+## Logging y monitorización
+
+Cada intento de agente (worker de una tarea, planner, reviewer, supervisor o
+instrucciones a una tarea) emite `agent.started`/`agent.completed`/
+`agent.failed` con el agente, el intento dentro de la cadena de fallback y,
+al terminar, cuánto tardó (`durationMs`). Estos eventos son persistidos igual
+que el resto del event log, así que aparecen en `GET
+/api/projects/:id/events` y por SSE.
+
+Además, el backend escribe un **fichero `.log` por proyecto** (uno por
+`projectId`, bajo `MRROBOT_LOG_DIR` — por defecto `.mrrobot/logs/`) con una
+línea por evento (hora, tipo, tarea, agente, duración), útil para revisar a
+posteriori o hacer `tail -f` mientras corre un proyecto. `task.output` (la
+salida cruda del agente) se excluye del fichero a propósito: solo interesa el
+ritmo de la ejecución, no el stdout completo.
+
+En la UI, mientras el proyecto está abierto, la consola del navegador recibe
+el mismo stream (vía el SSE de `useProject`) y va imprimiendo qué agente está
+trabajando en cada tarea y cuánto tardó cada intento, con la duración total de
+la tarea al completarse. El objetivo es tener un registro temporal de dónde se
+va el tiempo (qué agente, qué rol, qué tarea) para encontrar cuellos de
+botella.
 
 ## API HTTP
 
