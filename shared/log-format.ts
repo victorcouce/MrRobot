@@ -66,3 +66,28 @@ export function formatLogLine(event: LoggableEvent): string {
 
   return parts.join("  ");
 }
+
+/**
+ * `task.output` no pasa por `formatLogLine`: es la salida en vivo del agente
+ * (narración de qué hace, con el stream de Claude — ver
+ * `src/providers/claude-stream.ts`), no un evento de ciclo de vida con
+ * agente/duración. Devuelve una línea por línea del chunk, cada una prefijada
+ * con la hora y la tarea, o `undefined` si no aplica o el chunk viene vacío.
+ */
+export function formatTaskOutputLines(event: LoggableEvent): string[] | undefined {
+  if (event.type !== "task.output") return undefined;
+
+  const payload =
+    event.payload && typeof event.payload === "object"
+      ? (event.payload as Record<string, unknown>)
+      : undefined;
+  const chunk = typeof payload?.chunk === "string" ? payload.chunk : "";
+  const lines = chunk.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  if (lines.length === 0) return undefined;
+
+  const time = isoTime(event.createdAt);
+  const task = event.taskId ? `${event.taskId}  ` : "";
+
+  return lines.map((line) => `${time}  task.output  ${task}${line}`);
+}

@@ -55,3 +55,31 @@ export function formatLogLine(event: ProjectEvent): string {
 
   return parts.join("  ");
 }
+
+/**
+ * `task.output` no pasa por `formatLogLine`: es la narración en vivo del
+ * agente (qué herramienta usa, sobre qué fichero — ver
+ * `src/providers/claude-stream.ts` en el backend), no un evento de ciclo de
+ * vida con agente/duración. Una línea por línea del chunk, o `undefined` si
+ * no aplica o viene vacío.
+ */
+export function formatTaskOutputLines(event: ProjectEvent): string[] | undefined {
+  if (event.type !== "task.output") return undefined;
+
+  const payload =
+    event.payload && typeof event.payload === "object"
+      ? (event.payload as Record<string, unknown>)
+      : undefined;
+  const chunk = typeof payload?.chunk === "string" ? payload.chunk : "";
+  const lines = chunk
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return undefined;
+
+  const time = new Date(event.createdAt).toLocaleTimeString();
+  const task = event.taskId ? `${event.taskId}  ` : "";
+
+  return lines.map((line) => `${time}  ${task}${line}`);
+}

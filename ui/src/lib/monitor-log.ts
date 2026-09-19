@@ -1,16 +1,12 @@
-import { formatDuration, formatLogLine } from "./log-format";
+import { formatDuration, formatLogLine, formatTaskOutputLines } from "./log-format";
 import type { ProjectEvent } from "./types";
 
 /**
- * Vuelca en la consola del navegador cada evento del proyecto (tareas,
- * agentes, planner/reviewer/supervisor, git, proyecto) con su hora y, cuando
- * se conoce, la duración. Es el mismo stream que alimenta el fichero `.log`
- * del backend (ver `src/logging/file-logger.ts`): sirve para ver en vivo qué
- * está haciendo cada agente y encontrar qué tareas tardan más.
- *
- * `task.output` (la salida en vivo del agente) se excluye a propósito: es un
- * chunk de stdout por evento y saturaría la consola sin aportar al objetivo
- * de medir tiempos.
+ * Vuelca en la consola del navegador cada evento del proyecto: ciclo de vida
+ * de tareas y agentes (con duración cuando se conoce) y, para Claude, la
+ * narración en vivo de qué herramienta usa y sobre qué fichero (`task.output`
+ * — ver `src/providers/claude-stream.ts` en el backend). Es el mismo stream
+ * que alimenta el fichero `.log` del backend (`src/logging/file-logger.ts`).
  */
 
 const COLORS: Record<string, string> = {
@@ -40,7 +36,17 @@ const loggedEventIds = new Set<string>();
 export function logProjectEvent(event: ProjectEvent): void {
   // "connected" es un ping interno del SSE (server.ts), no un evento del
   // dominio: no tiene id ni createdAt reales.
-  if (event.type === "task.output" || event.type === "connected") return;
+  if (event.type === "connected") return;
+
+  // Efímero (no tiene un `id` persistido que deduplicar): se imprime tal
+  // cual, una línea de consola por línea de narración del chunk.
+  if (event.type === "task.output") {
+    formatTaskOutputLines(event)?.forEach((line) => {
+      // eslint-disable-next-line no-console
+      console.log(`%c[MrRobot] ${line}`, "color:#a1a1aa");
+    });
+    return;
+  }
 
   if (event.id) {
     if (loggedEventIds.has(event.id)) return;
