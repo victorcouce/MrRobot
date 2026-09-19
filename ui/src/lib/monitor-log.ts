@@ -38,7 +38,9 @@ const taskStartedAt = new Map<string, number>();
 const loggedEventIds = new Set<string>();
 
 export function logProjectEvent(event: ProjectEvent): void {
-  if (event.type === "task.output") return;
+  // "connected" es un ping interno del SSE (server.ts), no un evento del
+  // dominio: no tiene id ni createdAt reales.
+  if (event.type === "task.output" || event.type === "connected") return;
 
   if (event.id) {
     if (loggedEventIds.has(event.id)) return;
