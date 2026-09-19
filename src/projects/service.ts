@@ -23,7 +23,7 @@ import type { Task } from "../tasks/types.js";
 import type { ProjectEvent, Storage } from "../storage/types.js";
 import { superviseProject } from "../supervisor/supervisor.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
-import type { WorkspaceManager } from "../workspace/types.js";
+import type { IntegrationResult, WorkspaceManager } from "../workspace/types.js";
 import type { Project, ProjectResult } from "./types.js";
 
 export interface ProjectDeps {
@@ -536,6 +536,20 @@ function collectDependencyCommits(
   return ordered;
 }
 
+/**
+ * Integrar dependencias cuesta un worktree nuevo más un cherry-pick por commit.
+ * En un plan con abanico (varias tareas colgando de la misma), todas piden
+ * exactamente la misma integración, así que se reutiliza: la clave es la base
+ * más la lista de commits, que es justo lo que determina el resultado. El
+ * commit resultante sobrevive porque la rama `integration/*` no se borra.
+ */
+function integrationCacheKey(
+  baseRef: string,
+  commits: Array<{ taskId: string; commit: string }>,
+): string {
+  return `${baseRef}|${commits.map((entry) => entry.commit).join(",")}`;
+}
+
 function makeTaskExecutor(
   pid: string,
   projectBaseRef: string,
@@ -547,14 +561,31 @@ function makeTaskExecutor(
   chatContext: ChatContext,
   signal?: AbortSignal,
 ): (task: Task) => Promise<Task> {
+  const integrationCache = new Map<string, Promise<IntegrationResult>>();
+
   return async (task: Task): Promise<Task> => {
     const dependencyCommits = collectDependencyCommits(task, taskState);
+    const cacheKey = integrationCacheKey(projectBaseRef, dependencyCommits);
 
-    const integration = await workspace.integrateDependencies(
-      task.id,
-      dependencyCommits,
-      projectBaseRef,
-    );
+    let pendingIntegration = integrationCache.get(cacheKey);
+
+    if (!pendingIntegration) {
+      pendingIntegration = workspace.integrateDependencies(
+        task.id,
+        dependencyCommits,
+        projectBaseRef,
+      );
+      integrationCache.set(cacheKey, pendingIntegration);
+    }
+
+    let integration: IntegrationResult;
+
+    try {
+      integration = await pendingIntegration;
+    } catch (error) {
+      integrationCache.delete(cacheKey);
+      throw error;
+    }
 
     if (!integration.ok) {
       await emit(storage, pid, "git.conflict", task.id, integration.error);

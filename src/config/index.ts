@@ -3,8 +3,11 @@ import { DEEPSEEK_FLASH } from "../agents/selector.js";
 import type { OrchestratorConfig } from "./types.js";
 
 export const defaultConfig: OrchestratorConfig = {
-  concurrency: 2,
-  maxConcurrency: 4,
+  // El scheduler despacha de forma continua y sube la concurrencia sola cuando
+  // las tareas van saliendo bien, así que puede arrancar más alto: ante un
+  // límite del proveedor la baja a la mitad por sí mismo.
+  concurrency: 3,
+  maxConcurrency: 6,
   maxRetriesPerAgent: 1,
   maxReviewFixCycles: 2,
   plannerMaxAttempts: 2,

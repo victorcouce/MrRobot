@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import type {
   IntegrationError,
@@ -49,6 +49,33 @@ async function runGitBestEffort(args: string[], cwd?: string): Promise<void> {
   } catch {
     // Limpieza best-effort: los errores aquí no deben romper el flujo.
   }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Las operaciones sobre la lista de worktrees comparten estado en `.git`:
+ * `worktree prune` recorre y borra entradas mientras otro `worktree add` puede
+ * estar creando la suya. Con varias tareas en paralelo esa carrera hace fallar
+ * el `add`, y un fallo ahí cuesta rehacer la tarea entera. Se serializan: son
+ * milisegundos, frente a los minutos que cuesta un reintento.
+ */
+let worktreeQueue: Promise<unknown> = Promise.resolve();
+
+function withWorktreeLock<T>(operation: () => Promise<T>): Promise<T> {
+  const next = worktreeQueue.then(operation, operation);
+  worktreeQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
 export function sanitizeTaskId(taskId: string): string {
@@ -272,19 +299,27 @@ export async function createTaskWorkspace(
 
   await mkdir(join(root, WORKTREES_DIR), { recursive: true });
 
-  await runGitBestEffort(["worktree", "remove", "--force", path], root);
-  await runGitBestEffort(["branch", "-D", branchName], root);
-  await runGitBestEffort(["worktree", "prune"], root);
+  return withWorktreeLock(async () => {
+    // El caso normal es que el worktree no exista: entonces basta con borrar la
+    // rama que pudiera quedar de una ejecución anterior, sin pagar el `remove`
+    // ni el `prune` (que además recorren toda la lista de worktrees).
+    if (await pathExists(path)) {
+      await runGitBestEffort(["worktree", "remove", "--force", path], root);
+      await runGitBestEffort(["worktree", "prune"], root);
+    }
 
-  try {
-    await runGit(["worktree", "add", "-b", branchName, path, baseRef], root);
-  } catch (error) {
-    throw new Error(
-      `No se pudo crear el worktree para ${taskId}: ${messageOf(error)}`,
-    );
-  }
+    await runGitBestEffort(["branch", "-D", branchName], root);
 
-  return { taskId, branchName, path, baseRef };
+    try {
+      await runGit(["worktree", "add", "-b", branchName, path, baseRef], root);
+    } catch (error) {
+      throw new Error(
+        `No se pudo crear el worktree para ${taskId}: ${messageOf(error)}`,
+      );
+    }
+
+    return { taskId, branchName, path, baseRef };
+  });
 }
 
 export async function commitTaskWorkspace(
@@ -332,12 +367,17 @@ export async function removeTaskWorkspace(
 ): Promise<void> {
   const root = await getRepoRoot(cwd);
 
-  await runGitBestEffort(["worktree", "remove", "--force", workspace.path], root);
-  await runGitBestEffort(["worktree", "prune"], root);
+  await withWorktreeLock(async () => {
+    await runGitBestEffort(
+      ["worktree", "remove", "--force", workspace.path],
+      root,
+    );
+    await runGitBestEffort(["worktree", "prune"], root);
 
-  if (options.deleteBranch) {
-    await runGitBestEffort(["branch", "-D", workspace.branchName], root);
-  }
+    if (options.deleteBranch) {
+      await runGitBestEffort(["branch", "-D", workspace.branchName], root);
+    }
+  });
 }
 
 export async function commitDiff(
@@ -375,19 +415,30 @@ async function integrateCommits(
   const dependencyTaskIds = commits.map((entry) => entry.taskId);
 
   await mkdir(join(root, WORKTREES_DIR), { recursive: true });
-  await runGitBestEffort(["worktree", "remove", "--force", path], root);
-  await runGitBestEffort(["branch", "-D", branchName], root);
-  await runGitBestEffort(["worktree", "prune"], root);
 
-  try {
-    await runGit(["worktree", "add", "-b", branchName, path, baseRef], root);
-  } catch (error) {
+  const created = await withWorktreeLock(async () => {
+    if (await pathExists(path)) {
+      await runGitBestEffort(["worktree", "remove", "--force", path], root);
+      await runGitBestEffort(["worktree", "prune"], root);
+    }
+
+    await runGitBestEffort(["branch", "-D", branchName], root);
+
+    try {
+      await runGit(["worktree", "add", "-b", branchName, path, baseRef], root);
+      return undefined;
+    } catch (error) {
+      return messageOf(error);
+    }
+  });
+
+  if (created !== undefined) {
     return {
       ok: false,
       error: {
         type: "git_conflict",
         dependencyTaskIds,
-        message: `No se pudo crear la integración ${branchName}: ${messageOf(error)}`,
+        message: `No se pudo crear la integración ${branchName}: ${created}`,
       },
     };
   }
@@ -399,8 +450,10 @@ async function integrateCommits(
       const files = await conflictFiles(path);
 
       await runGitBestEffort(["cherry-pick", "--abort"], path);
-      await runGitBestEffort(["worktree", "remove", "--force", path], root);
-      await runGitBestEffort(["branch", "-D", branchName], root);
+      await withWorktreeLock(async () => {
+        await runGitBestEffort(["worktree", "remove", "--force", path], root);
+        await runGitBestEffort(["branch", "-D", branchName], root);
+      });
 
       const integrationError: IntegrationError = {
         type: "git_conflict",
@@ -418,8 +471,10 @@ async function integrateCommits(
 
   const ref = await runGit(["rev-parse", "HEAD"], path);
 
-  await runGitBestEffort(["worktree", "remove", "--force", path], root);
-  await runGitBestEffort(["worktree", "prune"], root);
+  await withWorktreeLock(async () => {
+    await runGitBestEffort(["worktree", "remove", "--force", path], root);
+    await runGitBestEffort(["worktree", "prune"], root);
+  });
 
   return { ok: true, ref, branchName };
 }

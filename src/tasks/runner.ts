@@ -17,6 +17,7 @@ import {
 } from "../agents/limit-retry.js";
 import { canWriteFiles, describeAgent } from "../agents/selector.js";
 import type { AgentCandidate, Attachment } from "../agents/types.js";
+import { primeDependencies } from "../checks/deps-store.js";
 import type { RunOptions } from "../providers/types.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
@@ -288,6 +289,16 @@ async function runTaskOnce(
 
       console.log(`\nCreando workspace:\n${relative(repoRoot, workspace.path)}`);
       console.log(`Branch:\n${workspace.branchName}`);
+
+      // El worktree nace sin `node_modules` (no está commiteado). Sembrarlo
+      // desde el almacén antes de arrancar al agente le ahorra la instalación
+      // completa, que es lo más lento de todo el intento.
+      const primed = await primeDependencies(workspace.path);
+
+      if (primed === "hit") {
+        console.log(`Dependencias:\nreutilizadas del almacén`);
+      }
+
       console.log(`Agente:\n${label}`);
       console.log(`Intento ${attempt + 1}`);
 

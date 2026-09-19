@@ -240,8 +240,8 @@ Configuración central en `src/config/index.ts` (`loadConfig`, `mergeConfig`).
 
 ```ts
 {
-  concurrency: 2,             // concurrencia inicial
-  maxConcurrency: 4,          // tope de la concurrencia adaptativa
+  concurrency: 3,             // concurrencia inicial
+  maxConcurrency: 6,          // tope de la concurrencia adaptativa
   maxRetriesPerAgent: 1,      // reintentos por agente (=> hasta 2 intentos)
   maxReviewFixCycles: 2,      // ciclos review/fix (=> hasta 3 ejecuciones)
   plannerMaxAttempts: 2,      // intentos del planner para un plan válido
@@ -533,28 +533,40 @@ límite, se aplica el reintento de cadena descrito arriba. La API usa además
 
 ### Ejecución
 
-`runPlan` es un bucle por **batches** (no un pool deslizante):
+`runPlan` es un **pool deslizante**: despacha de forma continua, sin esperar a
+que termine el grupo de tareas en vuelo.
 
 1. Resuelve `concurrency` (default 2; entero ≥ 1 o lanza) y `maxConcurrency`
    (tope; si no se define, la concurrencia es fija).
 2. `validatePlan`; clona tareas; `updateTaskStatuses`; `onUpdate`.
 3. Bucle:
-   - Todas `done` → **`completed`**.
-   - `shouldPause()` → **`paused`**.
-   - `signal.aborted` → **`cancelled`**.
-   - `ready = getReadyTasks()`. Si no hay ninguna: **`failed`** si hay fallos,
-     si no **`blocked`**.
-   - Toma `ready.slice(0, concurrency)`, las marca `running` y `onUpdate`.
-   - `Promise.all` de esas tareas (cada una vía `executeTask`, con try/catch).
-   - Según termina cada tarea, pliega su resultado en `current` y llama a
-     `onUpdate` (progreso intermedio visible).
-   - **Ajuste de concurrencia** (`nextConcurrency`): si alguna tarea del lote
-     agotó sus agentes por disponibilidad (`classifyAvailability` no disponible)
-     baja a la mitad (mín. 1); si el lote terminó entero `done` sube de uno en
-     uno hasta `maxConcurrency`. Cada cambio se emite por `onConcurrencyChange`.
-   - `updateTaskStatuses` de nuevo y siguiente batch.
+   - Si `shouldPause()` o `signal.aborted`, deja de despachar (pero espera a las
+     tareas en vuelo antes de devolver `paused` / `cancelled`).
+   - Rellena los huecos libres: toma de `getReadyTasks()` las que no estén ya en
+     vuelo y despacha hasta llegar a `concurrency`. Cada una se marca `running`
+     y se llama a `onUpdate`.
+   - Si hay algo en vuelo, `Promise.race` sobre las tareas pendientes: se
+     reanuda en cuanto termina **la primera**, que es cuando se libera un hueco.
+   - Al terminar una tarea: se pliega su resultado en `current`, se ajusta la
+     concurrencia, se recalculan las dependencias (`updateTaskStatuses`) y se
+     llama a `onUpdate`. Recalcular aquí —y no al final de un lote— es lo que
+     permite que sus dependientes arranquen de inmediato.
+   - Sin nada en vuelo y sin tareas `ready`: **`failed`** si hay fallos, si no
+     **`blocked`**. Todas `done` → **`completed`**.
+   - **Ajuste de concurrencia** (`nextConcurrency`), por cada tarea que termina:
+     si agotó sus agentes por disponibilidad (`classifyAvailability` no
+     disponible) baja a la mitad (mín. 1); si terminó `done` sube de uno en uno
+     hasta `maxConcurrency`. Cada cambio se emite por `onConcurrencyChange`.
+     Si la concurrencia baja con tareas aún en vuelo, no se despacha nada nuevo
+     hasta que el pool vuelva por debajo del tope.
 4. `executeTask` por defecto es `runTask`. Una tarea que resuelve en un estado
    inesperado (ni `done`/`failed`/`blocked`) se fuerza a `failed`.
+
+**Por qué no batches**: la versión anterior hacía `Promise.all` sobre
+`ready.slice(0, concurrency)`. Una tarea lenta dejaba los demás huecos parados
+hasta que terminaba, y sus dependientes no arrancaban hasta el final del lote.
+Con tareas que van de segundos a minutos, ese tiempo muerto era la mayor parte
+del retraso del plan.
 
 ### Resultado
 
@@ -625,11 +637,47 @@ Detalles:
 - `detectCheckScripts(dir)`: lee `package.json` y devuelve la intersección de
   `["typecheck", "build", "test"]` con los scripts declarados (en ese orden).
   Si no hay `package.json` o falla el parseo → `[]`.
-- `ensureDependencies(dir)`: si falta `node_modules`, detecta el gestor
+- `ensureDependencies(dir)`: si falta `node_modules`, intenta sembrarlo desde el
+  almacén (ver abajo) y, si no hay entrada, detecta el gestor
   (`detectPackageManager`) y ejecuta su `install`. Los checks corren en el
   worktree del agente (no en uno aparte), así que si el agente ya instaló las
   dependencias se reutilizan. Es best-effort: si falla, se avisa y se corren
   igualmente los checks.
+- `runInstallCheck(dir)`: siembra desde el almacén y ejecuta el `install` del
+  gestor **aunque ya exista `node_modules`** ("instala sin errores" es un
+  criterio de aceptación habitual y solo se verifica ejecutándolo). Si termina
+  bien, guarda el árbol en el almacén. Corre con `audit`, `fund` y la barra de
+  progreso desactivados; **no** fuerza `prefer-offline`, que resolvía contra
+  metadatos obsoletos y fallaba con `ETARGET` en dependencias recientes.
+
+### Almacén de dependencias (`src/checks/deps-store.ts`)
+
+Cada intento de cada tarea corre en un worktree recién creado, que nace sin
+`node_modules` (no está commiteado). Instalar desde cero ahí era lo más lento
+del ciclo: lo pagaba el agente al arrancar y otra vez el check de instalación.
+
+- **Clave** (`dependencyKey`): hash del gestor más el contenido del primer
+  lockfile que exista (`pnpm-lock.yaml` → `yarn.lock` → `package-lock.json`).
+  Sin lockfile, hash de los campos de `package.json` que deciden qué se instala
+  (`dependencies`, `devDependencies`, `optionalDependencies`,
+  `peerDependencies`, `overrides`, `resolutions`, `packageManager`). El nombre,
+  la versión y los scripts no entran: dos tareas del mismo proyecto comparten
+  entrada. Sin `package.json` → `undefined` y no se hace nada.
+- **Ubicación**: `~/.cache/mrrobot/deps/<clave>`, configurable con
+  `MRROBOT_DEPS_CACHE`.
+- `primeDependencies(dir)`: si `dir` no tiene `node_modules` y hay entrada para
+  su clave, la copia con enlaces duros (`cp -al`, con caída a `cp -a`; en
+  Windows `robocopy`). Se escribe en un directorio temporal dentro del worktree
+  y se renombra, para no dejar árboles a medias. Devuelve `hit`, `miss`,
+  `present` o `skip`. **Se llama desde `runTask` antes de arrancar al agente**,
+  de forma que el agente tampoco instala.
+- `saveDependencies(dir)`: guarda el `node_modules` de `dir` si aún no hay
+  entrada para su clave. Escribe aparte y renombra (atómico), así que dos tareas
+  guardando a la vez no corrompen el almacén.
+- Nada de esto lanza: ante cualquier fallo se cae a la instalación normal.
+
+Medido sobre un proyecto Next.js con lockfile, el coste de dependencias por
+tarea baja de ~6,7 s a ~0,5 s.
 - `runProjectChecks(dir, scripts)`: ejecuta `npm run <script>` con `execFile`;
   nunca rechaza; trunca stdout/stderr a 4000 caracteres. `build` y `test` se
   mantienen **en orden** (test puede necesitar el build); el resto (`typecheck`,

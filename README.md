@@ -129,7 +129,9 @@ servicios existentes. Los tipos del wire se comparten en `shared/types.ts`.
 - `tasks/`: `runTask` ejecuta una tarea con retries por agente y fallback entre
   agentes, cada intento en un worktree limpio, y commitea el resultado.
 - `scheduler/`: valida el DAG (IDs, dependencias, ciclos) y ejecuta en paralelo
-  con límite de concurrencia, respetando dependencias.
+  con límite de concurrencia, respetando dependencias. El despacho es continuo:
+  en cuanto una tarea termina se recalculan las dependencias y su hueco lo ocupa
+  la siguiente tarea lista.
 - `workspace/`: worktrees, commits, cherry-pick de dependencias y branch final.
 - `planner/`, `reviewer/`, `supervisor/`: agentes LLM con salida validada por Zod.
 - `projects/`: entidad Project y orquestación (crear/ejecutar/pausar/reanudar).
@@ -159,8 +161,8 @@ Central en `src/config/index.ts` (`loadConfig`):
 
 ```ts
 {
-  concurrency: 2,          // concurrencia inicial
-  maxConcurrency: 4,       // tope de la concurrencia adaptativa
+  concurrency: 3,          // concurrencia inicial
+  maxConcurrency: 6,       // tope de la concurrencia adaptativa
   maxRetriesPerAgent: 1,
   maxReviewFixCycles: 2,
   plannerMaxAttempts: 2,
@@ -175,9 +177,14 @@ Central en `src/config/index.ts` (`loadConfig`):
 ```
 
 La concurrencia es **adaptativa**: empieza en `concurrency`, sube de uno en uno
-hasta `maxConcurrency` cuando un lote termina entero con éxito, y se reduce a la
-mitad cuando alguna tarea agota sus agentes por disponibilidad (cuota, rate
-limit, auth o CLI ausente).
+hasta `maxConcurrency` con cada tarea que termina bien, y se reduce a la mitad
+cuando una tarea agota sus agentes por disponibilidad (cuota, rate limit, auth o
+CLI ausente).
+
+El scheduler **no trabaja por lotes**: no espera a que terminen las tareas en
+vuelo para lanzar la siguiente. Cada hueco se rellena en cuanto se libera, y una
+tarea cuyas dependencias acaban de completarse arranca de inmediato. Con lotes,
+una tarea lenta mantenía parados los demás huecos hasta acabar.
 
 No hay agentes fijos por rol: el usuario elige el conjunto de agentes permitidos
 al lanzar el primer prompt del chat y, para cada tarea y cada rol de orquestación
@@ -277,12 +284,36 @@ re-recorren la cadena hasta `limitRetry.maxLimitRetries` (por defecto 3). Este
 mecanismo lo comparten las tareas y los roles de orquestación (`runRoleAgent` en
 `src/agents/role.ts`).
 
+## Almacén de dependencias
+
+Cada intento de cada tarea corre en un worktree recién creado, que nace sin
+`node_modules` (no está commiteado). Instalar desde cero ahí era, con
+diferencia, lo más lento del ciclo: lo pagaba el agente al arrancar y otra vez
+el check de instalación.
+
+`src/checks/deps-store.ts` mantiene un almacén de `node_modules` ya instalados,
+indexado por el contenido del lockfile (o, sin lockfile, por los campos de
+`package.json` que deciden qué se instala). El primer worktree que instala deja
+su árbol en el almacén; los siguientes lo reciben **antes de que arranque el
+agente** como copia por enlaces duros, igual que hace pnpm con su store.
+
+- Almacén: `~/.cache/mrrobot/deps` (configurable con `MRROBOT_DEPS_CACHE`).
+- El check `npm install` **se sigue ejecutando**: "instala sin errores" es un
+  criterio de aceptación habitual. Con el árbol ya sembrado y un lockfile
+  presente, npm solo lo verifica.
+- Todo es best-effort: si el almacén falla o no hay entrada, se instala como
+  siempre.
+
+Medido sobre un proyecto Next.js con lockfile, el coste de dependencias por
+tarea baja de ~6,7 s a ~0,5 s (13x). En proyectos con `node_modules` grande la
+diferencia es mayor, porque lo que se evita es extraer miles de archivos.
+
 ## Review
 
 Tras completar una tarea, los checks locales (`npm run typecheck|build|test`;
 `build`→`test` en orden y `typecheck` en paralelo) se ejecutan **en el worktree
-del propio agente antes de borrarlo**, reutilizando el `node_modules` si ya lo
-instaló (si falta, se instala). Después, un reviewer LLM valida contra los
+del propio agente antes de borrarlo**, reutilizando el `node_modules` que ya
+tiene (ver *Almacén de dependencias*). Después, un reviewer LLM valida contra los
 `acceptanceCriteria`. En tareas `low` sin
 criterios y con checks en verde se omite el review LLM (los checks son el gate).
 Si rechaza, la tarea se reintenta con el feedback del review hasta
