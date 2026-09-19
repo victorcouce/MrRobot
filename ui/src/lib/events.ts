@@ -157,6 +157,20 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
           ? (event.payload as { branch?: string }).branch
           : undefined,
       };
+    case "worktree.synced":
+      return {
+        category: "git",
+        title: "Resultado volcado en el directorio del proyecto",
+        detail: typeof event.payload === "object"
+          ? (event.payload as { branch?: string }).branch
+          : undefined,
+      };
+    case "worktree.sync_failed":
+      return {
+        category: "git",
+        title: "No se pudo volcar el resultado en el directorio del proyecto",
+        detail: payloadString(event.payload),
+      };
     case "project.recovered":
       return {
         category: "system",

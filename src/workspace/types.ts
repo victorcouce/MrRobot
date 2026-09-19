@@ -18,6 +18,25 @@ export interface IntegrationError {
   message: string;
 }
 
+export type WorkingTreeSyncStatus =
+  /** El directorio de trabajo pasó a contener el resultado. */
+  | "synced"
+  /** Ya lo contenía: no había nada que volcar. */
+  | "unchanged"
+  /** Había cambios sin commitear: no se toca nada del usuario. */
+  | "skipped"
+  /** Git falló al volcarlo; el resultado sigue en su rama. */
+  | "failed";
+
+export interface WorkingTreeSync {
+  status: WorkingTreeSyncStatus;
+  /** Commit en el que quedó el directorio de trabajo. */
+  ref?: string;
+  /** Rama actualizada, si el repo no estaba en HEAD separado. */
+  branch?: string;
+  message?: string;
+}
+
 export type IntegrationResult =
   | { ok: true; ref: string; branchName: string }
   | { ok: false; error: IntegrationError };
@@ -63,4 +82,22 @@ export interface WorkspaceManager {
     commits: Array<{ taskId: string; commit: string }>,
     baseRef: string,
   ): Promise<IntegrationResult>;
+
+  /**
+   * Integra el trabajo completado hasta ahora en una rama de progreso, sin
+   * tocar la rama final del proyecto. Sirve para volcar resultados parciales
+   * entre rondas.
+   */
+  integrateProgress?(
+    projectId: string,
+    commits: Array<{ taskId: string; commit: string }>,
+    baseRef: string,
+  ): Promise<IntegrationResult>;
+
+  /**
+   * Deja el directorio de trabajo del repo en `ref`. Sin esto el resultado solo
+   * existe dentro de ramas de git: el usuario no ve ningún archivo y los roles
+   * que inspeccionan ese directorio (planner, supervisor) lo ven vacío.
+   */
+  syncWorkingTree?(ref: string, message: string): Promise<WorkingTreeSync>;
 }
