@@ -201,6 +201,7 @@ MRROBOT_REPO=...           # opcional, directorio del repositorio Git
 MRROBOT_MOCK=1             # modo mock (agentes y git simulados)
 MRROBOT_MOCK_SCENARIO=success|replan|fail
 MRROBOT_MOCK_DELAY_MS=0    # retardo artificial por ejecución de agente
+MRROBOT_LOG_DIR=.mrrobot/logs   # opcional, directorio de los ficheros .log de monitorización
 ```
 
 ## PostgreSQL
@@ -342,10 +343,34 @@ fuente de verdad y el SSE refresca el hilo en vivo.
 `git.conflict`, `supervisor.replan`, `project.paused`,
 `project.resumed`, `project.recovered`, `project.completed`,
 `project.cancelled`, `project.error`,
-`project.deleted`, `chat.created`, `chat.message`, `chat.deleted`.
+`project.deleted`, `chat.created`, `chat.message`, `chat.deleted`,
+`agent.started`, `agent.completed`, `agent.failed`.
 
 `task.output` (salida del agente en vivo) es efímero: va por SSE pero **no** se
 persiste en el event log.
+
+## Logging y monitorización
+
+Cada intento de agente (worker de una tarea, planner, reviewer, supervisor o
+instrucciones a una tarea) emite `agent.started`/`agent.completed`/
+`agent.failed` con el agente, el intento dentro de la cadena de fallback y,
+al terminar, cuánto tardó (`durationMs`). Estos eventos son persistidos igual
+que el resto del event log, así que aparecen en `GET
+/api/projects/:id/events` y por SSE.
+
+Además, el backend escribe un **fichero `.log` por proyecto** (uno por
+`projectId`, bajo `MRROBOT_LOG_DIR` — por defecto `.mrrobot/logs/`) con una
+línea por evento (hora, tipo, tarea, agente, duración), útil para revisar a
+posteriori o hacer `tail -f` mientras corre un proyecto. `task.output` (la
+salida cruda del agente) se excluye del fichero a propósito: solo interesa el
+ritmo de la ejecución, no el stdout completo.
+
+En la UI, mientras el proyecto está abierto, la consola del navegador recibe
+el mismo stream (vía el SSE de `useProject`) y va imprimiendo qué agente está
+trabajando en cada tarea y cuánto tardó cada intento, con la duración total de
+la tarea al completarse. El objetivo es tener un registro temporal de dónde se
+va el tiempo (qué agente, qué rol, qué tarea) para encontrar cuellos de
+botella.
 
 ## API HTTP
 

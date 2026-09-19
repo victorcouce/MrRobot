@@ -2,7 +2,7 @@ import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
 import { runAgent } from "../agents/router.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, OnAgentEvent } from "../agents/types.js";
 import type { CheckResult } from "../checks/types.js";
 import type { RunOptions } from "../providers/types.js";
 import { normalizeCriteria } from "../tasks/criteria.js";
@@ -36,6 +36,8 @@ export interface ReviewerDeps {
   maxRetriesPerAgent?: number | undefined;
   /** Reintento de la cadena completa cuando todos caen por límite. */
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
+  /** Monitorización: inicio/éxito/fallo de cada intento, con duración. */
+  onAgentEvent?: OnAgentEvent | undefined;
 }
 
 function buildPrompt(task: Task, context: ReviewContext): string {
@@ -133,6 +135,7 @@ export async function reviewTask(
         ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
         : {}),
       ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+      ...(deps.onAgentEvent ? { onAgentEvent: deps.onAgentEvent } : {}),
     });
     const json = JSON.parse(extractJson(raw)) as unknown;
     const parsed = reviewResultSchema.safeParse(json);

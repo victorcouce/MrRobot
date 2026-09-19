@@ -15,7 +15,7 @@ import {
 } from "./limit-retry.js";
 import { runAgent } from "./router.js";
 import { describeAgent } from "./selector.js";
-import type { AgentCandidate } from "./types.js";
+import type { AgentCandidate, OnAgentEvent } from "./types.js";
 
 /**
  * Roles de orquestación que también necesitan elegir agente por complejidad y
@@ -51,6 +51,11 @@ export interface RunRoleOptions {
   signal?: AbortSignal;
   /** Notifica qué candidato completó la ejecución (para metadatos/eventos). */
   onAgent?: (agent: AgentCandidate) => void;
+  /**
+   * Notifica el inicio/éxito/fallo de cada intento de agente, con su duración.
+   * Pensado para monitorización (fichero .log, consola del navegador vía SSE).
+   */
+  onAgentEvent?: OnAgentEvent;
 }
 
 export function roleFallbackChain(
@@ -97,20 +102,49 @@ export async function runRoleAgent(
     let allLimited = chain.length > 0;
     let limitError: unknown;
 
-    for (const candidate of chain) {
+    for (const [chainIndex, candidate] of chain.entries()) {
       if (options.signal?.aborted) {
         throw new Error("Ejecución cancelada por el usuario.");
       }
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const startedAt = Date.now();
+
+        await options.onAgentEvent?.({
+          phase: "start",
+          agent: candidate,
+          attempt: attempt + 1,
+          chainIndex,
+          chainLength: chain.length,
+        });
+
         try {
           const output = await execute(prompt, candidate);
           options.onAgent?.(candidate);
+          await options.onAgentEvent?.({
+            phase: "success",
+            agent: candidate,
+            attempt: attempt + 1,
+            chainIndex,
+            chainLength: chain.length,
+            durationMs: Date.now() - startedAt,
+          });
           return output;
         } catch (error) {
           lastError = errorMessage(error);
 
           const availability = classifyAvailability(error);
+
+          await options.onAgentEvent?.({
+            phase: "failed",
+            agent: candidate,
+            attempt: attempt + 1,
+            chainIndex,
+            chainLength: chain.length,
+            durationMs: Date.now() - startedAt,
+            error: lastError,
+            ...(availability.available ? {} : { reason: availability.reason }),
+          });
 
           // Proveedor agotado o inaccesible: no insistir, pasar al siguiente.
           if (!availability.available) {

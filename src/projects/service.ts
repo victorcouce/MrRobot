@@ -10,6 +10,7 @@ import {
 } from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
+import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
 import type { GeneratedPlan, PlanContext } from "../planner/types.js";
 import { PREVIEW_SCRIPTS } from "../preview/preview.js";
@@ -284,6 +285,7 @@ export async function generatePlan(
     await emit(storage, projectId, "plan.started");
   }
 
+  const onPlannerAgentEvent = createAgentEventEmitter(storage, projectId, "planner");
   const plan = await planProject(project.goal, context, {
     execute: deps.plannerExecute,
     ...(project.defaultAllowedAgents?.length
@@ -292,6 +294,7 @@ export async function generatePlan(
     maxAttempts: config.plannerMaxAttempts,
     maxRetriesPerAgent: config.maxRetriesPerAgent,
     ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+    onAgentEvent: (info) => onPlannerAgentEvent(undefined, info),
   });
 
   const ready: Project = {
@@ -552,6 +555,11 @@ function makeTaskExecutor(
   // para reanclar los criterios con rutas absolutas dentro del repo.
   const repoRootPromise = workspace.getRepoRoot().catch(() => undefined);
 
+  // Monitorización: un intento de agente por tarea (worker) y por reviewer,
+  // cada uno con su duración (fichero .log + SSE → consola del navegador).
+  const onWorkerAgentEvent = createAgentEventEmitter(storage, pid, "worker");
+  const onReviewerAgentEvent = createAgentEventEmitter(storage, pid, "reviewer");
+
   /**
    * Corre el reviewer sobre el resultado real de la tarea. `cwd` es el worktree
    * del intento (vivo durante `onWorkspaceSuccess`), de modo que el agente
@@ -579,6 +587,7 @@ function makeTaskExecutor(
       ...(allowedAgents.length ? { allowedAgents } : {}),
       maxRetriesPerAgent: config.maxRetriesPerAgent,
       ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+      onAgentEvent: (info) => onReviewerAgentEvent(target.id, info),
     });
   };
 
@@ -660,6 +669,7 @@ function makeTaskExecutor(
           ? { onOutput: (chunk: string) => outputBuffer.push(chunk) }
           : {}),
         ...(signal ? { signal } : {}),
+        onAgentEvent: (info) => onWorkerAgentEvent(task.id, info),
       });
       outputBuffer?.flush();
 
@@ -867,6 +877,7 @@ export async function runProject(
       (task) => task.integrationError,
     );
 
+    const onSupervisorAgentEvent = createAgentEventEmitter(storage, pid, "supervisor");
     const decision = await superviseProject(
       project,
       {
@@ -881,6 +892,7 @@ export async function runProject(
           : {}),
         maxRetriesPerAgent: config.maxRetriesPerAgent,
         ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+        onAgentEvent: (info) => onSupervisorAgentEvent(undefined, info),
       },
     );
 
@@ -917,6 +929,7 @@ export async function runProject(
       }
 
       try {
+        const onReplanAgentEvent = createAgentEventEmitter(storage, pid, "planner");
         const newPlan = await planProject(project.goal, context, {
           execute: deps.plannerExecute,
           ...(project.defaultAllowedAgents?.length
@@ -925,6 +938,7 @@ export async function runProject(
           maxAttempts: config.plannerMaxAttempts,
           maxRetriesPerAgent: config.maxRetriesPerAgent,
           ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+          onAgentEvent: (info) => onReplanAgentEvent(undefined, info),
         });
 
         const merged = mergeReplan(project.tasks, newPlan);

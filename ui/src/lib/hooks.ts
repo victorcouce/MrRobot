@@ -6,6 +6,7 @@ import {
   notifyProjectsChanged,
   subscribeProjectsChanged,
 } from "./project-store";
+import { logProjectEvent } from "./monitor-log";
 import { subscribeProject } from "./sse";
 import type {
   AgentMatrixRow,
@@ -232,6 +233,8 @@ export function useProject(id: string, chatId?: string | null): ProjectState {
 
   useEffect(() => {
     const unsubscribe = subscribeProject(id, (event) => {
+      logProjectEvent(event as unknown as ProjectEvent);
+
       // La salida en vivo llega en eventos efímeros: se acumula sin recargar
       // el proyecto (recargar por chunk saturaría la UI).
       if (event.type === "task.output") {

@@ -2,7 +2,7 @@ import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
 import { maxComplexity } from "../agents/selector.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, OnAgentEvent } from "../agents/types.js";
 import type { Project } from "../projects/types.js";
 import type { TaskComplexity } from "../tasks/types.js";
 import { supervisorDecisionSchema } from "./schema.js";
@@ -26,6 +26,8 @@ export interface SupervisorDeps {
   maxRetriesPerAgent?: number | undefined;
   /** Reintento de la cadena completa cuando todos caen por límite. */
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
+  /** Monitorización: inicio/éxito/fallo de cada intento, con duración. */
+  onAgentEvent?: OnAgentEvent | undefined;
 }
 
 function summarize(project: Project): string {
@@ -101,6 +103,7 @@ export async function superviseProject(
         ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
         : {}),
       ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+      ...(deps.onAgentEvent ? { onAgentEvent: deps.onAgentEvent } : {}),
     });
     const json = JSON.parse(extractJson(raw)) as unknown;
     const parsed = supervisorDecisionSchema.safeParse(json);

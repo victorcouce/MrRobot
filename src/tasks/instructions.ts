@@ -1,7 +1,7 @@
 import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, OnAgentEvent } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import { taskInstructionSchema } from "./instructions-schema.js";
 import type { Task, TaskComplexity } from "./types.js";
@@ -16,6 +16,8 @@ export interface TaskInstructionDeps {
   maxRetriesPerAgent?: number;
   /** Reintento de la cadena completa cuando todos caen por límite. */
   limitRetry?: Partial<LimitRetryPolicy>;
+  /** Monitorización: inicio/éxito/fallo de cada intento, con duración. */
+  onAgentEvent?: OnAgentEvent;
 }
 
 export interface TaskInstructionMessage {
@@ -161,6 +163,7 @@ export async function askTaskAgent(
           ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
           : {}),
         ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+        ...(deps.onAgentEvent ? { onAgentEvent: deps.onAgentEvent } : {}),
       },
     );
 
