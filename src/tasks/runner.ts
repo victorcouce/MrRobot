@@ -20,6 +20,7 @@ import type { AgentCandidate, Attachment } from "../agents/types.js";
 import type { RunOptions } from "../providers/types.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
+import { normalizeCriteria } from "./criteria.js";
 import type { Task, TaskAttempt } from "./types.js";
 
 export type AgentExecutor = (
@@ -55,12 +56,20 @@ export interface RunTaskOptions {
    * indica si el intento escribió algo: sin cambios no hay nada que verificar.
    */
   onWorkspaceSuccess?:
-    | ((workspace: TaskWorkspace, changed: boolean) => Promise<void> | void)
+    | ((
+        workspace: TaskWorkspace,
+        changed: boolean,
+        result: { commit?: string; output: string },
+      ) => Promise<void> | void)
     | undefined;
 }
 
-function buildPrompt(task: Task, attachments: Attachment[]): string {
-  const criteria = task.acceptanceCriteria ?? [];
+function buildPrompt(
+  task: Task,
+  attachments: Attachment[],
+  repoRoot?: string,
+): string {
+  const criteria = normalizeCriteria(task.acceptanceCriteria ?? [], repoRoot);
 
   const criteriaBlock =
     criteria.length > 0
@@ -174,11 +183,6 @@ async function runTaskOnce(
       ? fullChain.filter(canWriteFiles)
       : fullChain;
 
-  const basePrompt = buildPrompt(task, options.attachments ?? []);
-  const prompt = options.extraPrompt
-    ? `${basePrompt}\n\n${options.extraPrompt}`
-    : basePrompt;
-
   const running: Task = {
     ...task,
     status: "running",
@@ -219,6 +223,14 @@ async function runTaskOnce(
       `Esos cambios NO forman parte del workspace (base ${baseRef.slice(0, 7)}).`,
     );
   }
+
+  // El prompt se construye con la raíz ya resuelta: los criterios con rutas
+  // absolutas dentro del repo se reanclan a relativas para que el agente
+  // escriba en el worktree y no en la copia principal.
+  const basePrompt = buildPrompt(task, options.attachments ?? [], repoRoot);
+  const prompt = options.extraPrompt
+    ? `${basePrompt}\n\n${options.extraPrompt}`
+    : basePrompt;
 
   const startRef = options.startRef ?? baseRef;
 
@@ -335,7 +347,10 @@ async function runTaskOnce(
         }
 
         if (options.onWorkspaceSuccess) {
-          await options.onWorkspaceSuccess(workspace, committed !== undefined);
+          await options.onWorkspaceSuccess(workspace, committed !== undefined, {
+            ...(resultCommit !== undefined ? { commit: resultCommit } : {}),
+            output,
+          });
         }
 
         await workspaceManager.remove(workspace, {

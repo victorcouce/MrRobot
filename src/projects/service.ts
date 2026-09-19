@@ -14,6 +14,7 @@ import { planProject } from "../planner/planner.js";
 import type { GeneratedPlan, PlanContext } from "../planner/types.js";
 import { PREVIEW_SCRIPTS } from "../preview/preview.js";
 import { reviewTask } from "../reviewer/reviewer.js";
+import type { ReviewContext } from "../reviewer/reviewer.js";
 import type { ReviewResult } from "../reviewer/types.js";
 import { runPlan } from "../scheduler/scheduler.js";
 import type { PlanStatus } from "../scheduler/types.js";
@@ -32,7 +33,7 @@ export interface ProjectDeps {
   config?: OrchestratorConfig;
   plannerExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   workerExecute?: AgentExecutor;
-  reviewerExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
+  reviewerExecute?: AgentExecutor;
   supervisorExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   /** Salida del agente en vivo, para mostrarla en la UI (no se persiste). */
   onAgentOutput?: (projectId: string, taskId: string, chunk: string) => void;
@@ -547,6 +548,40 @@ function makeTaskExecutor(
   chatContext: ChatContext,
   signal?: AbortSignal,
 ): (task: Task) => Promise<Task> {
+  // La raíz se memoriza en el manager; se resuelve una vez por tarea y se usa
+  // para reanclar los criterios con rutas absolutas dentro del repo.
+  const repoRootPromise = workspace.getRepoRoot().catch(() => undefined);
+
+  /**
+   * Corre el reviewer sobre el resultado real de la tarea. `cwd` es el worktree
+   * del intento (vivo durante `onWorkspaceSuccess`), de modo que el agente
+   * revisor inspecciona los archivos que escribió el worker y no la copia
+   * principal, que por diseño no contiene los cambios.
+   */
+  const runReview = async (
+    target: Task,
+    cwd: string | undefined,
+    info: { commit?: string; output: string } | undefined,
+    checks: CheckResult[],
+  ): Promise<ReviewResult> => {
+    const diff = info?.commit ? await workspace.diff(info.commit) : undefined;
+    const context: ReviewContext = { checks };
+    const repoRoot = await repoRootPromise;
+    const allowedAgents = chatContext.allowedAgentsFor(target);
+
+    if (repoRoot) context.repoRoot = repoRoot;
+    if (info?.output) context.output = info.output;
+    if (diff) context.diff = diff;
+
+    return reviewTask(target, context, {
+      execute: deps.reviewerExecute,
+      ...(cwd ? { cwd } : {}),
+      ...(allowedAgents.length ? { allowedAgents } : {}),
+      maxRetriesPerAgent: config.maxRetriesPerAgent,
+      ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+    });
+  };
+
   return async (task: Task): Promise<Task> => {
     const dependencyCommits = collectDependencyCommits(task, taskState);
 
@@ -578,6 +613,7 @@ function makeTaskExecutor(
       await emit(storage, pid, "task.started", task.id, { cycle });
 
       let checks: CheckResult[] = [];
+      let review: ReviewResult | undefined;
       const outputBuffer = deps.onAgentOutput
         ? createOutputBuffer((chunk) => deps.onAgentOutput?.(pid, task.id, chunk))
         : undefined;
@@ -596,11 +632,29 @@ function makeTaskExecutor(
         ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
         allowedAgents: chatContext.allowedAgentsFor(task),
         attachments: chatContext.attachmentsFor(task),
-        // Los checks corren en el worktree del agente antes de borrarlo, para
-        // reutilizar su `node_modules` si ya lo instaló. Si el intento no
-        // escribió nada (p. ej. tareas de texto), no hay nada que verificar.
-        onWorkspaceSuccess: async (ws, changed) => {
-          checks = changed ? await runChecksInDir(ws.path, config, task) : [];
+        // Los checks y el reviewer corren en el worktree del agente antes de
+        // borrarlo: así se reutiliza su `node_modules` y el reviewer inspecciona
+        // los archivos reales en vez del checkout principal (que no los tiene).
+        // Si el intento no escribió nada (p. ej. tareas de texto), no hay nada
+        // que verificar.
+        onWorkspaceSuccess: async (ws, changed, info) => {
+          if (!changed) {
+            checks = [];
+            return;
+          }
+
+          checks = await runChecksInDir(ws.path, config, task);
+
+          if (shouldSkipReview(task, checks)) {
+            review = {
+              approved: true,
+              summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
+              issues: [],
+            };
+            return;
+          }
+
+          review = await runReview(task, ws.path, info, checks);
         },
         ...(outputBuffer
           ? { onOutput: (chunk: string) => outputBuffer.push(chunk) }
@@ -619,36 +673,17 @@ function makeTaskExecutor(
 
       const checksPass = checks.every((check) => check.success);
 
-      let review: ReviewResult;
-
-      if (shouldSkipReview(result, checks)) {
-        review = {
-          approved: true,
-          summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
-          issues: [],
-        };
-      } else {
-        const diff = result.resultCommit
-          ? await workspace.diff(result.resultCommit)
-          : undefined;
-
-        const reviewContext: {
-          checks: CheckResult[];
-          output?: string;
-          diff?: string;
-        } = { checks };
-
-        if (result.output) reviewContext.output = result.output;
-        if (diff) reviewContext.diff = diff;
-
-        review = await reviewTask(result, reviewContext, {
-          execute: deps.reviewerExecute,
-          ...(chatContext.allowedAgentsFor(task).length
-            ? { allowedAgents: chatContext.allowedAgentsFor(task) }
-            : {}),
-          maxRetriesPerAgent: config.maxRetriesPerAgent,
-          ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
-        });
+      // En el caso normal el reviewer ya corrió en `onWorkspaceSuccess` (con el
+      // worktree vivo). Solo falta cuando no hubo cambios: no hay worktree que
+      // inspeccionar y se revisa el texto del agente.
+      if (!review) {
+        review = shouldSkipReview(result, checks)
+          ? {
+              approved: true,
+              summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
+              issues: [],
+            }
+          : await runReview(result, undefined, undefined, checks);
       }
 
       await storage.saveReview({

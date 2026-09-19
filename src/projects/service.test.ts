@@ -580,6 +580,33 @@ test("shouldSkipReview: solo en tareas low sin criterios con checks en verde", (
   assert.equal(shouldSkipReview(task, [fail]), false);
 });
 
+test("review: el reviewer corre en el worktree del intento", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const cwds: Array<string | undefined> = [];
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace: fakeWorkspace(),
+    plannerExecute: async () => JSON.stringify(singleTaskPlan),
+    workerExecute: async () => "ok",
+    reviewerExecute: async (_prompt, _agent, options) => {
+      cwds.push(options?.cwd);
+      return JSON.stringify({ approved: true, summary: "ok", issues: [] });
+    },
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject({ goal: "x" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+  assert.ok(cwds.length >= 1);
+  assert.match(cwds[0] ?? "", /\.worktrees\/TASK-001-/);
+});
+
 test("review→fix: el segundo ciclo parte del commit del primero", async () => {
   const storage = new InMemoryStorage();
   await storage.init();

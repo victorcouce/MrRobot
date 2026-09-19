@@ -120,6 +120,71 @@ test("planner: un criterio de verificación manual dispara reparación", async (
   assert.equal(plan.tasks.length, 2);
 });
 
+test("planner: un criterio con ruta absoluta dispara reparación", async () => {
+  const absolutePlan = {
+    summary: "s",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "archivo",
+        description: "crear archivo",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: [
+          "existe /Users/victor/Developer/calc/package.json",
+        ],
+      },
+    ],
+  };
+
+  let calls = 0;
+  const plan = await planProject("objetivo", {}, {
+    execute: async () => {
+      calls += 1;
+      return calls === 1
+        ? JSON.stringify(absolutePlan)
+        : JSON.stringify(validPlan);
+    },
+    maxAttempts: 2,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(plan.tasks.length, 2);
+});
+
+test("planner: un plan solo con rutas absolutas agota intentos", async () => {
+  const absolutePlan = {
+    summary: "s",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "archivo",
+        description: "crear archivo",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: ["existe /Users/victor/Developer/calc/package.json"],
+      },
+    ],
+  };
+
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      planProject("objetivo", {}, {
+        execute: async () => {
+          calls += 1;
+          return JSON.stringify(absolutePlan);
+        },
+        maxAttempts: 2,
+      }),
+    /rutas absolutas/,
+  );
+
+  assert.equal(calls, 2);
+});
+
 test("planner: un plan solo con verificación manual agota intentos", async () => {
   const manualPlan = {
     summary: "s",

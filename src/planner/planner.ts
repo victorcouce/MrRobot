@@ -10,6 +10,7 @@ import {
   findDuplicateIds,
   findMissingDependencies,
 } from "../scheduler/validation.js";
+import { findAbsolutePaths } from "../tasks/criteria.js";
 import type { TaskComplexity } from "../tasks/types.js";
 import { generatedPlanSchema } from "./schema.js";
 import type { GeneratedPlan, PlanContext } from "./types.js";
@@ -81,6 +82,17 @@ export function validateGeneratedPlan(plan: GeneratedPlan): string[] {
     problems.push(
       `criterios de verificación manual no automatizables en ${manual.join(", ")}: ` +
         "reformúlalos como comandos o tests ejecutables por un agente (nada de pasos manuales, navegador real ni inspección visual)",
+    );
+  }
+
+  const absolute = plan.tasks.filter(
+    (task) => findAbsolutePaths(task.acceptanceCriteria ?? []).length > 0,
+  );
+
+  if (absolute.length > 0) {
+    problems.push(
+      `criterios con rutas absolutas del filesystem en ${absolute.map((task) => task.id).join(", ")}: ` +
+        "usa rutas relativas a la raíz del repositorio (p. ej. `package.json`), nunca `/Users/...`, `C:\\...` ni `~/...`; la tarea se ejecuta en un worktree aislado",
     );
   }
 
@@ -212,6 +224,7 @@ function buildPrompt(
     "Reglas: IDs únicos; dependsOn solo referencia IDs existentes; sin ciclos; al menos una tarea sin dependencias; type y complexity deben ser valores válidos.",
     "Cada tarea debe poder completarla un agente que escribe archivos y ejecuta comandos.",
     "Los criterios de aceptación deben poder comprobarse automáticamente sobre el repositorio (comandos, tests). No crees tareas ni criterios de verificación manual, interacción con un navegador real, inspección visual ni capturas: no son verificables. Si hace falta validar la UI, pide tests automatizados que se ejecuten con un comando.",
+    "Los criterios de aceptación deben usar rutas RELATIVAS a la raíz del repositorio (por ejemplo `package.json`, `src/index.ts`), nunca rutas absolutas del filesystem (`/Users/...`, `C:\\...`, `~/...`): cada tarea se ejecuta en un worktree aislado y una ruta absoluta apuntaría fuera de él.",
   );
 
   return parts.join("\n");

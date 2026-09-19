@@ -496,7 +496,12 @@ límite, se aplica el reintento de cadena descrito arriba. La API usa además
   (mín. 1), `type` (enum), `complexity` (enum), `dependsOn` (string[], default
   `[]`), `acceptanceCriteria` (string[], default `[]`).
 - **Validación estructural** (`validateGeneratedPlan`): no vacío, sin IDs
-  duplicados, sin dependencias inexistentes, sin ciclos.
+  duplicados, sin dependencias inexistentes, sin ciclos, sin criterios de
+  verificación manual (navegador real, inspección visual) y **sin rutas
+  absolutas del filesystem** (`/Users/...`, `C:\...`, `~/...`). Los criterios
+  deben usar rutas relativas a la raíz del repositorio (`package.json`,
+  `src/index.ts`): la tarea se ejecuta en un worktree aislado y una ruta
+  absoluta apuntaría fuera de él.
 - Si se agotan los intentos: lanza
   `El planner no generó un plan válido tras N intentos: <detalle>.`
 
@@ -588,8 +593,11 @@ si TODOS los candidatos cayeron por límite (rate/usage) -> esperar y re-recorre
 si se agotan candidatos -> tarea failed
 ```
 
-Los roles de orquestación (planner, reviewer, supervisor, grill, instrucciones)
-usan el mismo mecanismo vía `runRoleAgent` (`src/agents/role.ts`), sin worktrees.
+Los roles de orquestación (planner, supervisor, grill, instrucciones) usan el
+mismo mecanismo vía `runRoleAgent` (`src/agents/role.ts`), sin worktrees. El
+reviewer es la excepción: corre con `cwd` en el worktree del intento (dentro de
+`onWorkspaceSuccess`, antes de borrarlo) para inspeccionar los archivos reales
+en vez de la copia principal, que por diseño no contiene los cambios.
 
 Detalles:
 
@@ -645,7 +653,11 @@ Detalles:
   `low`, no tiene `acceptanceCriteria` y hay checks que existen y pasan. Si no
   hay checks, el review sigue siendo la única validación.
 - **Contexto**: `diff` (del commit), `output` (del agente), `checks` (resultados
-  locales) y `acceptanceCriteria` (de la tarea).
+  locales), `acceptanceCriteria` (de la tarea) y `repoRoot` (para reanclar
+  criterios con rutas absolutas dentro del repo a relativas).
+- **`cwd`**: `ReviewerDeps.cwd` fuerza el directorio de inspección del reviewer
+  por encima del que traiga el ejecutor (que apunta al repo principal). El
+  ciclo review/fix lo fija al worktree del intento.
 - Prompt estricto: `approved` debe ser `false` si algún criterio no se cumple o
   algún check falla.
 - Salida validada con Zod: `{ approved, summary, issues[], suggestedFixes? }`.

@@ -121,6 +121,46 @@ test("runTask: sin cambios no pide checks", async () => {
   assert.deepEqual(calls, [false]);
 });
 
+test("runTask: reancla criterios absolutos del repo en el prompt", async () => {
+  let prompt = "";
+
+  const result = await runTask(
+    task({
+      type: "coding",
+      acceptanceCriteria: ["existe /fake/repo/package.json"],
+    }),
+    {
+      execute: async (value) => {
+        prompt = value;
+        return "ok";
+      },
+      workspace: fakeWorkspace("abc123"),
+      allowedAgents: [CLAUDE_SONNET],
+    },
+  );
+
+  assert.equal(result.status, "done");
+  assert.match(prompt, /existe package\.json/);
+  assert.doesNotMatch(prompt, /\/fake\/repo\/package\.json/);
+});
+
+test("runTask: onWorkspaceSuccess recibe commit y salida", async () => {
+  const seen: Array<{ commit?: string; output: string }> = [];
+
+  await runTask(task({ type: "coding" }), {
+    execute: async () => "salida del agente",
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [CLAUDE_SONNET],
+    onWorkspaceSuccess: (_ws, _changed, info) => {
+      seen.push(info);
+    },
+  });
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]?.commit, "abc123");
+  assert.equal(seen[0]?.output, "salida del agente");
+});
+
 test("runTask: un reintento exitoso limpia el error anterior", async () => {
   const result = await runTask(
     task({

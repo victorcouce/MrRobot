@@ -1,8 +1,11 @@
 import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
+import { runAgent } from "../agents/router.js";
 import type { AgentCandidate } from "../agents/types.js";
 import type { CheckResult } from "../checks/types.js";
+import type { RunOptions } from "../providers/types.js";
+import { normalizeCriteria } from "../tasks/criteria.js";
 import type { Task, TaskComplexity } from "../tasks/types.js";
 import { reviewResultSchema } from "./schema.js";
 import type { ReviewResult } from "./types.js";
@@ -12,12 +15,20 @@ export interface ReviewContext {
   output?: string;
   checks?: CheckResult[];
   acceptanceCriteria?: string[];
+  /** Raíz del repo para reanclar criterios con rutas absolutas a relativas. */
+  repoRoot?: string;
 }
 
 export interface ReviewerDeps {
   execute?:
-    | ((prompt: string, agent: AgentCandidate) => Promise<string>)
+    | ((
+        prompt: string,
+        agent: AgentCandidate,
+        options?: RunOptions,
+      ) => Promise<string>)
     | undefined;
+  /** Directorio donde el reviewer inspecciona el resultado (worktree). */
+  cwd?: string | undefined;
   /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
   allowedAgents?: AgentCandidate[] | undefined;
   complexity?: TaskComplexity | undefined;
@@ -28,13 +39,18 @@ export interface ReviewerDeps {
 }
 
 function buildPrompt(task: Task, context: ReviewContext): string {
-  const criteria = context.acceptanceCriteria ?? task.acceptanceCriteria ?? [];
+  const criteria = normalizeCriteria(
+    context.acceptanceCriteria ?? task.acceptanceCriteria ?? [],
+    context.repoRoot,
+  );
 
   const parts: string[] = [
     "Eres un reviewer estricto. Decide si la tarea cumple sus criterios de aceptación.",
     "",
     `TAREA: ${task.id} - ${task.title}`,
     task.description,
+    "",
+    "El DIFF describe el commit de la tarea y el directorio de trabajo actual contiene ese resultado; evalúa los criterios ahí. Las rutas de los criterios son relativas a la raíz del repositorio.",
   ];
 
   if (criteria.length > 0) {
@@ -98,9 +114,19 @@ export async function reviewTask(
   context: ReviewContext = {},
   deps: ReviewerDeps = {},
 ): Promise<ReviewResult> {
+  const base =
+    deps.execute ?? ((prompt, agent, options) => runAgent(prompt, agent, options));
+
+  // El reviewer inspecciona el resultado en el worktree de la tarea: se fuerza
+  // el cwd por encima del que traiga el ejecutor (que apunta al repo principal).
+  const cwd = deps.cwd;
+  const execute = cwd
+    ? (prompt: string, agent: AgentCandidate) => base(prompt, agent, { cwd })
+    : base;
+
   try {
     const raw = await runRoleAgent(buildPrompt(task, context), "reviewer", {
-      ...(deps.execute ? { execute: deps.execute } : {}),
+      execute,
       ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
       complexity: deps.complexity ?? task.complexity,
       ...(deps.maxRetriesPerAgent !== undefined

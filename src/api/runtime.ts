@@ -116,11 +116,16 @@ export function roleExecutor(
     agent: AgentCandidate,
     options?: RunOptions,
   ) => Promise<string> = runAgent,
-): (prompt: string, agent: AgentCandidate) => Promise<string> {
-  return (prompt, agent) =>
+): (
+  prompt: string,
+  agent: AgentCandidate,
+  options?: RunOptions,
+) => Promise<string> {
+  return (prompt, agent, options) =>
     execute(prompt, agent, {
       ...(cwd ? { cwd } : {}),
       sandbox: "read-only",
+      ...options,
     });
 }
 

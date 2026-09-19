@@ -41,6 +41,38 @@ test("reviewer: FAIL con issues", async () => {
   assert.deepEqual(review.suggestedFixes, ["arreglar imports"]);
 });
 
+test("reviewer: fuerza el cwd del worktree en el ejecutor", async () => {
+  let seenCwd: string | undefined;
+
+  await reviewTask(makeTask(), { checks: [] }, {
+    cwd: "/repo/.worktrees/TASK-001-attempt-1",
+    execute: async (_prompt, _agent, options) => {
+      seenCwd = options?.cwd;
+      return JSON.stringify({ approved: true, summary: "ok", issues: [] });
+    },
+  });
+
+  assert.equal(seenCwd, "/repo/.worktrees/TASK-001-attempt-1");
+});
+
+test("reviewer: reancla criterios absolutos del repo en el prompt", async () => {
+  let prompt = "";
+
+  await reviewTask(
+    { ...makeTask(), acceptanceCriteria: ["existe /repo/package.json"] },
+    { repoRoot: "/repo" },
+    {
+      execute: async (value) => {
+        prompt = value;
+        return JSON.stringify({ approved: true, summary: "ok", issues: [] });
+      },
+    },
+  );
+
+  assert.match(prompt, /existe package\.json/);
+  assert.doesNotMatch(prompt, /\/repo\/package\.json/);
+});
+
 test("reviewer: respuesta inválida se trata como no aprobada", async () => {
   const review = await reviewTask(makeTask(), {}, {
     execute: async () => "no soy json",
