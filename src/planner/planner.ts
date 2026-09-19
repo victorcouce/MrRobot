@@ -1,6 +1,8 @@
 import { renderAttachments } from "../agents/attachments.js";
 import { errorMessage } from "../agents/fallback.js";
-import { runAgent } from "../agents/router.js";
+import type { LimitRetryPolicy } from "../agents/limit-retry.js";
+import { runRoleAgent } from "../agents/role.js";
+import { maxComplexity } from "../agents/selector.js";
 import type { AgentCandidate } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import {
@@ -8,6 +10,7 @@ import {
   findDuplicateIds,
   findMissingDependencies,
 } from "../scheduler/validation.js";
+import type { TaskComplexity } from "../tasks/types.js";
 import { generatedPlanSchema } from "./schema.js";
 import type { GeneratedPlan, PlanContext } from "./types.js";
 
@@ -15,8 +18,40 @@ export interface PlannerDeps {
   execute?:
     | ((prompt: string, agent: AgentCandidate) => Promise<string>)
     | undefined;
-  agent?: AgentCandidate | undefined;
+  /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
+  allowedAgents?: AgentCandidate[] | undefined;
+  complexity?: TaskComplexity | undefined;
   maxAttempts?: number | undefined;
+  /** Reintentos por agente antes de pasar al siguiente de la cadena. */
+  maxRetriesPerAgent?: number | undefined;
+  /** Reintento de la cadena completa cuando todos caen por límite. */
+  limitRetry?: Partial<LimitRetryPolicy> | undefined;
+  /** Notifica qué agente generó el plan (para metadatos del mensaje de chat). */
+  onAgent?: ((agent: AgentCandidate) => void) | undefined;
+}
+
+/**
+ * Frases que delatan una verificación que un agente no puede ejecutar: exige
+ * interacción humana, un navegador real o inspección visual. El reviewer pide
+ * evidencia real de estos criterios, así que una tarea así nunca se aprueba.
+ */
+const MANUAL_VERIFICATION_PATTERNS: RegExp[] = [
+  /\bmanual(?:mente)?\b/i,
+  /\ba mano\b/i,
+  /inspecci[oó]n visual/i,
+  /captura(?:s)? de pantalla/i,
+  /consola del navegador/i,
+  /revis(?:ar|ión) (?:visual|manualmente)/i,
+];
+
+function findManualVerification(tasks: GeneratedPlan["tasks"]): string[] {
+  return tasks
+    .filter((task) =>
+      (task.acceptanceCriteria ?? []).some((criterion) =>
+        MANUAL_VERIFICATION_PATTERNS.some((pattern) => pattern.test(criterion)),
+      ),
+    )
+    .map((task) => task.id);
 }
 
 export function validateGeneratedPlan(plan: GeneratedPlan): string[] {
@@ -38,6 +73,15 @@ export function validateGeneratedPlan(plan: GeneratedPlan): string[] {
 
   if (cycle) {
     problems.push(`dependencia circular: ${cycle.join(" → ")}`);
+  }
+
+  const manual = findManualVerification(plan.tasks);
+
+  if (manual.length > 0) {
+    problems.push(
+      `criterios de verificación manual no automatizables en ${manual.join(", ")}: ` +
+        "reformúlalos como comandos o tests ejecutables por un agente (nada de pasos manuales, navegador real ni inspección visual)",
+    );
   }
 
   return problems;
@@ -166,6 +210,8 @@ function buildPrompt(
     ),
     "",
     "Reglas: IDs únicos; dependsOn solo referencia IDs existentes; sin ciclos; al menos una tarea sin dependencias; type y complexity deben ser valores válidos.",
+    "Cada tarea debe poder completarla un agente que escribe archivos y ejecuta comandos.",
+    "Los criterios de aceptación deben poder comprobarse automáticamente sobre el repositorio (comandos, tests). No crees tareas ni criterios de verificación manual, interacción con un navegador real, inspección visual ni capturas: no son verificables. Si hace falta validar la UI, pide tests automatizados que se ejecuten con un comando.",
   );
 
   return parts.join("\n");
@@ -176,15 +222,24 @@ export async function planProject(
   context: PlanContext = {},
   deps: PlannerDeps = {},
 ): Promise<GeneratedPlan> {
-  const execute =
-    deps.execute ?? ((prompt, agent) => runAgent(prompt, agent));
-  const agent = deps.agent ?? defaultConfig.plannerAgent;
   const maxAttempts = deps.maxAttempts ?? defaultConfig.plannerMaxAttempts;
+  // Al replanificar, la complejidad del plan anterior marca el tramo de agentes.
+  const complexity =
+    deps.complexity ?? maxComplexity(context.previousPlan?.tasks ?? []);
 
   let feedback: string | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const raw = await execute(buildPrompt(goal, context, feedback), agent);
+    const raw = await runRoleAgent(buildPrompt(goal, context, feedback), "planner", {
+      ...(deps.execute ? { execute: deps.execute } : {}),
+      ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
+      ...(complexity ? { complexity } : {}),
+      ...(deps.maxRetriesPerAgent !== undefined
+        ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
+        : {}),
+      ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+      ...(deps.onAgent ? { onAgent: deps.onAgent } : {}),
+    });
     const parsed = parsePlan(raw);
 
     if (!parsed.ok) {

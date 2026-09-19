@@ -46,6 +46,10 @@ function fakeWorkspace(): WorkspaceManager {
       commits += 1;
       return `fakecommit-${commits}`;
     },
+    squash: async () => {
+      commits += 1;
+      return `fakecommit-${commits}`;
+    },
     remove: async () => {},
     diff: async () => "",
     integrateDependencies: async (_taskId, _commits, baseRef) => ({
@@ -258,7 +262,7 @@ test("Caso 1: Codex success -> 1 intento, DONE, executedBy Codex", async () => {
   assert.equal(calls.length, 1);
 });
 
-test("Caso 2: codex falla, retry falla, sonnet completa -> 3 intentos", async () => {
+test("Caso 2: codex sin cuota, se pasa a sonnet -> 2 intentos", async () => {
   const execute = async (
     _prompt: string,
     agent: AgentCandidate,
@@ -276,19 +280,43 @@ test("Caso 2: codex falla, retry falla, sonnet completa -> 3 intentos", async ()
 
   assert.equal(result.status, "done");
   assert.deepEqual(result.executedBy, { provider: "claude", model: "sonnet" });
-  assert.equal(result.attempts?.length, 3);
+  assert.equal(result.attempts?.length, 2);
   assert.deepEqual(
     result.attempts?.map((attempt) => attempt.status),
-    ["failed", "failed", "success"],
+    ["failed", "success"],
   );
   assert.deepEqual(
     result.attempts?.map((attempt) => attempt.agent),
-    [
-      { provider: "codex" },
-      { provider: "codex" },
-      { provider: "claude", model: "sonnet" },
-    ],
+    [{ provider: "codex" }, { provider: "claude", model: "sonnet" }],
   );
+});
+
+test("runTask: si todos caen por límite, espera y reintenta la cadena", async () => {
+  const used: AgentCandidate[] = [];
+  const execute = async (
+    _prompt: string,
+    agent: AgentCandidate,
+  ): Promise<string> => {
+    used.push(agent);
+    if (used.length <= 3) {
+      throw new Error("429 rate limit");
+    }
+    return "ok";
+  };
+
+  const result = await runTask(
+    makeTask({ type: "coding", complexity: "high" }),
+    {
+      execute,
+      workspace: fakeWorkspace(),
+      limitRetry: { maxLimitRetries: 1, baseDelayMs: 0, maxDelayMs: 0 },
+    },
+  );
+
+  assert.equal(result.status, "done");
+  // Cadena high = [codex, sonnet, opus]: recorrido completo + reintento.
+  assert.equal(used.length, 4);
+  assert.equal(result.attempts?.length, 4);
 });
 
 test("Caso 3: todos fallan -> FAILED con historial completo", async () => {
@@ -348,4 +376,43 @@ test("Caso 5: la cadena con agente explícito no tiene duplicados", () => {
 
   const keys = chain.map(keyOf);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+test("onWorkspaceSuccess corre en el worktree del intento exitoso", async () => {
+  const seen: string[] = [];
+
+  const result = await runTask(
+    makeTask({ type: "coding", complexity: "high" }),
+    {
+      execute: async () => "ok",
+      workspace: fakeWorkspace(),
+      onWorkspaceSuccess: async (workspace) => {
+        seen.push(workspace.path);
+      },
+    },
+  );
+
+  assert.equal(result.status, "done");
+  assert.equal(seen.length, 1);
+  assert.match(seen[0] ?? "", /\.worktrees\//);
+});
+
+test("onWorkspaceSuccess no se llama si la tarea falla", async () => {
+  let called = false;
+
+  const result = await runTask(
+    makeTask({ type: "coding", complexity: "high" }),
+    {
+      execute: async () => {
+        throw new Error("spawn codex ENOENT");
+      },
+      workspace: fakeWorkspace(),
+      onWorkspaceSuccess: async () => {
+        called = true;
+      },
+    },
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(called, false);
 });

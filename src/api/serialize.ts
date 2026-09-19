@@ -240,12 +240,10 @@ export function serializeProject(project: DomainProject): Project {
   if (project.config) {
     serialized.config = {
       concurrency: project.config.concurrency,
+      maxConcurrency: project.config.maxConcurrency ?? project.config.concurrency,
       maxRetriesPerAgent: project.config.maxRetriesPerAgent,
       maxReviewFixCycles: project.config.maxReviewFixCycles,
       plannerMaxAttempts: project.config.plannerMaxAttempts,
-      plannerAgent: serializeAgent(project.config.plannerAgent),
-      reviewerAgent: serializeAgent(project.config.reviewerAgent),
-      supervisorAgent: serializeAgent(project.config.supervisorAgent),
       checks: { commands: [...project.config.checks.commands] },
       defaultAllowedAgents: (project.config.defaultAllowedAgents ?? []).map(
         serializeAgent,

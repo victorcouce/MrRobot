@@ -5,10 +5,12 @@ export function runCodex(
   prompt: string,
   options: RunOptions = {},
 ): Promise<string> {
+  const sandbox = options.sandbox ?? "workspace-write";
+
   return execCli(
     "codex",
     "codex",
-    ["exec", "--sandbox", "workspace-write", prompt],
+    ["exec", "--sandbox", sandbox, prompt],
     options,
   );
 }

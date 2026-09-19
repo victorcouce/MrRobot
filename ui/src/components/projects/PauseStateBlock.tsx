@@ -3,6 +3,7 @@
 import type { Project } from "../../lib/types";
 import { Block } from "../ui/Block";
 import { Button } from "../ui/Button";
+import { PauseIcon, PlayIcon } from "../ui/icons";
 
 interface PauseStateBlockProps {
   project: Project;
@@ -19,39 +20,27 @@ export function PauseStateBlock({
     return null;
   }
 
-  const stats = project.stats;
-  const completed = stats?.done ?? 0;
-  const total = stats?.total ?? 0;
+  const completed = project.stats?.done ?? 0;
+  const total = project.stats?.total ?? 0;
 
   return (
-    <Block>
-      <div className="flex gap-4 items-center p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            className="text-ink-2"
-            aria-hidden="true"
-          >
-            <path d="M9 5v14M15 5v14"></path>
-          </svg>
-        </div>
+    <Block aria-label="Proyecto en pausa">
+      <div className="flex items-center gap-3 px-[18px] py-4">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-ink-2">
+          <PauseIcon />
+        </span>
 
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-ink">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-sm font-semibold text-ink">
             En pausa · {completed} de {total} hechas
-          </div>
-          <p className="text-sm text-ink-3 mt-1">
-            El lote en curso terminó. Puedes escribir, ajustar el plan o los agentes del chat.
-          </p>
+          </span>
+          <span className="text-[13px] text-ink-3">
+            El lote en curso terminó. Puedes escribir, ajustar el plan o los
+            agentes del chat.
+          </span>
         </div>
 
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 gap-1.5">
           {onCancel && (
             <Button
               size="sm"
@@ -64,15 +53,7 @@ export function PauseStateBlock({
           )}
           {onResume && (
             <Button size="sm" variant="primary" onClick={onResume}>
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M7 4.5v15l12.5-7.5z"></path>
-              </svg>
+              <PlayIcon />
               Reanudar
             </Button>
           )}

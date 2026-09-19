@@ -6,6 +6,19 @@ const DEFAULT_MODEL: DeepSeekModel = "deepseek-flash";
 
 const BASE_URL = "https://api.deepseek.com";
 
+let cachedClient: OpenAI | undefined;
+let cachedKey: string | undefined;
+
+/** Reutiliza el cliente salvo que cambie la clave (se puede aplicar en caliente). */
+function getClient(apiKey: string): OpenAI {
+  if (!cachedClient || cachedKey !== apiKey) {
+    cachedClient = new OpenAI({ apiKey, baseURL: BASE_URL });
+    cachedKey = apiKey;
+  }
+
+  return cachedClient;
+}
+
 export async function runDeepSeek(
   prompt: string,
   model: DeepSeekModel = DEFAULT_MODEL,
@@ -18,7 +31,7 @@ export async function runDeepSeek(
     );
   }
 
-  const client = new OpenAI({ apiKey, baseURL: BASE_URL });
+  const client = getClient(apiKey);
 
   try {
     const response = await client.chat.completions.create({

@@ -1,18 +1,15 @@
-import {
-  CLAUDE_OPUS,
-  DEEPSEEK_FLASH,
-} from "../agents/selector.js";
+import { DEFAULT_LIMIT_RETRY } from "../agents/limit-retry.js";
+import { DEEPSEEK_FLASH } from "../agents/selector.js";
 import type { OrchestratorConfig } from "./types.js";
 
 export const defaultConfig: OrchestratorConfig = {
   concurrency: 2,
+  maxConcurrency: 4,
   maxRetriesPerAgent: 1,
   maxReviewFixCycles: 2,
   plannerMaxAttempts: 2,
 
-  plannerAgent: CLAUDE_OPUS,
-  reviewerAgent: CLAUDE_OPUS,
-  supervisorAgent: CLAUDE_OPUS,
+  limitRetry: DEFAULT_LIMIT_RETRY,
 
   checks: { commands: [] },
   defaultAllowedAgents: [],

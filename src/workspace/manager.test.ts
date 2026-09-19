@@ -14,6 +14,7 @@ import {
   createGitWorkspaceManager,
   createTaskWorkspace,
   finalizeProject,
+  getRepoRoot,
   integrateDependencies,
   prepareProjectRepo,
   removeTaskWorkspace,
@@ -257,7 +258,7 @@ test("Caso 6: todos los intentos parten del mismo baseRef", async () => {
     });
 
     assert.equal(result.status, "done");
-    assert.equal(result.attempts?.length, 3);
+    assert.equal(result.attempts?.length, 2);
 
     const bases = new Set(result.attempts?.map((attempt) => attempt.baseRef));
     assert.equal(bases.size, 1);
@@ -419,6 +420,79 @@ test("prepareProjectRepo reutiliza un repo existente y configura origin", async 
       await git(["remote", "get-url", "origin"], repo),
       "https://github.com/acme/demo.git",
     );
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("getRepoRoot memoriza la raíz pero no cachea un fallo", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mrrobot-root-"));
+
+  try {
+    await assert.rejects(() => getRepoRoot(dir), /No se pudo acceder/);
+
+    await git(["init", "-b", "main"], dir);
+
+    const root = await getRepoRoot(dir);
+    assert.ok(root);
+
+    // La segunda llamada sale de la caché (mismo valor).
+    assert.equal(await getRepoRoot(dir), root);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Caso 7: el fix continúa el intento anterior y aplana en un commit sobre la base", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const first = await runTask(makeTask({ id: "TASK-300" }), {
+      workspace: manager,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "a.txt"), "A\n", "utf8");
+        return "ok";
+      },
+    });
+
+    assert.equal(first.status, "done");
+    const firstCommit = first.resultCommit;
+    assert.ok(firstCommit);
+
+    let sawPreviousWork = false;
+    const second = await runTask(makeTask({ id: "TASK-300" }), {
+      workspace: manager,
+      baseRef: base,
+      startRef: firstCommit,
+      extraPrompt: "corrige",
+      execute: async (_prompt, _agent, options) => {
+        sawPreviousWork = existsSync(join(cwdOf(options), "a.txt"));
+        await writeFile(join(cwdOf(options), "b.txt"), "B\n", "utf8");
+        return "ok";
+      },
+    });
+
+    assert.equal(second.status, "done");
+    const secondCommit = second.resultCommit;
+    assert.ok(secondCommit);
+
+    // El agente del fix parte del trabajo anterior.
+    assert.equal(sawPreviousWork, true);
+
+    // Un solo commit sobre la base: el padre es `base`, no el primer commit.
+    assert.equal(await git(["rev-parse", `${secondCommit}^`], repo), base);
+
+    // El árbol final incluye el trabajo de ambos ciclos.
+    const files = await git(["show", "--name-only", "--format=", secondCommit], repo);
+    assert.match(files, /a\.txt/);
+    assert.match(files, /b\.txt/);
+
+    // El repositorio principal sigue intacto.
+    assert.equal(existsSync(join(repo, "a.txt")), false);
+    assert.equal(existsSync(join(repo, "b.txt")), false);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }

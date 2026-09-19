@@ -8,9 +8,11 @@ interface BlockProps {
 
 interface BlockHeaderProps {
   title: ReactNode;
-  subtitle?: ReactNode;
+  meta?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /** Sin borde inferior (cabeceras que se funden con el contenido). */
+  border?: boolean;
 }
 
 interface BlockContentProps {
@@ -24,14 +26,14 @@ interface BlockFooterProps {
 }
 
 /**
- * Base Block component for chat thread blocks.
- * Provides consistent styling and structure for inline content blocks.
+ * Bloque base del hilo: tarjeta blanca con borde `line` y sombra suave.
+ * Réplica de `.block` de `ui/design/screens`.
  */
 export function Block({ children, className }: BlockProps) {
   return (
     <div
       className={clsx(
-        "rounded-block border border-line bg-surface shadow-block",
+        "overflow-hidden rounded-block border border-line bg-surface shadow-block",
         className,
       )}
     >
@@ -41,51 +43,55 @@ export function Block({ children, className }: BlockProps) {
 }
 
 /**
- * Block header with title, optional subtitle, and action buttons.
+ * Cabecera de bloque: título inline (con chips), metadatos y acciones a la
+ * derecha. Réplica de `.bhead` / `.btitle`.
  */
 export function BlockHeader({
   title,
-  subtitle,
+  meta,
   actions,
   className,
+  border = true,
 }: BlockHeaderProps) {
   return (
     <div
       className={clsx(
-        "flex items-center justify-between gap-4 border-b border-line-soft px-5 py-4",
+        "flex items-center justify-between gap-4 px-[18px] py-3 pr-3.5",
+        border && "border-b border-line",
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
-        <h3 className="text-base font-semibold text-ink">{title}</h3>
-        {subtitle && (
-          <p className="mt-1 text-sm text-ink-3">{subtitle}</p>
+      <div className="flex min-w-0 items-center gap-2.5 text-sm font-semibold text-ink">
+        <span className="truncate">{title}</span>
+        {meta && (
+          <span className="truncate text-[12.5px] font-normal text-ink-4">
+            {meta}
+          </span>
         )}
       </div>
-      {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 items-center gap-1">{actions}</div>
+      )}
     </div>
   );
 }
 
 /**
- * Block content area for main block content.
+ * Cuerpo de bloque. El padding por defecto replica el de los diseños; se puede
+ * sobreescribir con `className`.
  */
 export function BlockContent({ children, className }: BlockContentProps) {
-  return (
-    <div className={clsx("px-5 py-4", className)}>
-      {children}
-    </div>
-  );
+  return <div className={clsx("px-[18px] py-4", className)}>{children}</div>;
 }
 
 /**
- * Block footer with metadata and action buttons.
+ * Pie de bloque: fondo `subtle`, borde superior. Réplica de `.bfoot`.
  */
 export function BlockFooter({ children, className }: BlockFooterProps) {
   return (
     <div
       className={clsx(
-        "flex items-center justify-between gap-4 border-t border-line-soft bg-subtle px-5 py-3",
+        "flex items-center justify-between gap-4 border-t border-line bg-subtle px-[18px] py-2.5 pr-3.5",
         className,
       )}
     >
@@ -95,7 +101,7 @@ export function BlockFooter({ children, className }: BlockFooterProps) {
 }
 
 /**
- * Key-value row for displaying metadata.
+ * Fila clave/valor para metadatos. Réplica de `.kv` de 4-1.
  */
 export function BlockKV({
   label,
@@ -105,15 +111,15 @@ export function BlockKV({
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[130px_1fr] gap-3 py-2 text-sm">
+    <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 py-[7px] text-[13px]">
       <dt className="text-ink-4">{label}</dt>
-      <dd className="text-ink-2">{children}</dd>
+      <dd className="text-ink">{children}</dd>
     </div>
   );
 }
 
 /**
- * Status pill component for block headers.
+ * Pill de estado para cabeceras de bloque.
  */
 export function StatusPill({
   status,
@@ -139,7 +145,7 @@ export function StatusPill({
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium",
+        "inline-flex h-[22px] items-center rounded-full px-2 text-xs font-medium",
         statusConfig[status],
       )}
     >

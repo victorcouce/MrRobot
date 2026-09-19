@@ -1,20 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatSummary, ProjectStats, ProjectSummary } from "../../lib/types";
+import type { ProjectStats, ProjectSummary } from "../../lib/types";
 import { AppShell } from "./AppShell";
 
 const mocks = vi.hoisted(() => ({
-  push: vi.fn(),
-  createChat: vi.fn(),
-  refresh: vi.fn(),
   projects: [] as ProjectSummary[],
-  chats: [] as ChatSummary[],
+  info: null as { agents?: { connected: boolean }[] } | null,
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: mocks.push }),
 }));
 
 vi.mock("../../lib/hooks", () => ({
@@ -24,21 +20,7 @@ vi.mock("../../lib/hooks", () => ({
     loading: false,
     refresh: vi.fn(),
   }),
-  useAllChats: () => ({
-    chats: mocks.chats,
-    error: null,
-    loading: false,
-    refresh: mocks.refresh,
-  }),
-  useAppInfo: () => ({ info: null, error: null, refresh: vi.fn() }),
-}));
-
-vi.mock("../../lib/api", () => ({
-  api: { createChat: mocks.createChat },
-}));
-
-vi.mock("./ThemeToggle", () => ({
-  ThemeToggle: () => null,
+  useAppInfo: () => ({ info: mocks.info, error: null, refresh: vi.fn() }),
 }));
 
 const stats: ProjectStats = {
@@ -67,87 +49,72 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
   };
 }
 
-function makeChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
-  const now = new Date().toISOString();
-  return {
-    id: "c1",
-    projectId: "p1",
-    title: "Iterar login",
-    createdAt: now,
-    updatedAt: now,
-    messageCount: 2,
-    taskIds: ["C1-TASK-001"],
-    ...overrides,
-  };
-}
-
 describe("AppShell", () => {
   beforeEach(() => {
-    mocks.push.mockReset();
-    mocks.createChat.mockReset();
-    mocks.refresh.mockReset();
     mocks.projects = [];
-    mocks.chats = [];
-    localStorage.clear();
+    mocks.info = null;
   });
 
-  it("lista los chats agrupados por proyecto cuando se expande", async () => {
+  it("muestra cada proyecto como iniciales enlazando a su página", () => {
     mocks.projects = [makeProject()];
-    mocks.chats = [makeChat()];
 
     render(<AppShell>contenido</AppShell>);
 
-    const expandBtn = screen.getByRole("button", {
-      name: "Expandir barra lateral",
-    });
-    await userEvent.click(expandBtn);
+    const link = screen.getByRole("link", { name: "Web" });
+    expect(link).toHaveAttribute("href", "/projects/p1");
+    expect(link).toHaveTextContent("WE");
+  });
 
-    await waitFor(() => {
-      expect(screen.getByRole("link", { name: "Web" })).toHaveAttribute(
-        "href",
-        "/projects/p1",
-      );
-    });
-    expect(screen.getByRole("link", { name: /Iterar login/ })).toHaveAttribute(
+  it("mantiene Agentes, Actividad y Ajustes en la parte inferior", () => {
+    render(<AppShell>contenido</AppShell>);
+
+    expect(screen.getByRole("link", { name: "Agentes" })).toHaveAttribute(
       "href",
-      "/projects/p1?chat=c1",
+      "/agents",
+    );
+    expect(screen.getByRole("link", { name: "Actividad" })).toHaveAttribute(
+      "href",
+      "/activity",
+    );
+    expect(screen.getByRole("link", { name: "Ajustes" })).toHaveAttribute(
+      "href",
+      "/settings",
     );
   });
 
-  it("crea un chat con el botón + y navega a él", async () => {
-    mocks.projects = [makeProject()];
-    mocks.createChat.mockResolvedValue({ id: "c9", projectId: "p1" });
-
+  it("no ofrece control para expandir la barra lateral", () => {
     render(<AppShell>contenido</AppShell>);
 
-    const expandBtn = screen.getByRole("button", {
-      name: "Expandir barra lateral",
-    });
-    await userEvent.click(expandBtn);
+    expect(
+      screen.queryByRole("button", { name: /barra lateral/i }),
+    ).toBeNull();
+  });
+
+  it("dispara las acciones de nuevo proyecto y buscar", async () => {
+    const onNewProject = vi.fn();
+    const onOpenSearch = vi.fn();
+
+    render(
+      <AppShell onNewProject={onNewProject} onOpenSearch={onOpenSearch}>
+        contenido
+      </AppShell>,
+    );
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Nuevo chat en Web" }),
+      screen.getByRole("button", { name: "Nuevo proyecto" }),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
 
-    await waitFor(() => expect(mocks.createChat).toHaveBeenCalledWith("p1", {}));
-    expect(mocks.push).toHaveBeenCalledWith("/projects/p1?chat=c9");
-    expect(mocks.refresh).toHaveBeenCalled();
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+    expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
-  it("deshabilita el botón + mientras el proyecto se ejecuta", async () => {
-    mocks.projects = [makeProject({ status: "running" })];
+  it("marca Agentes cuando hay un agente conectado", () => {
+    mocks.info = { agents: [{ connected: true }] };
 
     render(<AppShell>contenido</AppShell>);
 
-    const expandBtn = screen.getByRole("button", {
-      name: "Expandir barra lateral",
-    });
-    await userEvent.click(expandBtn);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Nuevo chat en Web" }),
-      ).toBeDisabled();
-    });
+    const agents = screen.getByRole("link", { name: "Agentes" });
+    expect(agents.querySelector(".bg-success")).not.toBeNull();
   });
 });

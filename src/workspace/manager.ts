@@ -61,7 +61,7 @@ export function sanitizeTaskId(taskId: string): string {
   return safe.length > 0 ? safe : "task";
 }
 
-export async function getRepoRoot(cwd?: string): Promise<string> {
+async function readRepoRoot(cwd?: string): Promise<string> {
   try {
     const inside = await runGit(["rev-parse", "--is-inside-work-tree"], cwd);
 
@@ -81,6 +81,30 @@ export async function getRepoRoot(cwd?: string): Promise<string> {
       `No se pudo acceder al repositorio Git: ${messageOf(error)}`,
     );
   }
+}
+
+/**
+ * Raíz del repo para `cwd`, memorizada por ruta. Es estable durante el proceso
+ * y se consulta muchas veces por tarea e intento (aislamiento, dirty, commits).
+ * Un fallo no se cachea, para no bloquear un repo que aún no existe.
+ */
+const repoRootCache = new Map<string, Promise<string>>();
+
+export function getRepoRoot(cwd?: string): Promise<string> {
+  const key = resolve(cwd ?? process.cwd());
+  const cached = repoRootCache.get(key);
+
+  if (cached) {
+    return cached;
+  }
+
+  const pending = readRepoRoot(cwd).catch((error) => {
+    repoRootCache.delete(key);
+    throw error;
+  });
+
+  repoRootCache.set(key, pending);
+  return pending;
 }
 
 export async function resolveBaseRef(cwd?: string): Promise<string> {
@@ -279,6 +303,28 @@ export async function commitTaskWorkspace(
   return runGit(["rev-parse", "HEAD"], workspace.path);
 }
 
+export async function squashTaskWorkspace(
+  workspace: TaskWorkspace,
+  ontoRef: string,
+  message: string,
+): Promise<string> {
+  await runGit(["reset", "--soft", ontoRef], workspace.path);
+
+  // Si el fix revirtió todo, el árbol coincide con `ontoRef`: no hay commit.
+  const staged = await runGit(
+    ["diff", "--cached", "--name-only"],
+    workspace.path,
+  );
+
+  if (staged.length === 0) {
+    return ontoRef;
+  }
+
+  await runGit(["commit", "-m", message], workspace.path);
+
+  return runGit(["rev-parse", "HEAD"], workspace.path);
+}
+
 export async function removeTaskWorkspace(
   workspace: TaskWorkspace,
   options: RemoveWorkspaceOptions = {},
@@ -422,6 +468,8 @@ export function createGitWorkspaceManager(cwd?: string): WorkspaceManager {
     create: (taskId, attempt, baseRef) =>
       createTaskWorkspace(taskId, attempt, baseRef, cwd),
     commit: (workspace, message) => commitTaskWorkspace(workspace, message),
+    squash: (workspace, ontoRef, message) =>
+      squashTaskWorkspace(workspace, ontoRef, message),
     remove: (workspace, options) => removeTaskWorkspace(workspace, options, cwd),
     diff: (commit) => commitDiff(commit, cwd),
     push: (branchName) => pushBranch(branchName, cwd),

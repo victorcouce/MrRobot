@@ -54,7 +54,7 @@ describe("TaskEditor", () => {
     expect(screen.getByText("Complejidad")).toBeInTheDocument();
     expect(screen.getByText("Agente")).toBeInTheDocument();
     expect(screen.getByText("Criterios de aceptación")).toBeInTheDocument();
-    expect(screen.getByText("Dependencias")).toBeInTheDocument();
+    expect(screen.getByText("Depende de")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Añadir tarea" })).toBeInTheDocument();
 
@@ -86,11 +86,11 @@ describe("TaskEditor", () => {
       }),
     );
 
-    const heading = await screen.findByText("Cadena de fallback");
-    const chain = heading.parentElement as HTMLElement;
-    expect(within(chain).getByText("DeepSeek Flash")).toBeInTheDocument();
-    expect(within(chain).getByText("Claude Sonnet")).toBeInTheDocument();
-    expect(within(chain).getByText("Codex")).toBeInTheDocument();
+    const hint = await screen.findByText(/Cadena si falla/);
+    const chain = hint.closest("p") as HTMLElement;
+    expect(within(chain).getByText(/deepseek-flash/)).toBeInTheDocument();
+    expect(within(chain).getByText(/claude \/ sonnet/)).toBeInTheDocument();
+    expect(within(chain).getByText(/codex/)).toBeInTheDocument();
   });
 
   it("filtra la cadena por los agentes permitidos del chat", async () => {

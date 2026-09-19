@@ -6,10 +6,12 @@ import {
   parseChatMessage,
   parseConfigOverrides,
   parseFallbackChainInput,
+  parseGrillInput,
   parseImportProject,
   parseNewTask,
   parseRepoOptions,
   parseTaskPatch,
+  parseTaskInstructions,
 } from "./parse.js";
 import { checkAndApplyDeepSeekKey } from "./deepseek-key.js";
 import { pickFolder } from "./pick-folder.js";
@@ -28,7 +30,11 @@ interface RequestContext {
   res: ServerResponse;
   segments: string[];
   query: URLSearchParams;
+  streams: Set<ServerResponse>;
 }
+
+/** Milisegundos que el cliente espera antes de reconectar el SSE. */
+const SSE_RETRY_MS = 10000;
 
 function sendJson(
   res: ServerResponse,
@@ -94,6 +100,7 @@ async function handleStream(
   res: ServerResponse,
   req: IncomingMessage,
   projectId: string,
+  streams: Set<ServerResponse>,
 ): Promise<void> {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -103,7 +110,13 @@ async function handleStream(
   });
   res.flushHeaders();
 
+  // Un reinicio del servidor cierra el stream: esperar antes de reconectar
+  // evita que el navegador acumule ERR_CONNECTION_REFUSED mientras arranca.
+  res.write(`retry: ${SSE_RETRY_MS}\n\n`);
+
   writeSse(res, { type: "connected", projectId });
+
+  streams.add(res);
 
   const unsubscribe = runtime.subscribe((event: ProjectEvent) => {
     if (event.projectId !== projectId) return;
@@ -117,6 +130,7 @@ async function handleStream(
   req.on("close", () => {
     clearInterval(heartbeat);
     unsubscribe();
+    streams.delete(res);
   });
 }
 
@@ -124,7 +138,7 @@ async function dispatch(
   runtime: Runtime,
   ctx: RequestContext,
 ): Promise<void> {
-  const { req, res, segments, query } = ctx;
+  const { req, res, segments, query, streams } = ctx;
 
   // /api/health
   if (req.method === "GET" && segments[1] === "health") {
@@ -236,6 +250,23 @@ async function dispatch(
     return;
   }
 
+  // /api/grill
+  if (req.method === "POST" && segments[1] === "grill") {
+    const body = await readJson(req);
+    const input = parseGrillInput(body);
+    sendJson(
+      res,
+      200,
+      await runtime.grill(
+        input.goal,
+        input.messages,
+        input.repoPath,
+        input.allowedAgents,
+      ),
+    );
+    return;
+  }
+
   // /api/activity
   if (req.method === "GET" && segments[1] === "activity") {
     const limit = Number(query.get("limit") ?? "100");
@@ -343,7 +374,12 @@ async function dispatch(
 
     // /api/projects/:id/plan
     if (req.method === "POST" && segments[3] === "plan") {
-      sendJson(res, 202, await runtime.generatePlan(projectId));
+      const body = await readJson(req);
+      const instructions =
+        typeof body["instructions"] === "string"
+          ? body["instructions"]
+          : undefined;
+      sendJson(res, 202, await runtime.generatePlan(projectId, instructions));
       return;
     }
 
@@ -477,7 +513,7 @@ async function dispatch(
 
     // /api/projects/:id/stream
     if (req.method === "GET" && segments[3] === "stream") {
-      await handleStream(runtime, res, req, projectId);
+      await handleStream(runtime, res, req, projectId, streams);
       return;
     }
 
@@ -509,13 +545,27 @@ async function dispatch(
         sendJson(res, 200, project);
         return;
       }
+
+      if (req.method === "POST" && segments[5] === "instructions") {
+        const body = await readJson(req);
+        const outcome = await runtime.sendTaskInstructions(
+          projectId,
+          taskId,
+          parseTaskInstructions(body),
+        );
+        sendJson(res, 200, outcome);
+        return;
+      }
     }
   }
 
   sendJson(res, 404, { error: "Ruta no encontrada." });
 }
 
-export function buildApiServer(runtime: Runtime) {
+export function buildApiServer(
+  runtime: Runtime,
+  streams: Set<ServerResponse> = new Set(),
+) {
   return createServer(async (req, res) => {
     corsHeaders(res);
 
@@ -535,8 +585,15 @@ export function buildApiServer(runtime: Runtime) {
     }
 
     try {
-      await dispatch(runtime, { req, res, segments, query });
+      await dispatch(runtime, { req, res, segments, query, streams });
     } catch (error) {
+      // Si ya se enviaron cabeceras (p. ej. un SSE que falla a mitad), no se
+      // puede responder con JSON: cerrar la conexión sin tumbar el proceso.
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+
       if (error instanceof ProjectNotFoundError) {
         sendJson(res, 404, { error: error.message });
         return;
@@ -566,7 +623,17 @@ export async function startServer(options: StartOptions = {}) {
   const host = options.host ?? "127.0.0.1";
 
   const runtime = await Runtime.create(options);
-  const server = buildApiServer(runtime);
+  const streams = new Set<ServerResponse>();
+  const server = buildApiServer(runtime, streams);
+
+  // Antes de aceptar peticiones: los estados transitorios de una ejecución
+  // anterior no deben quedar colgados como si siguieran en marcha.
+  const recovered = await runtime.recoverInterruptedProjects();
+  if (recovered.length > 0) {
+    console.log(
+      `Recuperados ${recovered.length} proyecto(s) interrumpido(s).`,
+    );
+  }
 
   server.listen(port, host, () => {
     console.log(`MrRobot API escuchando en http://${host}:${port}`);
@@ -576,6 +643,13 @@ export async function startServer(options: StartOptions = {}) {
   });
 
   const shutdown = async () => {
+    // Cerrar los SSE antes de salir: el cliente recibe un final limpio en
+    // lugar de un ERR_INCOMPLETE_CHUNKED_ENCODING al reiniciar el servidor.
+    for (const stream of streams) {
+      stream.end();
+    }
+    streams.clear();
+
     server.close();
     await runtime.shutdown();
     process.exit(0);

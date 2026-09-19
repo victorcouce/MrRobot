@@ -101,10 +101,35 @@ export function ImportProjectDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Importar proyecto completado">
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Importar proyecto"
+      description="Reconstruye un proyecto a partir de una rama final que MrRobot ya generó."
+      width="max-w-[600px]"
+      footer={
+        <div className="ml-auto flex gap-2">
+          <Button type="button" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="import-project-form"
+            variant="primary"
+            loading={submitting}
+          >
+            Importar
+          </Button>
+        </div>
+      }
+    >
+      <form
+        id="import-project-form"
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-4"
+      >
         {error && (
-          <div className="rounded-md border border-danger-text bg-danger-soft px-3 py-2 text-sm text-danger-text">
+          <div className="rounded-[12px] bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger-text">
             {error}
           </div>
         )}
@@ -167,13 +192,13 @@ export function ImportProjectDialog({
           />
         </Field>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" variant="primary" loading={submitting}>
-            Importar
-          </Button>
+        <div className="rounded-[12px] bg-sidebar px-3.5 py-3 text-[13px] leading-normal text-ink-2">
+          Cada commit{" "}
+          <span className="font-mono text-[12px]">
+            agent(&lt;id&gt;): &lt;título&gt;
+          </span>{" "}
+          se convierte en una tarea hecha. El proyecto se crea como Completado y
+          puedes seguir iterando desde un chat.
         </div>
       </form>
     </Dialog>

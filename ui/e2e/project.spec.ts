@@ -1,14 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function createProject(page: Page, goal: string): Promise<void> {
+  // El selector nativo de carpetas no se puede manejar en el navegador: se
+  // simula la respuesta del backend con una ruta temporal.
+  await page.route("**/api/fs/pick-folder", (route) =>
+    route.fulfill({ json: { path: "/tmp/mrrobot-e2e" } }),
+  );
+
   await page.goto("/");
-  await page.getByRole("button", { name: "Nuevo proyecto" }).first().click();
+  await page.getByPlaceholder(/Crea una calculadora web/).fill(goal);
+  await page.getByRole("button", { name: /carpeta/i }).click();
+  await page.getByRole("button", { name: "Planificar" }).click();
 
-  const modal = page.getByRole("dialog");
-  await modal.getByLabel("Objetivo", { exact: true }).fill(goal);
-  await modal.getByRole("button", { name: "Crear y planificar" }).click();
+  // El proyecto se crea al enviar y el hilo acoge la entrevista de afinado.
+  await expect(page).toHaveURL(/\/projects\/[a-z0-9-]+$/, { timeout: 30_000 });
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Generar el plan" }).click();
 
-  await expect(page).toHaveURL(/\/projects\/[a-z0-9-]+$/);
+  await expect(
+    page.getByRole("button", { name: "Ejecutar", exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
 }
 
 test("flujo completo: crear → planificar → ejecutar → completado", async ({
@@ -20,7 +31,9 @@ test("flujo completo: crear → planificar → ejecutar → completado", async (
   );
 
   // El modal planifica al crear, así que el proyecto llega listo para ejecutar.
-  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+  await expect(
+    page.getByRole("button", { name: "Ejecutar", exact: true }),
+  ).toBeVisible({
     timeout: 30_000,
   });
 
@@ -38,15 +51,20 @@ test("flujo completo: crear → planificar → ejecutar → completado", async (
     .click();
 
   // Al terminar, el resultado ofrece el comando de merge.
-  await expect(page.getByText("Rama final")).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText("Completado", { exact: true }).first(),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByText(/^git merge agent\/project-/)).toBeVisible();
-  await expect(page.getByText("Completado", { exact: true })).toBeVisible();
 });
 
 test("el hilo conserva la conversación tras recargar", async ({ page }) => {
   await createProject(page, "Librería TypeScript simple");
 
-  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+  await expect(
+    page.getByRole("button", { name: "Ejecutar", exact: true }),
+  ).toBeVisible({
     timeout: 30_000,
   });
 
@@ -57,7 +75,11 @@ test("el hilo conserva la conversación tras recargar", async ({ page }) => {
     .click();
 
   await page.reload();
-  await expect(page.getByText("Rama final")).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText("Completado", { exact: true }).first(),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
 });
 
 test("un mensaje en el chat añade tareas al plan sin perder el hilo", async ({
@@ -65,7 +87,9 @@ test("un mensaje en el chat añade tareas al plan sin perder el hilo", async ({
 }) => {
   await createProject(page, "Librería TypeScript con una función sum");
 
-  await expect(page.getByRole("button", { name: "Ejecutar" })).toBeVisible({
+  await expect(
+    page.getByRole("button", { name: "Ejecutar", exact: true }),
+  ).toBeVisible({
     timeout: 30_000,
   });
 

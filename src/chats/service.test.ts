@@ -9,6 +9,7 @@ import {
   getChatDetail,
   listChats,
   sendChatMessage,
+  updateChatAllowedAgents,
 } from "./service.js";
 
 const PLAN = JSON.stringify({
@@ -181,6 +182,25 @@ test("chat: borrar el chat elimina sus tareas", async () => {
   const project = await storage.getProject(draft.id);
   assert.equal(project?.tasks.length, 0);
   assert.equal((await listChats(draft.id, deps)).length, 0);
+});
+
+test("chat: no permite dejar la lista de agentes sin uno que escriba archivos", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const deps = makeDeps(storage);
+  const draft = await createProjectDraft({ goal: "objetivo" }, deps);
+  const chat = await createChat(draft.id, { title: "agentes" }, deps);
+
+  await assert.rejects(
+    updateChatAllowedAgents(
+      draft.id,
+      chat.id,
+      [{ provider: "deepseek", model: "deepseek-flash" }],
+      deps,
+    ),
+    /escriba archivos/,
+  );
 });
 
 test("chat: incluye la conversación previa en el prompt del planner", async () => {

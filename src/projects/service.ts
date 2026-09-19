@@ -1,11 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { pickAttachments } from "../agents/attachments.js";
+import { assertFileWritingAgent } from "../agents/selector.js";
 import type { AgentCandidate, AgentSpec, Attachment } from "../agents/types.js";
-import { detectCheckScripts, runProjectChecks } from "../checks/checks.js";
+import {
+  detectCheckScripts,
+  runDevSmokeCheck,
+  runInstallCheck,
+  runProjectChecks,
+} from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
 import { planProject } from "../planner/planner.js";
 import type { GeneratedPlan, PlanContext } from "../planner/types.js";
+import { PREVIEW_SCRIPTS } from "../preview/preview.js";
 import { reviewTask } from "../reviewer/reviewer.js";
 import type { ReviewResult } from "../reviewer/types.js";
 import { runPlan } from "../scheduler/scheduler.js";
@@ -27,6 +34,8 @@ export interface ProjectDeps {
   workerExecute?: AgentExecutor;
   reviewerExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   supervisorExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
+  /** Salida del agente en vivo, para mostrarla en la UI (no se persiste). */
+  onAgentOutput?: (projectId: string, taskId: string, chunk: string) => void;
 }
 
 export interface CreateProjectInput {
@@ -95,10 +104,69 @@ export function recoverInterrupted(project: Project): Project {
   return { ...project, tasks, updatedAt: new Date() };
 }
 
+export interface RecoveredProject {
+  project: Project;
+  previousStatus: "planning" | "running";
+}
+
+/**
+ * Sanea los estados transitorios que quedaron colgados por un reinicio del
+ * servidor. `planning` vuelve a `draft` (el plan no llegó a generarse) y
+ * `running` pasa a `paused` con las tareas en curso marcadas como
+ * `interrupted`, de forma que la UI ofrezca reanudar. Emite `project.recovered`
+ * para que quede constancia en el event log.
+ */
+export async function recoverInterruptedProjects(
+  deps: ProjectDeps,
+): Promise<RecoveredProject[]> {
+  const storage = deps.storage;
+  const projects = await storage.listProjects();
+  const recovered: RecoveredProject[] = [];
+
+  for (const project of projects) {
+    if (project.status === "planning") {
+      const next: Project = {
+        ...project,
+        status: "draft",
+        updatedAt: new Date(),
+      };
+
+      await storage.saveProject(next);
+      await emit(storage, project.id, "project.recovered", undefined, {
+        previousStatus: "planning",
+        message:
+          "El servidor se reinició durante la planificación. Vuelve a planificar.",
+      });
+      recovered.push({ project: next, previousStatus: "planning" });
+      continue;
+    }
+
+    if (project.status === "running") {
+      const next: Project = {
+        ...recoverInterrupted(project),
+        status: "paused",
+        updatedAt: new Date(),
+      };
+
+      await storage.saveProject(next);
+      await emit(storage, project.id, "project.recovered", undefined, {
+        previousStatus: "running",
+        message:
+          "El servidor se reinició durante la ejecución. Reanuda para continuar.",
+      });
+      recovered.push({ project: next, previousStatus: "running" });
+    }
+  }
+
+  return recovered;
+}
+
 export async function createProject(
   input: CreateProjectInput,
   deps: ProjectDeps,
 ): Promise<Project> {
+  assertFileWritingAgent(input.defaultAllowedAgents ?? []);
+
   const config = deps.config ?? defaultConfig;
   const workspace = deps.workspace ?? gitWorkspaceManager;
 
@@ -108,8 +176,12 @@ export async function createProject(
     {},
     {
       execute: deps.plannerExecute,
-      agent: config.plannerAgent,
+      ...(input.defaultAllowedAgents?.length
+        ? { allowedAgents: input.defaultAllowedAgents }
+        : {}),
       maxAttempts: config.plannerMaxAttempts,
+      maxRetriesPerAgent: config.maxRetriesPerAgent,
+      ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
     },
   );
 
@@ -144,6 +216,8 @@ export async function createProjectDraft(
   input: CreateProjectInput,
   deps: ProjectDeps,
 ): Promise<Project> {
+  assertFileWritingAgent(input.defaultAllowedAgents ?? []);
+
   const workspace = deps.workspace ?? gitWorkspaceManager;
   const baseRef = await workspace.resolveBaseRef();
 
@@ -178,6 +252,7 @@ export async function createProjectDraft(
 export async function generatePlan(
   projectId: string,
   deps: ProjectDeps,
+  context: PlanContext = {},
 ): Promise<Project> {
   const storage = deps.storage;
 
@@ -208,10 +283,14 @@ export async function generatePlan(
     await emit(storage, projectId, "plan.started");
   }
 
-  const plan = await planProject(project.goal, {}, {
+  const plan = await planProject(project.goal, context, {
     execute: deps.plannerExecute,
-    agent: config.plannerAgent,
+    ...(project.defaultAllowedAgents?.length
+      ? { allowedAgents: project.defaultAllowedAgents }
+      : {}),
     maxAttempts: config.plannerMaxAttempts,
+    maxRetriesPerAgent: config.maxRetriesPerAgent,
+    ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
   });
 
   const ready: Project = {
@@ -250,45 +329,133 @@ function buildFixFeedback(review: ReviewResult, checks: CheckResult[]): string {
   return lines.join("\n");
 }
 
-async function runChecksForTask(
-  workspace: WorkspaceManager,
+/**
+ * Evita el review LLM en el caso más seguro: tarea `low`, sin criterios de
+ * aceptación explícitos y con checks locales que existen y pasan. Si no hay
+ * checks, el review sigue siendo la única validación.
+ */
+export function shouldSkipReview(task: Task, checks: CheckResult[]): boolean {
+  return (
+    (task.acceptanceCriteria?.length ?? 0) === 0 &&
+    task.complexity === "low" &&
+    checks.length > 0 &&
+    checks.every((check) => check.success)
+  );
+}
+
+/**
+ * Agrupa la salida del agente y la emite como mucho cada `intervalMs`, para no
+ * saturar el event bus/SSE con un mensaje por chunk. `flush` fuerza el envío.
+ */
+function createOutputBuffer(
+  emit: (chunk: string) => void,
+  intervalMs = 400,
+): { push: (chunk: string) => void; flush: () => void } {
+  let buffer = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const flush = (): void => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+
+    if (buffer.length === 0) return;
+
+    const chunk = buffer;
+    buffer = "";
+    emit(chunk);
+  };
+
+  return {
+    push: (chunk: string) => {
+      buffer += chunk;
+      if (!timer) timer = setTimeout(flush, intervalMs);
+    },
+    flush,
+  };
+}
+
+/** Señales de que la tarea depende de que la app arranque con `npm run dev`. */
+const DEV_SMOKE_HINTS: RegExp[] = [
+  /npm run dev/i,
+  /servidor de desarrollo/i,
+  /\barranc/i,
+  /localhost/i,
+  /en local\b/i,
+  /consola/i,
+];
+
+/**
+ * Arrancar el servidor de desarrollo cuesta hasta el timeout del smoke test, así
+ * que solo se hace cuando la tarea lo pide explícitamente. El `build` ya cubre
+ * que el código compila.
+ */
+export function wantsDevSmoke(task: Task): boolean {
+  const text = [task.description, ...(task.acceptanceCriteria ?? [])].join("\n");
+  return DEV_SMOKE_HINTS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Corre los checks sobre un directorio ya preparado (el worktree del agente, que
+ * puede traer `node_modules` de su propia instalación). Nunca lanza: los fallos
+ * de preparación se registran y los checks se ejecutan igualmente.
+ */
+async function runChecksInDir(
+  dir: string,
   config: OrchestratorConfig,
   task: Task,
 ): Promise<CheckResult[]> {
-  if (!task.resultCommit) {
-    return [];
-  }
+  const configured =
+    config.checks.commands.length > 0
+      ? config.checks.commands
+      : await detectCheckScripts(dir);
 
-  const checkWorkspace = await workspace.create(
-    `${task.id}-checks`,
-    1,
-    task.resultCommit,
+  // Los scripts de arranque no terminan solos: los cubre el smoke test de
+  // desarrollo, no `runProjectChecks` (que esperaría a que el proceso salga).
+  const scripts = configured.filter(
+    (script) => !PREVIEW_SCRIPTS.includes(script),
   );
 
-  try {
-    const scripts =
-      config.checks.commands.length > 0
-        ? config.checks.commands
-        : await detectCheckScripts(checkWorkspace.path);
+  const results: CheckResult[] = [];
 
-    if (scripts.length === 0) {
-      return [];
-    }
+  // La instalación se verifica siempre, aunque ya exista node_modules: es un
+  // criterio de aceptación habitual y antes se silenciaba su fallo.
+  const install = await runInstallCheck(dir);
+  if (install) results.push(install);
 
-    return await runProjectChecks(checkWorkspace.path, scripts);
-  } finally {
-    await workspace.remove(checkWorkspace, { deleteBranch: true });
+  if (scripts.length > 0) {
+    results.push(...(await runProjectChecks(dir, scripts)));
   }
+
+  // Solo se intenta arrancar el servidor si las dependencias están resueltas y
+  // la tarea realmente lo pide.
+  if ((!install || install.success) && wantsDevSmoke(task)) {
+    const dev = await runDevSmokeCheck(dir);
+    if (dev) results.push(dev);
+  }
+
+  return results;
 }
 
 export function mergeReplan(existing: Task[], plan: GeneratedPlan): Task[] {
   const done = existing.filter((task) => task.status === "done");
   const doneIds = new Set(done.map((task) => task.id));
+  const generatedTasks = planToTasks(plan);
+  const generatedIds = new Set(generatedTasks.map((task) => task.id));
+
+  // Las tareas fallidas que el planner vuelve a definir se reemplazan por la
+  // versión nueva (reformulada tras el fallo); el resto de no-done se conserva
+  // y se reencola. Sin esto un replan reencolaba el mismo criterio irresoluble.
   const reset = existing
-    .filter((task) => task.status !== "done")
+    .filter(
+      (task) =>
+        task.status !== "done" &&
+        !(task.status === "failed" && generatedIds.has(task.id)),
+    )
     .map((task) => ({ ...task, status: "todo" as const }));
   const resetIds = new Set(reset.map((task) => task.id));
-  const generated = planToTasks(plan).filter(
+  const generated = generatedTasks.filter(
     (task) => !doneIds.has(task.id) && !resetIds.has(task.id),
   );
   const merged = [...done, ...reset, ...generated];
@@ -307,6 +474,7 @@ interface ChatContext {
 async function loadChatContext(
   projectId: string,
   storage: Storage,
+  defaultAllowedAgents: AgentSpec[] = [],
 ): Promise<ChatContext> {
   const chats = await storage.listChats(projectId);
   const agentsByChat = new Map<string, AgentSpec[]>();
@@ -323,10 +491,49 @@ async function loadChatContext(
   }
 
   return {
+    // Las tareas del plan (sin chat) respetan los agentes marcados al crear el
+    // proyecto; las de un chat usan la restricción de ese chat.
     allowedAgentsFor: (task) =>
-      (task.chatId ? agentsByChat.get(task.chatId) : undefined) ?? [],
+      task.chatId ? (agentsByChat.get(task.chatId) ?? []) : defaultAllowedAgents,
     attachmentsFor: (task) => pickAttachments(task.attachmentIds, attachments),
   };
+}
+
+/**
+ * Commits de todas las dependencias transitivas de `task`, en orden
+ * topológico (las dependencias de una dependencia van antes que ella). El
+ * commit de una tarea solo contiene su propio diff, así que integrar solo las
+ * dependencias directas deja fuera a sus ancestros y el cherry-pick choca con
+ * los archivos que esos ancestros crearon.
+ */
+function collectDependencyCommits(
+  task: Task,
+  taskState: Map<string, Task>,
+): Array<{ taskId: string; commit: string }> {
+  const visited = new Set<string>();
+  const ordered: Array<{ taskId: string; commit: string }> = [];
+
+  const visit = (id: string): void => {
+    if (visited.has(id)) return;
+    visited.add(id);
+
+    const dependency = taskState.get(id);
+    if (!dependency) return;
+
+    for (const parent of dependency.dependsOn ?? []) {
+      visit(parent);
+    }
+
+    if (dependency.resultCommit) {
+      ordered.push({ taskId: dependency.id, commit: dependency.resultCommit });
+    }
+  };
+
+  for (const id of task.dependsOn ?? []) {
+    visit(id);
+  }
+
+  return ordered;
 }
 
 function makeTaskExecutor(
@@ -341,15 +548,7 @@ function makeTaskExecutor(
   signal?: AbortSignal,
 ): (task: Task) => Promise<Task> {
   return async (task: Task): Promise<Task> => {
-    const dependencyCommits = (task.dependsOn ?? [])
-      .map((id) => taskState.get(id))
-      .filter((dependency): dependency is Task =>
-        Boolean(dependency?.resultCommit),
-      )
-      .map((dependency) => ({
-        taskId: dependency.id,
-        commit: dependency.resultCommit as string,
-      }));
+    const dependencyCommits = collectDependencyCommits(task, taskState);
 
     const integration = await workspace.integrateDependencies(
       task.id,
@@ -378,16 +577,37 @@ function makeTaskExecutor(
     for (let cycle = 0; cycle <= config.maxReviewFixCycles; cycle++) {
       await emit(storage, pid, "task.started", task.id, { cycle });
 
+      let checks: CheckResult[] = [];
+      const outputBuffer = deps.onAgentOutput
+        ? createOutputBuffer((chunk) => deps.onAgentOutput?.(pid, task.id, chunk))
+        : undefined;
+
       const result = await runTask(task, {
         baseRef: integration.ref,
+        // En ciclos de fix, el agente continúa desde el resultado anterior en
+        // vez de rehacer la tarea desde cero.
+        ...(cycle > 0 && lastResult.resultCommit
+          ? { startRef: lastResult.resultCommit }
+          : {}),
         extraPrompt: feedback,
         workspace,
         execute: deps.workerExecute,
         maxRetriesPerAgent: config.maxRetriesPerAgent,
+        ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
         allowedAgents: chatContext.allowedAgentsFor(task),
         attachments: chatContext.attachmentsFor(task),
+        // Los checks corren en el worktree del agente antes de borrarlo, para
+        // reutilizar su `node_modules` si ya lo instaló. Si el intento no
+        // escribió nada (p. ej. tareas de texto), no hay nada que verificar.
+        onWorkspaceSuccess: async (ws, changed) => {
+          checks = changed ? await runChecksInDir(ws.path, config, task) : [];
+        },
+        ...(outputBuffer
+          ? { onOutput: (chunk: string) => outputBuffer.push(chunk) }
+          : {}),
         ...(signal ? { signal } : {}),
       });
+      outputBuffer?.flush();
 
       if (result.status !== "done") {
         taskState.set(result.id, result);
@@ -397,24 +617,39 @@ function makeTaskExecutor(
         return result;
       }
 
-      const checks = await runChecksForTask(workspace, config, result);
-      const diff = result.resultCommit
-        ? await workspace.diff(result.resultCommit)
-        : undefined;
+      const checksPass = checks.every((check) => check.success);
 
-      const reviewContext: {
-        checks: CheckResult[];
-        output?: string;
-        diff?: string;
-      } = { checks };
+      let review: ReviewResult;
 
-      if (result.output) reviewContext.output = result.output;
-      if (diff) reviewContext.diff = diff;
+      if (shouldSkipReview(result, checks)) {
+        review = {
+          approved: true,
+          summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
+          issues: [],
+        };
+      } else {
+        const diff = result.resultCommit
+          ? await workspace.diff(result.resultCommit)
+          : undefined;
 
-      const review = await reviewTask(result, reviewContext, {
-        execute: deps.reviewerExecute,
-        agent: config.reviewerAgent,
-      });
+        const reviewContext: {
+          checks: CheckResult[];
+          output?: string;
+          diff?: string;
+        } = { checks };
+
+        if (result.output) reviewContext.output = result.output;
+        if (diff) reviewContext.diff = diff;
+
+        review = await reviewTask(result, reviewContext, {
+          execute: deps.reviewerExecute,
+          ...(chatContext.allowedAgentsFor(task).length
+            ? { allowedAgents: chatContext.allowedAgentsFor(task) }
+            : {}),
+          maxRetriesPerAgent: config.maxRetriesPerAgent,
+          ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+        });
+      }
 
       await storage.saveReview({
         id: randomUUID(),
@@ -426,8 +661,6 @@ function makeTaskExecutor(
         issues: review.issues,
         createdAt: new Date(),
       });
-
-      const checksPass = checks.every((check) => check.success);
 
       if (review.approved && checksPass) {
         taskState.set(result.id, result);
@@ -487,7 +720,11 @@ export async function runProjectRound(
     project.tasks.map((task) => [task.id, task]),
   );
 
-  const chatContext = await loadChatContext(projectId, storage);
+  const chatContext = await loadChatContext(
+    projectId,
+    storage,
+    project.defaultAllowedAgents ?? [],
+  );
 
   const executeTask = makeTaskExecutor(
     project.id,
@@ -508,6 +745,9 @@ export async function runProjectRound(
   const planResult = await runPlan([...taskState.values()], {
     executeTask,
     concurrency: config.concurrency,
+    ...(config.maxConcurrency !== undefined
+      ? { maxConcurrency: config.maxConcurrency }
+      : {}),
     onUpdate: persistProgress,
     allowedAgentsFor: chatContext.allowedAgentsFor,
     ...(options.shouldPause ? { shouldPause: options.shouldPause } : {}),
@@ -599,7 +839,14 @@ export async function runProject(
         failureCount,
         hasIntegrationConflict,
       },
-      { execute: deps.supervisorExecute, agent: config.supervisorAgent },
+      {
+        execute: deps.supervisorExecute,
+        ...(project.defaultAllowedAgents?.length
+          ? { allowedAgents: project.defaultAllowedAgents }
+          : {}),
+        maxRetriesPerAgent: config.maxRetriesPerAgent,
+        ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+      },
     );
 
     const supervisorRun = {
@@ -637,8 +884,12 @@ export async function runProject(
       try {
         const newPlan = await planProject(project.goal, context, {
           execute: deps.plannerExecute,
-          agent: config.plannerAgent,
+          ...(project.defaultAllowedAgents?.length
+            ? { allowedAgents: project.defaultAllowedAgents }
+            : {}),
           maxAttempts: config.plannerMaxAttempts,
+          maxRetriesPerAgent: config.maxRetriesPerAgent,
+          ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
         });
 
         const merged = mergeReplan(project.tasks, newPlan);

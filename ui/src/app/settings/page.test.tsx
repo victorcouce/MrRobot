@@ -10,16 +10,11 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const refresh = vi.fn();
-const setTheme = vi.fn();
 
 let info: unknown = null;
 
 vi.mock("@/lib/hooks", () => ({
   useAppInfo: () => ({ info, refresh }),
-}));
-
-vi.mock("@/lib/theme", () => ({
-  useTheme: () => ({ theme: "light", setTheme }),
 }));
 
 import { api } from "@/lib/api";
@@ -45,9 +40,6 @@ function makeInfo(overrides: Record<string, unknown> = {}) {
       maxRetriesPerAgent: 1,
       maxReviewFixCycles: 2,
       plannerMaxAttempts: 2,
-      plannerAgent: { provider: "claude", model: "opus" },
-      reviewerAgent: { provider: "claude", model: "opus" },
-      supervisorAgent: { provider: "claude", model: "opus" },
       checks: { commands: [] },
       defaultAllowedAgents: [{ provider: "codex" }],
       ...overrides,
@@ -59,7 +51,6 @@ describe("Ajustes", () => {
   beforeEach(() => {
     info = makeInfo();
     refresh.mockClear();
-    setTheme.mockClear();
     vi.mocked(api.updateConfig).mockReset().mockResolvedValue({} as never);
     vi.mocked(api.checkDeepSeekKey).mockReset();
   });

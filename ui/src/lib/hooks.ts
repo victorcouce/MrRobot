@@ -170,6 +170,8 @@ export interface ProjectState {
   supervisorRuns: SupervisorRun[];
   chats: ChatSummary[];
   messages: ChatMessage[];
+  /** Salida de agente en vivo por tarea (eventos efímeros `task.output`). */
+  liveOutput: Record<string, string>;
   loading: boolean;
   error: string | null;
   notFound: boolean;
@@ -187,6 +189,7 @@ export function useProject(id: string, chatId?: string | null): ProjectState {
   const [supervisorRuns, setSupervisorRuns] = useState<SupervisorRun[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [liveOutput, setLiveOutput] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -228,7 +231,28 @@ export function useProject(id: string, chatId?: string | null): ProjectState {
   loadRef.current = load;
 
   useEffect(() => {
-    const unsubscribe = subscribeProject(id, () => {
+    const unsubscribe = subscribeProject(id, (event) => {
+      // La salida en vivo llega en eventos efímeros: se acumula sin recargar
+      // el proyecto (recargar por chunk saturaría la UI).
+      if (event.type === "task.output") {
+        const taskId = event.taskId;
+        const chunk = (event.payload as { chunk?: string } | undefined)?.chunk;
+
+        if (typeof taskId === "string" && typeof chunk === "string") {
+          setLiveOutput((previous) => ({
+            ...previous,
+            [taskId]: (previous[taskId] ?? "") + chunk,
+          }));
+        }
+
+        return;
+      }
+
+      if (event.type === "task.started" && typeof event.taskId === "string") {
+        const taskId = event.taskId;
+        setLiveOutput((previous) => ({ ...previous, [taskId]: "" }));
+      }
+
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         void loadRef.current();
@@ -252,6 +276,7 @@ export function useProject(id: string, chatId?: string | null): ProjectState {
     supervisorRuns,
     chats,
     messages,
+    liveOutput,
     loading,
     error,
     notFound,

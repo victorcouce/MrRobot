@@ -4,7 +4,9 @@ import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
 import { AttachmentUpload } from "../AttachmentUpload";
 import { ChatAgentSelector } from "../ChatAgentSelector";
-import type { AgentSpec } from "@/lib/types";
+import { LockIcon, PaperclipIcon, SendIcon } from "../ui/icons";
+import { clsx } from "@/lib/cx";
+import type { AgentAvailability, AgentSpec } from "@/lib/types";
 
 interface ProcessedAttachment {
   id: string;
@@ -23,10 +25,20 @@ interface ThreadComposerProps {
   ) => Promise<void>;
   onPauseAndWrite?: (() => Promise<void>) | (() => void);
   allowedAgents?: AgentSpec[];
-  availableAgents?: AgentSpec[];
+  agentAvailability?: AgentAvailability[];
   onUpdateAllowedAgents?: (agents: AgentSpec[]) => Promise<void>;
   disabled?: boolean;
   loading?: boolean;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="shrink-0 bg-bg px-6 pb-6 pt-2">
+      <div className="mx-auto flex w-full max-w-[820px] flex-col items-center gap-2">
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export function ThreadComposer({
@@ -34,7 +46,7 @@ export function ThreadComposer({
   onSendMessage,
   onPauseAndWrite,
   allowedAgents,
-  availableAgents = [],
+  agentAvailability = [],
   onUpdateAllowedAgents,
   disabled,
   loading,
@@ -42,6 +54,7 @@ export function ThreadComposer({
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [attachments, setAttachments] = useState<ProcessedAttachment[]>([]);
+  const [showUploader, setShowUploader] = useState(false);
 
   const isRunning = status === "running";
   const isPlanning = status === "planning";
@@ -58,6 +71,7 @@ export function ThreadComposer({
       );
       setMessage("");
       setAttachments([]);
+      setShowUploader(false);
     } finally {
       setSubmitting(false);
     }
@@ -82,98 +96,123 @@ export function ThreadComposer({
 
   if (isRunning) {
     return (
-      <div className="border-t border-line bg-surface px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-[820px]">
-          <div className="rounded-lg bg-primary-soft p-4">
-            <p className="text-sm text-primary-soft-text">
-              El chat se reabre cuando la ejecución termine o la pauses.
-            </p>
-            {onPauseAndWrite && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void onPauseAndWrite()}
-                className="mt-2"
-              >
-                Pausar y escribir
-              </Button>
-            )}
-          </div>
+      <Shell>
+        <div className="flex w-full items-center gap-3 rounded-composer border border-line bg-sidebar px-3 py-3.5 pl-[18px]">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-primary-soft text-primary-soft-text">
+            <LockIcon />
+          </span>
+          <span className="flex-1 text-sm text-ink-2">
+            El chat se reabre cuando la ejecución termine o la pauses.
+          </span>
+          {onPauseAndWrite && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void onPauseAndWrite()}
+            >
+              Pausar y escribir
+            </Button>
+          )}
         </div>
-      </div>
+      </Shell>
     );
   }
 
   if (isPlanning) {
     return (
-      <div className="border-t border-line bg-surface px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-[820px]">
-          <div className="flex items-center gap-2 text-sm text-ink-3">
-            <svg
-              className="h-4 w-4 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            Generando plan…
-          </div>
+      <Shell>
+        <div
+          role="status"
+          className="flex w-full items-center gap-3 rounded-composer border border-line bg-sidebar px-3 py-3.5 pl-[18px]"
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-soft border-t-primary"
+          />
+          <span className="flex-1 text-sm text-ink-2">
+            El planner está trabajando. Podrás escribir en cuanto termine.
+          </span>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="border-t border-line bg-surface px-4 py-4 sm:px-6"
-    >
-      <div className="mx-auto max-w-[820px] space-y-3">
+    <Shell>
+      <form
+        onSubmit={handleSubmit}
+        className="w-full rounded-composer border border-line-strong bg-surface px-3 pb-2.5 pl-[18px] pt-3.5 shadow-[0_1px_2px_rgba(22,22,26,0.04),0_12px_32px_-18px_rgba(22,22,26,0.18)]"
+      >
         <AttachmentUpload
           attachments={attachments}
           onAdd={handleAddAttachment}
           onRemove={handleRemoveAttachment}
           disabled={disabled || submitting}
+          showDropzone={showUploader}
         />
 
-        <div className="flex gap-2">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Escribe un mensaje…"
-            disabled={disabled || submitting}
-            rows={3}
-            className="flex-1 resize-none rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder-ink-4 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-muted disabled:text-ink-4"
-          />
-          <div className="flex flex-col gap-2">
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!message.trim() || disabled || submitting}
-              loading={submitting}
-            >
-              Enviar
-            </Button>
-          </div>
-        </div>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
+          placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
+          disabled={disabled || submitting}
+          rows={2}
+          className="h-[44px] w-full resize-none border-0 bg-transparent text-[15px] leading-normal text-ink outline-none placeholder-ink-4 disabled:opacity-50"
+        />
 
-        <div className="flex items-center justify-between gap-2 text-xs text-ink-3">
-          {availableAgents.length > 0 && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-pressed={showUploader}
+              onClick={() => setShowUploader((open) => !open)}
+              disabled={disabled || submitting}
+              className={clsx(
+                "focus-ring inline-flex h-7 items-center gap-1.5 rounded-[8px] border bg-surface px-2.5 text-[12.5px] text-ink-2 transition-colors disabled:opacity-50",
+                showUploader
+                  ? "border-primary ring-2 ring-primary-soft"
+                  : "border-line hover:bg-muted",
+              )}
+            >
+              <PaperclipIcon />
+              Adjuntar
+            </button>
+
             <ChatAgentSelector
               allowedAgents={allowedAgents}
-              availableAgents={availableAgents}
+              agentAvailability={agentAvailability}
               onSelect={handleUpdateAgents}
               disabled={disabled || submitting}
             />
-          )}
+          </div>
+
+          <button
+            type="submit"
+            aria-label="Enviar"
+            disabled={!message.trim() || disabled || submitting}
+            className="focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-btn bg-primary text-ink transition-colors hover:bg-primary-hover disabled:opacity-50"
+          >
+            {submitting ? (
+              <span
+                aria-hidden="true"
+                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-ink"
+              />
+            ) : (
+              <SendIcon />
+            )}
+          </button>
         </div>
-      </div>
-    </form>
+      </form>
+
+      <span className="text-[11.5px] text-ink-4">
+        Cada mensaje pasa por el planner. Las tareas hechas nunca se reescriben.
+      </span>
+    </Shell>
   );
 }

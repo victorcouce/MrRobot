@@ -25,7 +25,7 @@ const LOCKFILES: Array<[string, PackageManager]> = [
   ["package-lock.json", "npm"],
 ];
 
-const PREVIEW_SCRIPTS = ["dev", "start", "preview", "serve"];
+export const PREVIEW_SCRIPTS = ["dev", "start", "preview", "serve"];
 
 async function exists(path: string): Promise<boolean> {
   try {

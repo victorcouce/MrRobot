@@ -32,6 +32,17 @@ export interface WorkspaceManager {
     baseRef: string,
   ): Promise<TaskWorkspace>;
   commit(workspace: TaskWorkspace, message: string): Promise<string | undefined>;
+  /**
+   * Reaplica el árbol actual del worktree como un único commit sobre `ontoRef`,
+   * descartando los commits intermedios. Se usa en los ciclos de review/fix:
+   * el agente continúa desde el intento anterior, pero la tarea queda con un
+   * solo commit sobre su base de integración (para que el cherry-pick funcione).
+   */
+  squash(
+    workspace: TaskWorkspace,
+    ontoRef: string,
+    message: string,
+  ): Promise<string>;
   remove(
     workspace: TaskWorkspace,
     options?: RemoveWorkspaceOptions,

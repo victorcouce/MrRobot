@@ -89,6 +89,69 @@ test("planner: dependencia inexistente dispara reparación", async () => {
   assert.equal(plan.tasks.length, 2);
 });
 
+test("planner: un criterio de verificación manual dispara reparación", async () => {
+  const manualPlan = {
+    summary: "s",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "verificación",
+        description: "verificar la app",
+        type: "testing",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: ["Comprobar manualmente que crear y borrar funciona"],
+      },
+    ],
+  };
+
+  let calls = 0;
+  const plan = await planProject("objetivo", {}, {
+    execute: async () => {
+      calls += 1;
+      return calls === 1
+        ? JSON.stringify(manualPlan)
+        : JSON.stringify(validPlan);
+    },
+    maxAttempts: 2,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(plan.tasks.length, 2);
+});
+
+test("planner: un plan solo con verificación manual agota intentos", async () => {
+  const manualPlan = {
+    summary: "s",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "verificación",
+        description: "verificar la app",
+        type: "testing",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: ["Revisar la consola del navegador en busca de errores"],
+      },
+    ],
+  };
+
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      planProject("objetivo", {}, {
+        execute: async () => {
+          calls += 1;
+          return JSON.stringify(manualPlan);
+        },
+        maxAttempts: 2,
+      }),
+    /verificación manual/,
+  );
+
+  assert.equal(calls, 2);
+});
+
 test("planner: ciclo dispara reparación y puede agotar intentos", async () => {
   let calls = 0;
   const cyclic = {

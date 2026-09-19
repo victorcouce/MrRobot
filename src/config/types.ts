@@ -1,3 +1,4 @@
+import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import type { AgentCandidate } from "../agents/types.js";
 
 export interface ChecksConfig {
@@ -6,13 +7,17 @@ export interface ChecksConfig {
 
 export interface OrchestratorConfig {
   concurrency: number;
+  /** Tope de la concurrencia adaptativa (>= concurrency). */
+  maxConcurrency?: number;
   maxRetriesPerAgent: number;
   maxReviewFixCycles: number;
   plannerMaxAttempts: number;
 
-  plannerAgent: AgentCandidate;
-  reviewerAgent: AgentCandidate;
-  supervisorAgent: AgentCandidate;
+  /**
+   * Reintento de la cadena completa cuando todos los agentes se agotan por
+   * límite (rate limit o cuota/sesión). Ausente = valores por defecto.
+   */
+  limitRetry?: LimitRetryPolicy;
 
   checks: ChecksConfig;
 

@@ -50,7 +50,7 @@ export function AgentsStatusBlock({
     <Block>
       <BlockHeader
         title="Agentes"
-        subtitle={lastCheckedAt ? `comprobado ${lastCheckedAt}` : undefined}
+        meta={lastCheckedAt ? `comprobado ${lastCheckedAt}` : undefined}
       />
 
       <div className="divide-y divide-line-soft">

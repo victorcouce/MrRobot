@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolveAttachmentRefs } from "../agents/attachments.js";
 import type { Attachment } from "../agents/types.js";
+import { assertFileWritingAgent } from "../agents/selector.js";
 import { defaultConfig } from "../config/index.js";
 import { planProject } from "../planner/planner.js";
 import type {
@@ -401,10 +402,21 @@ export async function sendChatMessage(
   }
 
   try {
+    let plannerAgentUsed: AgentSpec | undefined;
+
     const plan = await planProject(project.goal, context, {
       execute: deps.plannerExecute,
-      agent: config.plannerAgent,
+      ...(chat.allowedAgents?.length
+        ? { allowedAgents: chat.allowedAgents }
+        : project.defaultAllowedAgents?.length
+          ? { allowedAgents: project.defaultAllowedAgents }
+          : {}),
       maxAttempts: config.plannerMaxAttempts,
+      maxRetriesPerAgent: config.maxRetriesPerAgent,
+      ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+      onAgent: (agent) => {
+        plannerAgentUsed = agent;
+      },
     });
 
     const generated = remapChatTasks(plan, chat.seq, chatId, chatAttachments);
@@ -421,7 +433,7 @@ export async function sendChatMessage(
       role: "assistant",
       content: plan.summary,
       taskIds: generatedIds,
-      agent: config.plannerAgent,
+      ...(plannerAgentUsed ? { agent: plannerAgentUsed } : {}),
       createdAt: new Date(),
     };
 
@@ -454,7 +466,6 @@ export async function sendChatMessage(
       role: "assistant",
       content: `No pude generar el plan: ${message}`,
       taskIds: [],
-      agent: config.plannerAgent,
       error: message,
       createdAt: new Date(),
     };
@@ -481,6 +492,8 @@ export async function updateChatAllowedAgents(
   agents: AgentSpec[],
   deps: ProjectDeps,
 ): Promise<Chat> {
+  assertFileWritingAgent(agents);
+
   const chat = await loadChat(projectId, chatId, deps);
   const updated: Chat = {
     ...chat,

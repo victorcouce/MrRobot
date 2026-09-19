@@ -1,41 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import type { Project } from "../../lib/types";
+import type { Project, StoredReview, SupervisorRun } from "../../lib/types";
 import { formatDuration, shortSha } from "../../lib/format";
-import { clsx } from "../../lib/cx";
+import { Block } from "../ui/Block";
+import { Chip, Pill } from "../ui/Chip";
+import { Button } from "../ui/Button";
+import { CheckIcon, CopyIcon, PlayIcon } from "../ui/icons";
 
 function Stat({
   label,
   value,
-  mono = false,
+  accent,
 }: {
   label: string;
   value: string;
-  mono?: boolean;
+  accent?: string;
 }) {
   return (
-    <div className="rounded-chip border border-line bg-subtle px-3 py-2.5">
-      <div className="text-xs text-ink-4">{label}</div>
-      <div
-        className={clsx(
-          "mt-1",
-          mono
-            ? "break-all font-mono text-sm text-ink-2"
-            : "text-lg font-semibold text-ink",
-        )}
+    <div className="flex flex-col gap-1 border-l border-line px-[18px] py-4 first:border-l-0">
+      <span className="text-[12px] text-ink-4">{label}</span>
+      <span
+        className="text-[22px] font-medium tracking-[-0.01em] text-ink"
+        style={accent ? { color: accent } : undefined}
       >
         {value}
-      </div>
+      </span>
     </div>
   );
 }
 
-/**
- * MrRobot nunca integra: el resultado se queda en su rama y aquí se ofrece el
- * comando de merge para que lo haga quien corresponda.
- */
-function MergeCommand({ branch }: { branch: string }) {
+function CopyCommand({ branch }: { branch: string }) {
   const [copied, setCopied] = useState(false);
   const command = `git merge ${branch}`;
 
@@ -50,102 +45,189 @@ function MergeCommand({ branch }: { branch: string }) {
   }
 
   return (
-    <div className="rounded-chip border border-line bg-subtle p-3">
-      <p className="text-sm text-ink-3">
-        El trabajo está en una rama aparte. MrRobot no hace merge: cuando lo
-        revises, intégralo tú.
-      </p>
-      <div className="mt-2 flex items-center gap-2">
-        <code className="flex-1 truncate rounded-chip bg-surface px-3 py-2 font-mono text-xs text-ink-2">
-          {command}
-        </code>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="focus-ring shrink-0 rounded-btn border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-ink-2 hover:bg-muted"
-        >
-          {copied ? "Copiado" : "Copiar"}
-        </button>
-      </div>
+    <div className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 border-t border-line-soft px-[18px] py-2.5 text-[13.5px]">
+      <span className="text-[13px] text-ink-4">Rama</span>
+      <span className="truncate font-mono text-[12.5px] text-ink">
+        {branch}
+      </span>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="focus-ring inline-flex h-[30px] items-center gap-1.5 rounded-btn px-2 text-[13px] font-medium text-ink-2 hover:bg-muted"
+      >
+        <CopyIcon size={14} />
+        {copied ? "Copiado" : "Copiar"}
+      </button>
     </div>
   );
 }
 
-export function ResultView({ project }: { project: Project }) {
+function FailedResult({
+  project,
+  onRetryPlan,
+  onDelete,
+}: {
+  project: Project;
+  onRetryPlan?: () => void;
+  onDelete?: () => void;
+}) {
+  const { stats } = project;
+  const blocked = stats.blocked;
+
+  return (
+    <Block aria-label="Resultado">
+      <div className="flex items-center justify-between gap-5 px-[22px] py-5">
+        <div className="flex flex-col gap-1.5">
+          <h2 className="font-display text-[30px] font-normal leading-[1.1] tracking-[-0.01em] text-ink">
+            El proyecto no pudo terminar.
+          </h2>
+          <span className="text-[13.5px] text-ink-3">
+            Las tareas hechas se conservan. No se ha creado rama final.
+          </span>
+        </div>
+        <div className="flex shrink-0 gap-[18px] text-[13px]">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[22px] font-medium text-ink">
+              {stats.done}
+            </span>
+            <span className="text-ink-4">hechas</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[22px] font-medium text-danger">
+              {stats.failed}
+            </span>
+            <span className="text-ink-4">fallida{stats.failed === 1 ? "" : "s"}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[22px] font-medium text-warning-text">
+              {blocked}
+            </span>
+            <span className="text-ink-4">bloqueada{blocked === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 border-t border-line bg-subtle px-[18px] py-2.5 pr-3.5">
+        <span className="text-[12.5px] text-ink-4">
+          Escribe abajo qué cambiar y el proyecto vuelve a Listo.
+        </span>
+        <div className="flex shrink-0 gap-1.5">
+          {onRetryPlan && (
+            <Button variant="secondary" size="sm" onClick={onRetryPlan}>
+              Regenerar plan
+            </Button>
+          )}
+          {onDelete && (
+            <Button variant="secondary" size="sm" onClick={onDelete}>
+              Borrar proyecto…
+            </Button>
+          )}
+        </div>
+      </div>
+    </Block>
+  );
+}
+
+export function ResultView({
+  project,
+  reviews = [],
+  runs = [],
+  onRetryPlan,
+  onDelete,
+}: {
+  project: Project;
+  reviews?: StoredReview[];
+  runs?: SupervisorRun[];
+  onRetryPlan?: () => void;
+  onDelete?: () => void;
+}) {
+  if (project.status === "failed") {
+    return (
+      <FailedResult
+        project={project}
+        onRetryPlan={onRetryPlan}
+        onDelete={onDelete}
+      />
+    );
+  }
+
   const { stats, agentsUsed } = project;
   const duration =
     project.startedAt && project.finishedAt
       ? formatDuration(project.startedAt, project.finishedAt)
       : undefined;
 
-  const failedTasks = project.tasks.filter((task) => task.status === "failed");
-  const blockedTasks = project.tasks.filter((task) => task.status === "blocked");
+  const failedReviews = reviews.filter((review) => !review.approved).length;
+  const rounds = runs.length > 0 ? runs.length : 1;
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Tareas hechas" value={`${stats.done} / ${stats.total}`} />
-        {duration && <Stat label="Duración" value={duration} />}
-        {project.resultBranch && (
-          <Stat label="Rama final" value={project.resultBranch} mono />
-        )}
-        {project.resultCommit && (
-          <Stat label="Commit final" value={shortSha(project.resultCommit)} mono />
-        )}
-        {project.repoPath && <Stat label="Carpeta" value={project.repoPath} mono />}
-        {project.remoteUrl && (
-          <Stat label="Remoto" value={project.remoteUrl} mono />
-        )}
+    <Block aria-label="Resultado del proyecto">
+      <div className="flex items-start justify-between gap-4 px-[22px] pt-[22px] pb-[18px]">
+        <div className="flex flex-col gap-1.5">
+          <Pill className="w-fit bg-success-soft text-success-text">
+            <CheckIcon size={11} strokeWidth={3} />
+            Completado
+          </Pill>
+          <h2 className="font-display text-[34px] font-normal leading-[1.1] tracking-[-0.01em] text-ink">
+            Tu proyecto está en su propia rama.
+          </h2>
+          <span className="text-[13.5px] text-ink-3">
+            Nada se ha fusionado con{" "}
+            <span className="font-mono text-[12.5px]">main</span>. Tú decides
+            cuándo integrarla.
+          </span>
+        </div>
       </div>
 
-      {project.resultBranch && <MergeCommand branch={project.resultBranch} />}
+      <div className="grid grid-cols-2 border-t border-line md:grid-cols-4">
+        <Stat label="Tareas" value={`${stats.done} / ${stats.total}`} />
+        {duration && <Stat label="Duración" value={duration} />}
+        <Stat label="Rondas" value={String(rounds)} />
+        <Stat
+          label="Reviews fallidos"
+          value={String(failedReviews)}
+          accent={failedReviews > 0 ? "#B42318" : undefined}
+        />
+      </div>
+
+      {project.resultBranch && <CopyCommand branch={project.resultBranch} />}
+
+      {project.resultCommit && (
+        <div className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 border-t border-line-soft px-[18px] py-2.5 text-[13.5px]">
+          <span className="text-[13px] text-ink-4">Commit</span>
+          <span className="font-mono text-[12.5px] text-ink">
+            {shortSha(project.resultCommit)}
+          </span>
+          <span />
+        </div>
+      )}
 
       {agentsUsed.length > 0 && (
-        <section>
-          <h3 className="mb-2 text-xs font-semibold text-ink-4">
-            Agentes que trabajaron
-          </h3>
-          <div className="overflow-hidden rounded-chip border border-line">
+        <div className="grid grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 border-t border-line-soft px-[18px] py-3 text-[13.5px]">
+          <span className="text-[13px] text-ink-4">Agentes</span>
+          <span className="flex flex-wrap gap-1.5">
             {agentsUsed.map((usage) => (
-              <div
-                key={`${usage.provider}:${usage.model ?? ""}`}
-                className="flex items-center justify-between border-b border-line-soft px-3 py-2 text-sm last:border-0"
-              >
-                <span className="font-mono text-ink-2">{usage.label}</span>
-                <span className="tabular-nums text-ink-4">
-                  {usage.tasks} {usage.tasks === 1 ? "tarea" : "tareas"}
-                </span>
-              </div>
+              <Chip key={`${usage.provider}:${usage.model ?? ""}`} mono>
+                {usage.label} ×{usage.tasks}
+              </Chip>
             ))}
-          </div>
-        </section>
+          </span>
+          <span />
+        </div>
       )}
 
-      {(failedTasks.length > 0 || blockedTasks.length > 0) && (
-        <section>
-          <h3 className="mb-2 text-xs font-semibold text-ink-4">Sin terminar</h3>
-          <ul className="space-y-2">
-            {failedTasks.map((task) => (
-              <li
-                key={task.id}
-                className="rounded-chip border border-danger-soft bg-danger-soft px-3 py-2 text-sm text-danger-text"
-              >
-                <span className="font-mono text-xs">{task.id}</span> · {task.title}
-                {task.error ? ` — ${task.error}` : ""}
-              </li>
-            ))}
-            {blockedTasks.map((task) => (
-              <li
-                key={task.id}
-                className="rounded-chip border border-warning-soft bg-warning-soft px-3 py-2 text-sm text-warning-text"
-              >
-                <span className="font-mono text-xs">{task.id}</span> · {task.title}
-                {task.blockedReason ? ` — ${task.blockedReason}` : ""}
-              </li>
-            ))}
-          </ul>
-        </section>
+      {project.resultBranch && (
+        <div className="flex items-center justify-between gap-4 border-t border-line bg-subtle px-[18px] py-2.5 pr-3.5">
+          <span className="truncate font-mono text-[12px] text-ink-4">
+            git merge {project.resultBranch}
+          </span>
+          <div className="flex shrink-0 gap-1.5">
+            <Button variant="ghost" size="sm">
+              <PlayIcon />
+              Abrir preview
+            </Button>
+          </div>
+        </div>
       )}
-    </div>
+    </Block>
   );
 }

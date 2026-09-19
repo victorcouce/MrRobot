@@ -1,8 +1,10 @@
 import { errorMessage } from "../agents/fallback.js";
-import { runAgent } from "../agents/router.js";
+import type { LimitRetryPolicy } from "../agents/limit-retry.js";
+import { runRoleAgent } from "../agents/role.js";
+import { maxComplexity } from "../agents/selector.js";
 import type { AgentCandidate } from "../agents/types.js";
-import { defaultConfig } from "../config/index.js";
 import type { Project } from "../projects/types.js";
+import type { TaskComplexity } from "../tasks/types.js";
 import { supervisorDecisionSchema } from "./schema.js";
 import type { SupervisorDecision } from "./types.js";
 
@@ -17,7 +19,13 @@ export interface SupervisorDeps {
   execute?:
     | ((prompt: string, agent: AgentCandidate) => Promise<string>)
     | undefined;
-  agent?: AgentCandidate | undefined;
+  /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
+  allowedAgents?: AgentCandidate[] | undefined;
+  complexity?: TaskComplexity | undefined;
+  /** Reintentos por agente antes de pasar al siguiente de la cadena. */
+  maxRetriesPerAgent?: number | undefined;
+  /** Reintento de la cadena completa cuando todos caen por límite. */
+  limitRetry?: Partial<LimitRetryPolicy> | undefined;
 }
 
 function summarize(project: Project): string {
@@ -82,12 +90,18 @@ export async function superviseProject(
   context: SupervisorContext = {},
   deps: SupervisorDeps = {},
 ): Promise<SupervisorDecision> {
-  const execute =
-    deps.execute ?? ((prompt, agent) => runAgent(prompt, agent));
-  const agent = deps.agent ?? defaultConfig.supervisorAgent;
+  const complexity = deps.complexity ?? maxComplexity(project.tasks);
 
   try {
-    const raw = await execute(buildPrompt(project, context), agent);
+    const raw = await runRoleAgent(buildPrompt(project, context), "supervisor", {
+      ...(deps.execute ? { execute: deps.execute } : {}),
+      ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
+      ...(complexity ? { complexity } : {}),
+      ...(deps.maxRetriesPerAgent !== undefined
+        ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
+        : {}),
+      ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+    });
     const json = JSON.parse(extractJson(raw)) as unknown;
     const parsed = supervisorDecisionSchema.safeParse(json);
 

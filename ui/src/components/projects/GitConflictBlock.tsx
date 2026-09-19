@@ -1,8 +1,10 @@
 "use client";
 
 import type { Task } from "../../lib/types";
-import { Block } from "../ui/Block";
+import { Block, BlockFooter } from "../ui/Block";
 import { Button } from "../ui/Button";
+import { Chip } from "../ui/Chip";
+import { GitConflictIcon } from "../ui/icons";
 
 interface GitConflictBlockProps {
   task: Task;
@@ -20,68 +22,49 @@ export function GitConflictBlock({
   const files = task.integrationError.files || [];
 
   return (
-    <Block>
-      <div className="flex gap-3 p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-warning-soft">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            className="text-warning-text"
-            aria-hidden="true"
-          >
-            <circle cx="6" cy="5" r="2"></circle>
-            <circle cx="6" cy="19" r="2"></circle>
-            <circle cx="18" cy="6" r="2"></circle>
-            <path d="M6 7v10M18 8c0 5-5 5-10 9"></path>
-          </svg>
-        </div>
+    <Block aria-label="Conflicto de integración">
+      <div className="flex items-start gap-3 px-[18px] py-4">
+        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-warning-soft text-warning-text">
+          <GitConflictIcon />
+        </span>
 
-        <div className="flex-1 space-y-2">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <div className="text-sm font-semibold text-ink">
-                Conflicto de integración
-              </div>
-              <div className="text-xs text-ink-4 font-mono">{task.id}</div>
-            </div>
-            <div className="shrink-0 rounded-full bg-warning-soft px-2 py-1 text-xs font-medium text-warning-text">
-              Bloqueada
-            </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex items-start justify-between gap-4 text-[13.5px]">
+            <span>
+              <span className="font-semibold">Conflicto de integración</span> ·{" "}
+              <span className="font-mono text-[12.5px]">{task.id}</span>{" "}
+              bloqueada
+            </span>
+            <span className="shrink-0 font-mono text-[11.5px] text-ink-4">
+              git.conflict
+            </span>
           </div>
 
-          <p className="text-sm text-ink-2 leading-relaxed">
+          <span className="text-[13.5px] leading-relaxed text-ink-2">
             {task.integrationError.message ||
               "El cherry-pick de dependencias choca. Tu repositorio principal está intacto."}
-          </p>
+          </span>
 
           {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="flex flex-wrap gap-1.5">
               {files.map((file) => (
-                <span
-                  key={file}
-                  className="inline-flex items-center rounded-chip bg-muted px-2.5 py-1 font-mono text-xs text-ink-2"
-                >
+                <Chip key={file} mono>
                   {file}
-                </span>
+                </Chip>
               ))}
             </div>
           )}
         </div>
       </div>
 
-      <div className="border-t border-line-soft bg-subtle px-4 py-3 flex items-center justify-between">
-        <span className="text-xs text-ink-4">Esperando al supervisor</span>
+      <BlockFooter>
+        <span className="text-[12.5px] text-ink-4">Esperando al supervisor</span>
         {onRequestReplan && (
-          <Button size="sm" variant="primary" onClick={onRequestReplan}>
+          <Button size="sm" variant="secondary" onClick={onRequestReplan}>
             Pedir replan
           </Button>
         )}
-      </div>
+      </BlockFooter>
     </Block>
   );
 }

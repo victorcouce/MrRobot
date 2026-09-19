@@ -261,12 +261,10 @@ export interface AgentAvailability {
 
 export interface ConfigInfo {
   concurrency: number;
+  maxConcurrency: number;
   maxRetriesPerAgent: number;
   maxReviewFixCycles: number;
   plannerMaxAttempts: number;
-  plannerAgent: AgentSpec;
-  reviewerAgent: AgentSpec;
-  supervisorAgent: AgentSpec;
   /** Vacío = se detectan los scripts del package.json. */
   checks: { commands: string[] };
   /** Agentes marcados por defecto al crear un proyecto. */
@@ -318,4 +316,28 @@ export interface SearchResultItem {
 export interface SearchResults {
   chats: SearchResultItem[];
   tasks: SearchResultItem[];
+}
+
+export interface GrillQuestion {
+  id: string;
+  title: string;
+  body: string;
+  /** Alternativas discretas que el usuario puede elegir con un clic. */
+  options?: string[] | undefined;
+  recommendation: string;
+}
+
+export interface GrillMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export type GrillResponse =
+  | { status: "questions"; questions: GrillQuestion[]; message: string }
+  | { status: "done"; summary: string };
+
+export interface TaskInstructionOutcome {
+  action: "proceed" | "ask";
+  reply: string;
+  questions?: string[];
 }

@@ -100,6 +100,110 @@ describe("ChatThread", () => {
     expect(screen.getByText("Motor de cálculo")).toBeInTheDocument();
   });
 
+  it("ordena los mensajes del más antiguo al más nuevo y deja el plan antes de la nueva petición", () => {
+    const later: ChatMessage = {
+      id: "m3",
+      chatId: "c1",
+      projectId: "p1",
+      role: "user",
+      content: "Ahora añade exportar a CSV",
+      taskIds: [],
+      createdAt: "2026-01-01T10:05:00.000Z",
+    };
+    const laterReply: ChatMessage = {
+      id: "m4",
+      chatId: "c1",
+      projectId: "p1",
+      role: "assistant",
+      content: "Añado 1 tarea más",
+      taskIds: ["C1-TASK-003"],
+      createdAt: "2026-01-01T10:05:20.000Z",
+    };
+
+    renderThread({ messages: [laterReply, later, messages[1]!, messages[0]!] });
+
+    const first = screen.getByText("Quiero una calculadora con historial");
+    const second = screen.getByText("He preparado un plan de 2 tareas");
+    const plan = screen.getByText("Plan");
+    const lastUser = screen.getByText("Ahora añade exportar a CSV");
+    const lastReply = screen.getByText("Añado 1 tarea más");
+
+    expect(
+      first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      plan.compareDocumentPosition(lastUser) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      plan.compareDocumentPosition(lastReply) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("intercala la replanificación del supervisor en orden cronológico", () => {
+    renderThread({
+      project: makeProject({ status: "running" }),
+      events: [
+        {
+          id: "e1",
+          projectId: "p1",
+          type: "task.started",
+          taskId: "C1-TASK-001",
+          createdAt: "2026-01-01T10:10:00.000Z",
+        },
+        {
+          id: "e2",
+          projectId: "p1",
+          type: "project.resumed",
+          createdAt: "2026-01-01T10:20:00.000Z",
+        },
+      ],
+      supervisorRuns: [
+        {
+          id: "s1",
+          projectId: "p1",
+          action: "replan",
+          reason: "TASK-001 ha fallado y bloquea la cadena.",
+          createdAt: "2026-01-01T10:15:00.000Z",
+        },
+      ],
+    });
+
+    const started = screen.getByText("C1-TASK-001 en curso");
+    const replan = screen.getByText("El supervisor replanificó");
+    const resumed = screen.getByText("Ejecución reanudada");
+
+    expect(
+      started.compareDocumentPosition(replan) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      replan.compareDocumentPosition(resumed) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("permite pedir replan desde un conflicto cuando el proyecto está bloqueado", () => {
+    const onResume = vi.fn();
+    const conflicted: Task = {
+      ...(tasks[0] as Task),
+      status: "blocked",
+      integrationError: {
+        type: "git_conflict",
+        dependencyTaskIds: ["C1-TASK-001"],
+        message: "Conflicto al integrar",
+        files: ["README.md"],
+      },
+    };
+
+    renderThread({
+      project: makeProject({ status: "blocked", tasks: [conflicted] }),
+      onResume,
+    });
+
+    screen.getByRole("button", { name: "Pedir replan" }).click();
+    expect(onResume).toHaveBeenCalled();
+  });
+
   it("mantiene los mensajes visibles con el proyecto terminado", () => {
     renderThread({
       project: makeProject({
@@ -145,5 +249,32 @@ describe("ChatThread", () => {
     expect(
       screen.getByText("Cuéntame qué quieres construir y genero el plan."),
     ).toBeInTheDocument();
+  });
+
+  it("con la entrevista de afinado no muestra el estado vacío", () => {
+    renderThread({
+      project: makeProject({ status: "draft", tasks: [] }),
+      messages: [],
+      grillPanel: <div>ENTREVISTA</div>,
+    });
+
+    expect(screen.getByText("ENTREVISTA")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Cuéntame qué quieres construir y genero el plan."),
+    ).toBeNull();
+  });
+
+  it("coloca el plan después de la entrevista para respetar el orden", () => {
+    renderThread({
+      project: makeProject({ status: "planning", tasks }),
+      messages: [],
+      grillPanel: <div>ENTREVISTA</div>,
+    });
+
+    const grill = screen.getByText("ENTREVISTA");
+    const plan = screen.getByText("Plan");
+    expect(
+      grill.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

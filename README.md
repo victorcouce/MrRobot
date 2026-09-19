@@ -14,7 +14,7 @@ Git aislada.
 
 Básicos:
 
-- **Node.js 20+** y **npm**
+- **Node.js 22.8+** y **npm** (la suite de tests usa `--test-isolation=none`)
 - **git**
 
 Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
@@ -43,6 +43,8 @@ Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
 > Cuando un proveedor agota su cuota o alcanza su límite (rate limit, sesión,
 > etc.), el motor **pasa automáticamente al siguiente modelo configurado** de la
 > cadena de fallback (ver [Fallback](#fallback)), así que no se queda atascado.
+> Si **todos** los proveedores de la cadena están limitados, espera y reintenta
+> la cadena automáticamente (respetando el `retry after` del proveedor).
 
 Si sólo quieres probar la app sin gastar tokens, usa el **modo mock** (paso 3)
 y no necesitas instalar ni autenticar ninguno de estos.
@@ -61,8 +63,8 @@ cd ui && npm install && cd ..   # interfaz gráfica
 Abre **dos terminales** desde la raíz del repo:
 
 ```bash
-# Terminal 1 — backend (API en http://127.0.0.1:4000)
-npm run api
+# Terminal 1 — backend (API en http://127.0.0.1:4000, recarga al cambiar el código)
+npm run dev
 
 # Terminal 2 — interfaz (http://localhost:3000)
 cd ui && npm run dev
@@ -75,7 +77,7 @@ Luego abre **http://localhost:3000** en el navegador.
 Si no quieres usar modelos reales ni tocar Git, arranca el backend en modo mock:
 
 ```bash
-MRROBOT_MOCK=1 npm run api   # Terminal 1
+MRROBOT_MOCK=1 npm run dev   # Terminal 1
 cd ui && npm run dev         # Terminal 2
 ```
 
@@ -157,16 +159,30 @@ Central en `src/config/index.ts` (`loadConfig`):
 
 ```ts
 {
-  concurrency: 2,
+  concurrency: 2,          // concurrencia inicial
+  maxConcurrency: 4,       // tope de la concurrencia adaptativa
   maxRetriesPerAgent: 1,
   maxReviewFixCycles: 2,
   plannerMaxAttempts: 2,
-  plannerAgent: { provider: "claude", model: "opus" },
-  reviewerAgent: { provider: "claude", model: "opus" },
-  supervisorAgent: { provider: "claude", model: "opus" },
+  limitRetry: {             // reintento de la cadena al agotar límites
+    maxLimitRetries: 3,
+    baseDelayMs: 30000,
+    maxDelayMs: 900000,
+  },
   checks: { commands: [] }, // [] => autodetecta scripts npm
+  defaultAllowedAgents: [], // [] => sin restricción; el usuario los elige en el chat
 }
 ```
+
+La concurrencia es **adaptativa**: empieza en `concurrency`, sube de uno en uno
+hasta `maxConcurrency` cuando un lote termina entero con éxito, y se reduce a la
+mitad cuando alguna tarea agota sus agentes por disponibilidad (cuota, rate
+limit, auth o CLI ausente).
+
+No hay agentes fijos por rol: el usuario elige el conjunto de agentes permitidos
+al lanzar el primer prompt del chat y, para cada tarea y cada rol de orquestación
+(planner, reviewer, supervisor, grill e instrucciones), el motor selecciona el
+agente por tipo y complejidad y recorre una cadena de fallback.
 
 Un proyecto puede sobrescribir estos valores al crearse (pantalla *New Project*,
 avanzado) o después mediante `PATCH /api/projects/:id/config` (mientras esté en
@@ -246,21 +262,33 @@ No borra su carpeta ni los worktrees del disco.
 ## Fallback
 
 `getFallbackChain(task)` devuelve una lista ordenada de candidatos según
-`type`/`complexity`. Si un agente falla, se reintenta (si el error es
-retryable) y luego se pasa al siguiente. Un agente explícito (`task.agent`)
-va primero. Cada intento parte de un worktree limpio.
+`type`/`complexity`, restringida a los agentes permitidos del chat. Si un agente
+falla con un error transitorio, se reintenta; si el error es no reintentable o el
+proveedor no está disponible, se pasa al siguiente. Un agente explícito
+(`task.agent`) va primero. Cada intento de agente parte de un worktree limpio.
 
-`classifyAvailability` detecta los límites de cuota (`usage_limit`,
-`rate_limit`) y de autenticación (`auth`) y los trata como «no disponible»,
-por lo que al agotar la cuota o el límite de un proveedor el motor salta al
-siguiente modelo de la cadena sin intervención manual.
+`classifyAvailability` detecta los límites de cuota (`usage_limit`), de tasa
+(`rate_limit`), de autenticación (`auth`) y de CLI ausente (`cli_missing`) y los
+trata como «no disponible», por lo que al agotar la cuota o el límite de un
+proveedor el motor salta al siguiente modelo de la cadena sin intervención
+manual. Si **todos** los candidatos caen por límite, `runTask`/`runRoleAgent`
+esperan (respetando el `retry after` del proveedor o un backoff exponencial) y
+re-recorren la cadena hasta `limitRetry.maxLimitRetries` (por defecto 3). Este
+mecanismo lo comparten las tareas y los roles de orquestación (`runRoleAgent` en
+`src/agents/role.ts`).
 
 ## Review
 
-Tras completar una tarea: se ejecutan los checks locales (`npm run
-typecheck|build|test`) y un reviewer LLM valida contra los `acceptanceCriteria`.
+Tras completar una tarea, los checks locales (`npm run typecheck|build|test`;
+`build`→`test` en orden y `typecheck` en paralelo) se ejecutan **en el worktree
+del propio agente antes de borrarlo**, reutilizando el `node_modules` si ya lo
+instaló (si falta, se instala). Después, un reviewer LLM valida contra los
+`acceptanceCriteria`. En tareas `low` sin
+criterios y con checks en verde se omite el review LLM (los checks son el gate).
 Si rechaza, la tarea se reintenta con el feedback del review hasta
-`maxReviewFixCycles`; después queda `failed`.
+`maxReviewFixCycles`; en cada reintento el agente **continúa desde su resultado
+anterior** (no rehace la tarea) y el árbol final se aplana en un único commit
+sobre la base. Después queda `failed` si sigue sin aprobar.
 
 ## Replanificación
 
@@ -310,9 +338,14 @@ fuente de verdad y el SSE refresca el hilo en vivo.
 `project.created`, `plan.started`, `plan.generated`, `plan.updated`,
 `project.config_updated`,
 `task.started`, `task.completed`, `task.failed`, `task.review_passed`,
-`task.review_failed`, `git.conflict`, `supervisor.replan`, `project.paused`,
-`project.resumed`, `project.completed`, `project.cancelled`, `project.error`,
+`task.review_failed`, `task.instruction`, `task.instruction_reply`,
+`git.conflict`, `supervisor.replan`, `project.paused`,
+`project.resumed`, `project.recovered`, `project.completed`,
+`project.cancelled`, `project.error`,
 `project.deleted`, `chat.created`, `chat.message`, `chat.deleted`.
+
+`task.output` (salida del agente en vivo) es efímero: va por SSE pero **no** se
+persiste en el event log.
 
 ## API HTTP
 
@@ -339,6 +372,7 @@ GET    /api/projects/:id/stream        SSE de eventos del proyecto
 POST   /api/projects/:id/tasks         añade tarea (antes de ejecutar)
 PATCH  /api/projects/:id/tasks/:taskId edita tarea (antes de ejecutar)
 DELETE /api/projects/:id/tasks/:taskId elimina tarea (antes de ejecutar)
+POST   /api/projects/:id/tasks/:taskId/instructions envía instrucciones a una tarea fallida/bloqueada
 GET    /api/projects/:id/chats         lista los chats del proyecto
 POST   /api/projects/:id/chats         crea un chat (opcional `message`)
 GET    /api/projects/:id/chats/:chatId detalle del chat + mensajes
@@ -358,6 +392,10 @@ La UI se suscribe a `GET /api/projects/:id/stream`. Cada evento del event log
 se emite como mensaje SSE; la UI invalida y vuelve a pedir el estado del
 proyecto. El backend es la única fuente de verdad: un `F5` durante la ejecución
 reconstruye el estado desde persistencia.
+
+Además se emite `task.output` (efímero, no persistido) con la salida del agente
+en vivo, agrupada cada ~400 ms. La UI la acumula por tarea y la muestra en la
+tarjeta del tablero sin recargar el proyecto.
 
 ## Interfaz gráfica
 

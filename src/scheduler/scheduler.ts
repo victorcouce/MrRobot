@@ -1,3 +1,4 @@
+import { classifyAvailability } from "../agents/availability.js";
 import { errorMessage, getFallbackChain } from "../agents/fallback.js";
 import { describeAgent } from "../agents/selector.js";
 import type { AgentCandidate } from "../agents/types.js";
@@ -10,11 +11,19 @@ import { validatePlan } from "./validation.js";
 export interface RunPlanOptions {
   executeTask?: (task: Task) => Promise<Task>;
   concurrency?: number;
+  /**
+   * Tope de la concurrencia adaptativa. Si se define y es mayor que
+   * `concurrency`, el plan arranca en `concurrency` y ajusta al alza/baja según
+   * los resultados de cada lote. Sin definir, la concurrencia es fija.
+   */
+  maxConcurrency?: number;
   shouldPause?: () => boolean | Promise<boolean>;
   signal?: AbortSignal;
   onUpdate?: (tasks: Task[]) => void | Promise<void>;
   /** Agentes permitidos del chat de cada tarea, para previsualizar la cadena. */
   allowedAgentsFor?: (task: Task) => AgentCandidate[] | undefined;
+  /** Notifica cada cambio de concurrencia (para eventos/UI y tests). */
+  onConcurrencyChange?: (concurrency: number) => void;
 }
 
 const DEFAULT_CONCURRENCY = 2;
@@ -31,6 +40,55 @@ function resolveConcurrency(value: number | undefined): number {
   }
 
   return value;
+}
+
+function resolveMaxConcurrency(
+  value: number | undefined,
+  start: number,
+): number {
+  if (value === undefined) {
+    return start;
+  }
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `maxConcurrency debe ser un entero mayor o igual a 1 (recibido: ${value}).`,
+    );
+  }
+
+  return Math.max(value, start);
+}
+
+/**
+ * Ajusta la concurrencia tras un lote:
+ * - Si algún candidato agotó sus agentes por disponibilidad (cuota, rate limit,
+ *   auth o CLI ausente), se reduce a la mitad para no insistir.
+ * - Si el lote terminó entero con éxito, se sube de uno en uno hasta el tope.
+ */
+function nextConcurrency(
+  current: number,
+  max: number,
+  batch: Task[],
+): number {
+  const availabilityHit = batch.some(
+    (task) =>
+      task.status === "failed" &&
+      task.error !== undefined &&
+      !classifyAvailability(task.error).available,
+  );
+
+  if (availabilityHit) {
+    return Math.max(1, Math.floor(current / 2));
+  }
+
+  const allSucceeded =
+    batch.length > 0 && batch.every((task) => task.status === "done");
+
+  if (allSucceeded && current < max) {
+    return current + 1;
+  }
+
+  return current;
 }
 
 function cloneTasks(tasks: Task[]): Task[] {
@@ -146,7 +204,11 @@ export async function runPlan(
   tasks: Task[],
   options: RunPlanOptions = {},
 ): Promise<PlanResult> {
-  const concurrency = resolveConcurrency(options.concurrency);
+  let concurrency = resolveConcurrency(options.concurrency);
+  const maxConcurrency = resolveMaxConcurrency(
+    options.maxConcurrency,
+    concurrency,
+  );
   validatePlan(tasks);
 
   const executeTask = options.executeTask ?? runTask;
@@ -241,6 +303,19 @@ export async function runPlan(
         );
       }
     });
+
+    const batchResults = selected
+      .map((task) => results.get(task.id))
+      .filter((task): task is Task => task !== undefined);
+    const adjusted = nextConcurrency(concurrency, maxConcurrency, batchResults);
+
+    if (adjusted !== concurrency) {
+      console.log(
+        `\nConcurrencia ${adjusted > concurrency ? "↑" : "↓"} ${concurrency} → ${adjusted}`,
+      );
+      concurrency = adjusted;
+      options.onConcurrencyChange?.(concurrency);
+    }
 
     console.log(`\nRecalculating dependencies...\n`);
 

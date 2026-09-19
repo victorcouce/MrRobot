@@ -1,38 +1,71 @@
 import type { SupervisorRun } from "../../lib/types";
+import { Block } from "../ui/Block";
+import { RefreshIcon, AlertIcon } from "../ui/icons";
+import { clockTime } from "../../lib/format";
 
-export function SupervisorBanner({ runs }: { runs: SupervisorRun[] }) {
-  const notable = runs
-    .filter((run) => run.action !== "continue")
-    .slice(-3)
-    .reverse();
+const ACTION_LABELS: Record<string, string> = {
+  replan: "El supervisor replanificó",
+  fail: "Decisión: fallar el proyecto",
+  pause: "El supervisor pausó el proyecto",
+};
 
-  if (notable.length === 0) return null;
+export function SupervisorRunBlock({
+  run,
+  round,
+}: {
+  run: SupervisorRun;
+  round: number;
+}) {
+  const failed = run.action === "fail";
+  const replan = run.action === "replan";
 
   return (
-    <div className="space-y-2">
-      {notable.map((run) => (
-        <div
-          key={run.id}
-          className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/30"
+    <Block
+      className={
+        failed
+          ? "border-danger-soft bg-[#FFF8F7] shadow-none"
+          : "bg-subtle shadow-none"
+      }
+    >
+      <div className="flex items-start gap-3 px-[18px] py-3.5">
+        <span
+          className={
+            failed
+              ? "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-danger-soft text-danger"
+              : "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-warning-soft text-warning-text"
+          }
         >
-          <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
-            <span className="text-xs font-semibold uppercase tracking-wide">
-              Supervisor
+          {failed ? <AlertIcon /> : <RefreshIcon />}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-start justify-between gap-4 text-[13.5px]">
+            <span className={failed ? "font-semibold text-danger-text" : ""}>
+              {failed ? (
+                ACTION_LABELS.fail
+              ) : (
+                <>
+                  <span className="font-semibold">
+                    {ACTION_LABELS[run.action] ?? run.action}
+                  </span>
+                  {replan ? ` · ronda ${round}` : ""}
+                </>
+              )}
             </span>
-            <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs dark:bg-amber-900/50">
-              {run.action}
+            <span className="shrink-0 font-mono text-[11.5px] text-ink-4">
+              {clockTime(run.createdAt)}
             </span>
           </div>
-          <p className="mt-1 text-sm text-amber-700 dark:text-amber-200">
+          <span className="text-[13.5px] leading-relaxed text-ink-2">
             {run.reason}
-          </p>
+          </span>
           {run.instructions && (
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-300/80">
+            <span className="text-[12.5px] text-ink-4">
               {run.instructions}
-            </p>
+            </span>
           )}
         </div>
-      ))}
-    </div>
+      </div>
+    </Block>
   );
 }
+

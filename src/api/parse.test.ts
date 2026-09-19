@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseAttachments } from "./parse.js";
+import { parseAttachments, parseGrillInput } from "./parse.js";
 
 // "aGVsbG8=" = base64("hello"), 5 bytes reales.
 const HELLO_B64 = "aGVsbG8=";
@@ -62,5 +62,29 @@ test("parseAttachments sigue aplicando el límite de 5MB en total", () => {
         attachment({ size: chunk.length, data, name: "tres.md" }),
       ]),
     /excede 5MB/,
+  );
+});
+
+test("parseGrillInput acepta los agentes permitidos del primer prompt", () => {
+  const input = parseGrillInput({
+    goal: "una calculadora",
+    messages: [],
+    allowedAgents: [{ provider: "deepseek", model: "deepseek-flash" }],
+  });
+
+  assert.deepEqual(input.allowedAgents, [
+    { provider: "deepseek", model: "deepseek-flash" },
+  ]);
+});
+
+test("parseGrillInput rechaza un agente permitido no concreto", () => {
+  assert.throws(
+    () =>
+      parseGrillInput({
+        goal: "una calculadora",
+        messages: [],
+        allowedAgents: ["auto"],
+      }),
+    /agente concreto/,
   );
 });

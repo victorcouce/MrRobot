@@ -5,17 +5,17 @@ import { api } from "@/lib/api";
 import {
   AGENT_CHOICES,
   agentToChoice,
+  canWriteFiles,
   choiceToAgent,
   type AgentChoice,
 } from "@/lib/agents";
 import { useAppInfo } from "@/lib/hooks";
-import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/Badge";
 
 const DEFAULT_CHECKS = ["typecheck", "build", "test"];
 
-type Section = "ejecucion" | "modelos" | "agentes" | "checks" | "github" | "apariencia";
+type Section = "ejecucion" | "agentes" | "checks" | "github";
 
 export default function SettingsPage() {
   const { info, refresh } = useAppInfo();
@@ -23,12 +23,10 @@ export default function SettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
 
   const [concurrency, setConcurrency] = useState(2);
+  const [maxConcurrency, setMaxConcurrency] = useState(4);
   const [maxRetries, setMaxRetries] = useState(1);
   const [maxReviewCycles, setMaxReviewCycles] = useState(2);
   const [plannerAttempts, setPlannerAttempts] = useState(2);
-  const [planner, setPlanner] = useState<AgentChoice>("claude-opus");
-  const [reviewer, setReviewer] = useState<AgentChoice>("claude-opus");
-  const [supervisor, setSupervisor] = useState<AgentChoice>("claude-opus");
   const [deepseekKey, setDeepseekKey] = useState("");
   const [checkingKey, setCheckingKey] = useState(false);
   const [keyResult, setKeyResult] = useState<{
@@ -41,18 +39,15 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (!info) return;
     const config = info.config;
     setConcurrency(config.concurrency);
+    setMaxConcurrency(config.maxConcurrency ?? config.concurrency);
     setMaxRetries(config.maxRetriesPerAgent);
     setMaxReviewCycles(config.maxReviewFixCycles);
     setPlannerAttempts(config.plannerMaxAttempts ?? 2);
-    setPlanner(agentToChoice(config.plannerAgent));
-    setReviewer(agentToChoice(config.reviewerAgent));
-    setSupervisor(agentToChoice(config.supervisorAgent));
     // Sin comandos explícitos el motor detecta los scripts del package.json.
     setAutoChecks(config.checks.commands.length === 0);
     setCheckCommands(
@@ -74,12 +69,10 @@ export default function SettingsPage() {
     try {
       await api.updateConfig({
         concurrency,
+        maxConcurrency,
         maxRetriesPerAgent: maxRetries,
         maxReviewFixCycles: maxReviewCycles,
         plannerMaxAttempts: plannerAttempts,
-        plannerAgent: choiceToAgent(planner),
-        reviewerAgent: choiceToAgent(reviewer),
-        supervisorAgent: choiceToAgent(supervisor),
         checks: { commands: autoChecks ? [] : checkCommands },
         defaultAllowedAgents: defaultAgents.map(choiceToAgent),
       });
@@ -97,12 +90,10 @@ export default function SettingsPage() {
     if (!info) return;
     const config = info.config;
     setConcurrency(config.concurrency);
+    setMaxConcurrency(config.maxConcurrency ?? config.concurrency);
     setMaxRetries(config.maxRetriesPerAgent);
     setMaxReviewCycles(config.maxReviewFixCycles);
     setPlannerAttempts(config.plannerMaxAttempts ?? 2);
-    setPlanner(agentToChoice(config.plannerAgent));
-    setReviewer(agentToChoice(config.reviewerAgent));
-    setSupervisor(agentToChoice(config.supervisorAgent));
     setAutoChecks(config.checks.commands.length === 0);
     setCheckCommands(
       config.checks.commands.length > 0 ? config.checks.commands : DEFAULT_CHECKS,
@@ -155,6 +146,12 @@ export default function SettingsPage() {
     return info.agents.some((a) => a.provider === provider && a.connected);
   };
 
+  const selectedFileWriterCount = defaultAgents.filter((choice) =>
+    canWriteFiles(choiceToAgent(choice)),
+  ).length;
+  const missingFileWriter =
+    defaultAgents.length > 0 && selectedFileWriterCount === 0;
+
   return (
     <div className="flex h-full flex-col bg-bg">
       {/* Header */}
@@ -181,6 +178,7 @@ export default function SettingsPage() {
                 variant="primary"
                 size="sm"
                 loading={saving}
+                disabled={missingFileWriter}
                 onClick={handleSubmit}
               >
                 Guardar cambios
@@ -194,7 +192,7 @@ export default function SettingsPage() {
       <div className="flex flex-1 gap-14 overflow-hidden px-16 py-10">
         {/* Navigation */}
         <nav className="w-44 flex-shrink-0 space-y-1" aria-label="Secciones">
-          {(["ejecucion", "modelos", "agentes", "checks", "github", "apariencia"] as Section[]).map(
+          {(["ejecucion", "agentes", "checks", "github"] as Section[]).map(
             (sec) => (
               <button
                 key={sec}
@@ -206,11 +204,9 @@ export default function SettingsPage() {
                 }`}
               >
                 {sec === "ejecucion" && "Ejecución"}
-                {sec === "modelos" && "Modelos por rol"}
                 {sec === "agentes" && "Agentes"}
                 {sec === "checks" && "Checks"}
                 {sec === "github" && "GitHub"}
-                {sec === "apariencia" && "Apariencia"}
               </button>
             )
           )}
@@ -232,11 +228,24 @@ export default function SettingsPage() {
                   <p className="mt-1 text-xs text-ink-3">Cómo reparte y reintenta el trabajo el motor.</p>
                 </div>
                 <div className="divide-y divide-line-soft">
-                  <SettingRow label="Concurrencia" desc="Tareas que se ejecutan a la vez en cada lote.">
+                  <SettingRow label="Concurrencia" desc="Tareas que se ejecutan a la vez al empezar.">
                     <Stepper
                       value={concurrency}
                       onChange={(val) => {
                         setConcurrency(val);
+                        handleChange();
+                      }}
+                      min={1}
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="Concurrencia máxima"
+                    desc="Tope de la concurrencia adaptativa: sube si todo va bien y baja si se agota la cuota."
+                  >
+                    <Stepper
+                      value={maxConcurrency}
+                      onChange={(val) => {
+                        setMaxConcurrency(val);
                         handleChange();
                       }}
                       min={1}
@@ -279,65 +288,6 @@ export default function SettingsPage() {
               </section>
             )}
 
-            {section === "modelos" && (
-              <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
-                <div className="border-b border-line px-5 py-3">
-                  <h2 className="text-sm font-semibold text-ink">Modelos por rol</h2>
-                  <p className="mt-1 text-xs text-ink-3">Quién planifica, revisa y supervisa.</p>
-                </div>
-                <div className="divide-y divide-line-soft">
-                  <SettingRow label="Planner" desc="Descompone el objetivo en tareas.">
-                    <select
-                      value={planner}
-                      onChange={(e) => {
-                        setPlanner(e.target.value as AgentChoice);
-                        handleChange();
-                      }}
-                      className="rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none"
-                    >
-                      {AGENT_CHOICES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </SettingRow>
-                  <SettingRow label="Reviewer" desc="Valida cada tarea contra sus criterios.">
-                    <select
-                      value={reviewer}
-                      onChange={(e) => {
-                        setReviewer(e.target.value as AgentChoice);
-                        handleChange();
-                      }}
-                      className="rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none"
-                    >
-                      {AGENT_CHOICES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </SettingRow>
-                  <SettingRow label="Supervisor" desc="Decide continuar, replanificar, pausar o fallar.">
-                    <select
-                      value={supervisor}
-                      onChange={(e) => {
-                        setSupervisor(e.target.value as AgentChoice);
-                        handleChange();
-                      }}
-                      className="rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none"
-                    >
-                      {AGENT_CHOICES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </SettingRow>
-                </div>
-              </section>
-            )}
-
             {section === "agentes" && (
               <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
                 <div className="border-b border-line px-5 py-3">
@@ -351,6 +301,8 @@ export default function SettingsPage() {
                     const spec = choiceToAgent(choice.value);
                     const connected = agentConnected(spec.provider);
                     const marked = defaultAgents.includes(choice.value);
+                    const locksFileWriter =
+                      marked && canWriteFiles(spec) && selectedFileWriterCount <= 1;
 
                     return (
                       <div
@@ -380,6 +332,12 @@ export default function SettingsPage() {
                           <input
                             type="checkbox"
                             checked={marked}
+                            disabled={locksFileWriter}
+                            title={
+                              locksFileWriter
+                                ? "Debe quedar al menos un agente que escriba archivos (Codex o Claude)."
+                                : undefined
+                            }
                             onChange={(event) => {
                               setDefaultAgents((current) =>
                                 event.target.checked
@@ -388,7 +346,7 @@ export default function SettingsPage() {
                               );
                               handleChange();
                             }}
-                            className="h-4 w-4 accent-primary"
+                            className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
                           />
                           <span className="text-xs text-ink-3">
                             Marcado por defecto
@@ -397,6 +355,17 @@ export default function SettingsPage() {
                       </div>
                     );
                   })}
+
+                  {missingFileWriter && (
+                    <p
+                      role="status"
+                      className="py-3 text-xs text-danger-text"
+                    >
+                      Añade Codex o Claude a los marcados por defecto: sin un
+                      agente que escriba archivos, las tareas de código no podrán
+                      completarse.
+                    </p>
+                  )}
 
                   <div className="space-y-2 py-3">
                     <div className="text-sm font-medium text-ink">
@@ -447,7 +416,9 @@ export default function SettingsPage() {
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">Checks</h2>
                   <p className="mt-1 text-xs text-ink-3">
-                    Scripts que se ejecutan sobre cada tarea.
+                    Scripts que se ejecutan sobre cada tarea. Además, siempre se
+                    verifica la instalación y se arranca el servidor de
+                    desarrollo si existe.
                   </p>
                 </div>
                 <div className="divide-y divide-line-soft px-5 py-4">
@@ -544,37 +515,6 @@ export default function SettingsPage() {
                       Sin definir
                     </div>
                   )}
-                </SettingRow>
-              </section>
-            )}
-
-            {section === "apariencia" && (
-              <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
-                <div className="border-b border-line px-5 py-3">
-                  <h2 className="text-sm font-semibold text-ink">Apariencia</h2>
-                  <p className="mt-1 text-xs text-ink-3">
-                    Se guarda en este navegador, no en la configuración del motor.
-                  </p>
-                </div>
-                <SettingRow label="Tema">
-                  <div className="inline-flex gap-1 rounded-xl bg-muted p-1">
-                    {(["system", "light", "dark"] as const).map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setTheme(option)}
-                        className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
-                          theme === option
-                            ? "bg-surface text-ink shadow-sm"
-                            : "bg-transparent text-ink-3"
-                        }`}
-                      >
-                        {option === "system" && "Sistema"}
-                        {option === "light" && "Claro"}
-                        {option === "dark" && "Oscuro"}
-                      </button>
-                    ))}
-                  </div>
                 </SettingRow>
               </section>
             )}

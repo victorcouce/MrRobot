@@ -18,6 +18,8 @@ interface AttachmentUploadProps {
   onAdd: (attachment: ProcessedAttachment) => void;
   onRemove: (id: string) => void;
   disabled?: boolean;
+  /** Muestra u oculta la zona de arrastre; la lista de adjuntos se mantiene. */
+  showDropzone?: boolean;
 }
 
 const ALLOWED_TYPES = {
@@ -55,6 +57,7 @@ export function AttachmentUpload({
   onAdd,
   onRemove,
   disabled,
+  showDropzone = true,
 }: AttachmentUploadProps) {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +144,7 @@ export function AttachmentUpload({
 
   return (
     <div className="space-y-3">
+      {showDropzone && (
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -175,6 +179,7 @@ export function AttachmentUpload({
           </div>
         </div>
       </div>
+      )}
 
       {error && (
         <div className="text-sm text-danger bg-danger-soft rounded-md p-3">

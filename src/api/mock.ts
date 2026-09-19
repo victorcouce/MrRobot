@@ -1,6 +1,8 @@
 import type { AgentCandidate } from "../agents/types.js";
+import type { GrillMessage, GrillOutcome } from "../grill/types.js";
 import type { ProjectDeps } from "../projects/service.js";
 import type { Storage } from "../storage/types.js";
+import type { TaskInstructionMessage } from "../tasks/instructions.js";
 import type { WorkspaceManager } from "../workspace/types.js";
 
 export type MockScenario = "success" | "replan" | "fail";
@@ -67,6 +69,84 @@ function delay(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
+/**
+ * Entrevista simulada para el modo mock: una ronda de preguntas y luego el
+ * cierre, de modo que el flujo del grill se puede probar sin agentes reales.
+ */
+export function mockGrill(messages: GrillMessage[]): GrillOutcome {
+  const answeredRounds = messages.filter((m) => m.role === "user").length;
+
+  if (answeredRounds === 0) {
+    return {
+      status: "questions",
+      questions: [
+        {
+          id: "Q1",
+          title: "Stack",
+          body: "¿Qué stack prefieres para la interfaz?",
+          options: [
+            "React + Vite + TypeScript",
+            "Next.js + TypeScript",
+            "HTML + CSS + JavaScript",
+          ],
+          recommendation: "React + Vite + TypeScript",
+        },
+        {
+          id: "Q2",
+          title: "Persistencia",
+          body: "¿Dónde se guardan los datos?",
+          options: ["localStorage", "IndexedDB", "Backend con API"],
+          recommendation: "localStorage",
+        },
+      ],
+      message: [
+        "Ronda 1",
+        "",
+        "Q1 — Stack: ¿Qué stack prefieres para la interfaz?",
+        "   - React + Vite + TypeScript",
+        "   - Next.js + TypeScript",
+        "   - HTML + CSS + JavaScript",
+        "➡️ Recomendado: React + Vite + TypeScript",
+        "",
+        "Q2 — Persistencia: ¿Dónde se guardan los datos?",
+        "   - localStorage",
+        "   - IndexedDB",
+        "   - Backend con API",
+        "➡️ Recomendado: localStorage",
+      ].join("\n"),
+    };
+  }
+
+  return {
+    status: "done",
+    summary: "App web con React + Vite + TypeScript, datos en localStorage y tests.",
+  };
+}
+
+/**
+ * Respuesta simulada del protocolo de instrucciones: la primera instrucción del
+ * usuario se acepta (`proceed`); si vuelve a preguntar, el agente pide una
+ * aclaración para cerrar el bucle sin agentes reales.
+ */
+export function mockTaskInstruction(
+  messages: TaskInstructionMessage[],
+): { action: "proceed" | "ask"; reply: string; questions?: string[] } {
+  const userTurns = messages.filter((message) => message.role === "user").length;
+
+  if (userTurns <= 1) {
+    return {
+      action: "proceed",
+      reply: "Entendido. Cambiaré la aproximación y reintentaré la tarea.",
+    };
+  }
+
+  return {
+    action: "ask",
+    reply: "Para cambiar la aproximación necesito una aclaración.",
+    questions: ["¿Qué enfoque prefieres: más simple o más completo?"],
+  };
+}
+
 export function createMockWorkspace(): WorkspaceManager {
   let commits = 0;
   let workspaces = 0;
@@ -85,6 +165,10 @@ export function createMockWorkspace(): WorkspaceManager {
       };
     },
     commit: async () => {
+      commits += 1;
+      return `mock-commit-${commits}`;
+    },
+    squash: async () => {
       commits += 1;
       return `mock-commit-${commits}`;
     },

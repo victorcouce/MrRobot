@@ -34,6 +34,34 @@ export function isAgentAllowed(
   return allowed.some((candidate) => agentKey(candidate) === key);
 }
 
+/**
+ * Solo Codex y Claude escriben en el worktree. DeepSeek solo devuelve texto,
+ * así que una lista de permitidos sin ninguno de los dos no puede completar
+ * tareas de código.
+ */
+const FILE_WRITING_PROVIDERS: ReadonlySet<AgentProvider> = new Set([
+  "codex",
+  "claude",
+]);
+
+export function canWriteFiles(agent: AgentSpec): boolean {
+  return FILE_WRITING_PROVIDERS.has(agent.provider);
+}
+
+export function hasFileWritingAgent(agents: AgentSpec[]): boolean {
+  return agents.some(canWriteFiles);
+}
+
+export const MISSING_FILE_WRITING_AGENT =
+  "La selección de agentes debe ser válida: incluye al menos uno que escriba " +
+  "archivos (Codex o Claude). DeepSeek solo devuelve texto y no completa tareas de código.";
+
+export function assertFileWritingAgent(agents: AgentSpec[]): void {
+  if (agents.length > 0 && !hasFileWritingAgent(agents)) {
+    throw new Error(MISSING_FILE_WRITING_AGENT);
+  }
+}
+
 export const DEEPSEEK_FLASH: AgentSelection = {
   provider: "deepseek",
   model: "deepseek-flash",
@@ -163,4 +191,31 @@ export function describeAgent(agent: AgentSelection): string {
   }
 
   return agent.model ? `${agent.provider} / ${agent.model}` : agent.provider;
+}
+
+const COMPLEXITY_ORDER: Record<TaskComplexity, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+};
+
+/**
+ * Complejidad más alta del conjunto de tareas. Los roles de orquestación la usan
+ * para elegir el tramo de la matriz cuando no tienen una tarea concreta.
+ */
+export function maxComplexity(
+  tasks: Array<{ complexity?: TaskComplexity }>,
+): TaskComplexity | undefined {
+  let max: TaskComplexity | undefined;
+
+  for (const task of tasks) {
+    if (!task.complexity) continue;
+
+    if (!max || COMPLEXITY_ORDER[task.complexity] > COMPLEXITY_ORDER[max]) {
+      max = task.complexity;
+    }
+  }
+
+  return max;
 }

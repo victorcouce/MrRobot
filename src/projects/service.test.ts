@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { CheckResult } from "../checks/types.js";
 import { InMemoryStorage } from "../storage/memory.js";
+import type { Task } from "../tasks/types.js";
 import type { WorkspaceManager } from "../workspace/types.js";
 import {
   buildProjectResult,
   createProject,
+  mergeReplan,
   recoverInterrupted,
+  recoverInterruptedProjects,
   runProject,
+  shouldSkipReview,
+  wantsDevSmoke,
   type ProjectDeps,
 } from "./service.js";
 import type { Project } from "./types.js";
@@ -51,6 +57,21 @@ const planWithExtra = {
   ],
 };
 
+const singleTaskPlan = {
+  summary: "plan único",
+  tasks: [
+    {
+      id: "TASK-001",
+      title: "única",
+      description: "única",
+      type: "coding",
+      complexity: "low",
+      dependsOn: [],
+      acceptanceCriteria: [],
+    },
+  ],
+};
+
 function fakeWorkspace(conflictOn?: string): WorkspaceManager {
   let commits = 0;
   let workspaces = 0;
@@ -69,6 +90,10 @@ function fakeWorkspace(conflictOn?: string): WorkspaceManager {
       };
     },
     commit: async () => {
+      commits += 1;
+      return `commit-${commits}`;
+    },
+    squash: async () => {
       commits += 1;
       return `commit-${commits}`;
     },
@@ -155,6 +180,179 @@ test("conflicto de integración Git bloquea la tarea y el proyecto", async () =>
   assert.ok(events.some((event) => event.type === "git.conflict"));
 });
 
+test("wantsDevSmoke solo cuando la tarea menciona el arranque", () => {
+  assert.equal(
+    wantsDevSmoke({
+      id: "T",
+      title: "t",
+      description: "Ejecutar 'npm run dev' y comprobar el servidor",
+      status: "ready",
+      type: "coding",
+      complexity: "low",
+    }),
+    true,
+  );
+
+  assert.equal(
+    wantsDevSmoke({
+      id: "T",
+      title: "t",
+      description: "Añade un endpoint de suma",
+      status: "ready",
+      type: "coding",
+      complexity: "low",
+      acceptanceCriteria: ["npm test pasa"],
+    }),
+    false,
+  );
+});
+
+test("mergeReplan reemplaza una tarea fallida si el planner la redefine", () => {
+  const existing: Task[] = [
+    {
+      id: "TASK-001",
+      title: "a",
+      description: "a",
+      status: "done",
+      type: "coding",
+      complexity: "low",
+    },
+    {
+      id: "TASK-006",
+      title: "viejo",
+      description: "verificación manual",
+      status: "failed",
+      type: "testing",
+      complexity: "low",
+      acceptanceCriteria: ["Comprobar manualmente el flujo"],
+    },
+  ];
+
+  const merged = mergeReplan(existing, {
+    summary: "replan",
+    tasks: [
+      {
+        id: "TASK-006",
+        title: "nuevo",
+        description: "tests automatizados",
+        type: "testing",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: ["npm test pasa"],
+        attachments: [],
+      },
+    ],
+  });
+
+  const task6 = merged.find((task) => task.id === "TASK-006");
+  assert.equal(task6?.title, "nuevo");
+  assert.deepEqual(task6?.acceptanceCriteria, ["npm test pasa"]);
+  assert.equal(task6?.status, "todo");
+});
+
+test("mergeReplan conserva una tarea fallida que el planner no redefine", () => {
+  const existing: Task[] = [
+    {
+      id: "TASK-006",
+      title: "viejo",
+      description: "verificación manual",
+      status: "failed",
+      type: "testing",
+      complexity: "low",
+      acceptanceCriteria: ["Comprobar manualmente el flujo"],
+    },
+  ];
+
+  const merged = mergeReplan(existing, {
+    summary: "replan",
+    tasks: [
+      {
+        id: "TASK-007",
+        title: "extra",
+        description: "extra",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: [],
+        attachments: [],
+      },
+    ],
+  });
+
+  const task6 = merged.find((task) => task.id === "TASK-006");
+  assert.equal(task6?.title, "viejo");
+  assert.equal(task6?.status, "todo");
+});
+
+test("integra las dependencias transitivas en orden topológico", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const chainPlan = {
+    summary: "cadena",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "a",
+        description: "a",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: [],
+      },
+      {
+        id: "TASK-002",
+        title: "b",
+        description: "b",
+        type: "coding",
+        complexity: "low",
+        dependsOn: ["TASK-001"],
+        acceptanceCriteria: [],
+      },
+      {
+        id: "TASK-003",
+        title: "c",
+        description: "c",
+        type: "coding",
+        complexity: "low",
+        dependsOn: ["TASK-002"],
+        acceptanceCriteria: [],
+      },
+    ],
+  };
+
+  const integrations = new Map<string, string[]>();
+  let commits = 0;
+
+  const workspace: WorkspaceManager = {
+    ...fakeWorkspace(),
+    commit: async () => {
+      commits += 1;
+      return `commit-${commits}`;
+    },
+    integrateDependencies: async (taskId, dependencyCommits, baseRef) => {
+      integrations.set(
+        taskId,
+        dependencyCommits.map((entry) => entry.taskId),
+      );
+      return { ok: true, ref: baseRef, branchName: `integration/${taskId}` };
+    },
+  };
+
+  const deps: ProjectDeps = {
+    ...baseDeps(storage, workspace),
+    plannerExecute: async () => JSON.stringify(chainPlan),
+  };
+
+  const project = await createProject({ goal: "cadena" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+  assert.deepEqual(integrations.get("TASK-001"), []);
+  assert.deepEqual(integrations.get("TASK-002"), ["TASK-001"]);
+  assert.deepEqual(integrations.get("TASK-003"), ["TASK-001", "TASK-002"]);
+});
+
 test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
@@ -188,6 +386,73 @@ test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   const finished = await runProject("proj-crash", deps);
   assert.equal(finished.status, "completed");
   assert.equal(finished.tasks[0]?.status, "done");
+});
+
+test("crash recovery: planning vuelve a draft y running a paused", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const deps = baseDeps(storage, fakeWorkspace());
+
+  const now = new Date();
+  const planning: Project = {
+    id: "proj-planning",
+    name: "planning",
+    goal: "x",
+    status: "planning",
+    baseRef: "base0",
+    tasks: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+  const running: Project = {
+    id: "proj-running",
+    name: "running",
+    goal: "x",
+    status: "running",
+    baseRef: "base0",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "base",
+        description: "base",
+        status: "running",
+        type: "coding",
+        complexity: "low",
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  };
+  const ready: Project = {
+    id: "proj-ready",
+    name: "ready",
+    goal: "x",
+    status: "ready",
+    baseRef: "base0",
+    tasks: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await storage.saveProject(planning);
+  await storage.saveProject(running);
+  await storage.saveProject(ready);
+
+  const recovered = await recoverInterruptedProjects(deps);
+  assert.equal(recovered.length, 2);
+
+  const storedPlanning = await storage.getProject("proj-planning");
+  assert.equal(storedPlanning?.status, "draft");
+
+  const storedRunning = await storage.getProject("proj-running");
+  assert.equal(storedRunning?.status, "paused");
+  assert.equal(storedRunning?.tasks[0]?.status, "interrupted");
+
+  const storedReady = await storage.getProject("proj-ready");
+  assert.equal(storedReady?.status, "ready");
+
+  const events = await storage.listEvents("proj-planning");
+  assert.ok(events.some((event) => event.type === "project.recovered"));
 });
 
 test("progreso incremental: las tareas completadas se persisten antes de terminar la ronda", async () => {
@@ -227,6 +492,144 @@ test("progreso incremental: las tareas completadas se persisten antes de termina
   await runProject(project.id, deps);
 
   assert.equal(snapshot, "TASK-001:done,TASK-002:running");
+});
+
+test("los agentes marcados al crear el proyecto se aplican a las tareas del plan", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const workspace = fakeWorkspace();
+
+  const executed: unknown[] = [];
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace,
+    plannerExecute: async () => JSON.stringify(planA),
+    workerExecute: async (_prompt, agent) => {
+      executed.push(agent);
+      return "ok";
+    },
+    reviewerExecute: async () =>
+      JSON.stringify({ approved: true, summary: "ok", issues: [] }),
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject(
+    {
+      goal: "crear librería",
+      defaultAllowedAgents: [{ provider: "codex" }],
+    },
+    deps,
+  );
+
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+  assert.ok(executed.length > 0);
+  // Las tareas son coding/low, que por defecto irían a deepseek-flash; la
+  // restricción del proyecto debe redirigirlas a codex.
+  assert.ok(
+    executed.every((agent) => (agent as { provider: string }).provider === "codex"),
+  );
+});
+
+test("createProject: rechaza una selección de agentes sin ninguno que escriba archivos", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const deps: ProjectDeps = {
+    storage,
+    plannerExecute: async () => JSON.stringify(planA),
+  };
+
+  await assert.rejects(
+    createProject(
+      {
+        goal: "crear algo",
+        defaultAllowedAgents: [
+          { provider: "deepseek", model: "deepseek-flash" },
+        ],
+      },
+      deps,
+    ),
+    /escriba archivos/,
+  );
+});
+
+test("shouldSkipReview: solo en tareas low sin criterios con checks en verde", () => {
+  const task = {
+    id: "TASK-001",
+    title: "t",
+    description: "d",
+    status: "done",
+    type: "coding",
+    complexity: "low",
+    acceptanceCriteria: [],
+  } as Task;
+
+  const ok: CheckResult = { command: "npm run test", success: true };
+  const fail: CheckResult = { command: "npm run test", success: false };
+
+  assert.equal(shouldSkipReview(task, [ok]), true);
+  assert.equal(shouldSkipReview(task, []), false);
+  assert.equal(
+    shouldSkipReview({ ...task, acceptanceCriteria: ["x"] }, [ok]),
+    false,
+  );
+  assert.equal(shouldSkipReview({ ...task, complexity: "medium" }, [ok]), false);
+  assert.equal(shouldSkipReview(task, [fail]), false);
+});
+
+test("review→fix: el segundo ciclo parte del commit del primero", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const createBases: Array<{ taskId: string; baseRef: string }> = [];
+  const base = fakeWorkspace();
+  const workspace: WorkspaceManager = {
+    ...base,
+    create: async (taskId, attempt, baseRef) => {
+      createBases.push({ taskId, baseRef });
+      return base.create(taskId, attempt, baseRef);
+    },
+  };
+
+  let reviewCalls = 0;
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace,
+    plannerExecute: async () => JSON.stringify(singleTaskPlan),
+    workerExecute: async () => "ok",
+    reviewerExecute: async () => {
+      reviewCalls += 1;
+      return JSON.stringify(
+        reviewCalls === 1
+          ? {
+              approved: false,
+              summary: "no cumple",
+              issues: [{ severity: "high", description: "falta algo" }],
+            }
+          : { approved: true, summary: "ok", issues: [] },
+      );
+    },
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject({ goal: "x" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+  assert.equal(reviewCalls, 2);
+
+  // Se ignoran los worktrees de checks (`TASK-001-checks`).
+  const bases = createBases
+    .filter((entry) => entry.taskId === "TASK-001")
+    .map((entry) => entry.baseRef);
+
+  // El primer ciclo parte de la base; el segundo, del commit del primero.
+  assert.deepEqual(bases, ["base0", "commit-1"]);
 });
 
 test("replanificación: el supervisor añade una tarea y el proyecto completa", async () => {

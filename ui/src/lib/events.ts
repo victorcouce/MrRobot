@@ -36,11 +36,11 @@ function payloadString(payload: unknown): string | undefined {
 export function describeEvent(event: ProjectEvent): EventDescriptor {
   switch (event.type) {
     case "task.started":
-      return { category: "tasks", title: `${event.taskId ?? "Task"} started` };
+      return { category: "tasks", title: `${event.taskId ?? "Tarea"} en curso` };
     case "task.completed":
       return {
         category: "tasks",
-        title: `${event.taskId ?? "Task"} completed`,
+        title: `${event.taskId ?? "Tarea"} aprobada`,
         detail: typeof event.payload === "object"
           ? (event.payload as { commit?: string }).commit?.slice(0, 7)
           : undefined,
@@ -48,59 +48,83 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
     case "task.failed":
       return {
         category: "tasks",
-        title: `${event.taskId ?? "Task"} failed`,
+        title: `${event.taskId ?? "Tarea"} fallida`,
         detail: payloadString(event.payload),
       };
     case "task.review_passed":
       return {
         category: "reviews",
-        title: `${event.taskId ?? "Task"} review passed`,
+        title: `${event.taskId ?? "Tarea"} · review aprobado`,
       };
     case "task.review_failed":
       return {
         category: "reviews",
-        title: `${event.taskId ?? "Task"} review failed`,
+        title: `${event.taskId ?? "Tarea"} · review no aprobado`,
         detail: payloadString(event.payload),
+      };
+    case "task.instruction":
+      return {
+        category: "tasks",
+        title: `${event.taskId ?? "Tarea"} · instrucción`,
+        detail:
+          typeof event.payload === "object"
+            ? (event.payload as { instructions?: string }).instructions
+            : undefined,
+      };
+    case "task.instruction_reply":
+      return {
+        category: "tasks",
+        title: `${event.taskId ?? "Tarea"} · respuesta`,
+        detail:
+          typeof event.payload === "object"
+            ? (event.payload as { reply?: string }).reply
+            : undefined,
       };
     case "git.conflict":
       return {
         category: "git",
-        title: `Git conflict${taskLabel(event)}`,
+        title: `Conflicto de integración${taskLabel(event)}`,
         detail: payloadString(event.payload),
       };
     case "supervisor.replan":
       return {
         category: "system",
-        title: "Supervisor: replanning required",
+        title: "El supervisor replanificó",
         detail: payloadString(event.payload),
       };
     case "plan.started":
-      return { category: "system", title: "Plan generation started" };
+      return { category: "system", title: "Generando el plan" };
     case "plan.generated":
       return {
         category: "system",
-        title: "Plan generated",
+        title: "Plan generado",
         detail: payloadString(event.payload),
       };
     case "plan.updated":
-      return { category: "system", title: `Plan updated${taskLabel(event)}` };
+      return { category: "system", title: `Plan actualizado${taskLabel(event)}` };
     case "project.created":
-      return { category: "system", title: "Project created" };
+      return { category: "system", title: "Proyecto creado" };
     case "project.started":
-      return { category: "system", title: "Project started" };
+      return { category: "system", title: "Ejecución iniciada" };
     case "project.paused":
-      return { category: "system", title: "Project paused" };
+      return { category: "system", title: "Ejecución en pausa" };
     case "project.resumed":
-      return { category: "system", title: "Project resumed" };
+      return { category: "system", title: "Ejecución reanudada" };
     case "project.config_updated":
-      return { category: "system", title: "Project settings updated" };
+      return { category: "system", title: "Ajustes del proyecto actualizados" };
     case "project.completed":
       return {
         category: "system",
-        title: "Project completed",
+        title: "Proyecto completado",
         detail: typeof event.payload === "object"
           ? (event.payload as { branch?: string }).branch
           : undefined,
+      };
+    case "project.recovered":
+      return {
+        category: "system",
+        title: "Proyecto recuperado",
+        detail: payloadString(event.payload),
       };
     case "project.error":
       return {

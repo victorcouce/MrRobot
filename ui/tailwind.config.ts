@@ -19,10 +19,10 @@ const config: Config = {
         "ink-2": "#44444B",
         "ink-3": "#55555C",
         "ink-4": "#6E6E76",
-        primary: "#3346E0",
-        "primary-hover": "#2233B8",
-        "primary-soft": "#EEF0FD",
-        "primary-soft-text": "#2F3FC8",
+        primary: "#D1FE17",
+        "primary-hover": "#B8E600",
+        "primary-soft": "#F7FEDD",
+        "primary-soft-text": "#5A6B00",
         success: "#1E7A4C",
         "success-soft": "#E8F4EC",
         "success-text": "#1E6B43",
@@ -51,7 +51,7 @@ const config: Config = {
           "Menlo",
           "monospace",
         ],
-        display: ["var(--font-display)", "Georgia", "serif"],
+        display: ["var(--font-display)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       boxShadow: {
         block: "0 1px 2px rgba(22,22,26,0.04), 0 12px 32px -18px rgba(22,22,26,0.14)",
@@ -65,11 +65,16 @@ const config: Config = {
       },
       animation: {
         "pulse-dot": "pulse-dot 1.6s ease-in-out infinite",
+        "slide-up": "slide-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
       keyframes: {
         "pulse-dot": {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.3" },
+        },
+        "slide-up": {
+          "0%": { opacity: "0", transform: "translateY(16px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
       },
     },

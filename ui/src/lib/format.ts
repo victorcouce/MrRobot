@@ -18,6 +18,7 @@ export function clockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -46,4 +47,16 @@ export function truncate(value: string, max = 80): string {
 
 export function shortSha(sha: string | undefined): string {
   return sha ? sha.slice(0, 7) : "—";
+}
+
+/** Nombre corto y estable para un proyecto nuevo a partir de su objetivo. */
+export function autoProjectName(goal: string): string {
+  return (
+    goal
+      .split(/\s+/)
+      .slice(0, 3)
+      .join("-")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "") || "proyecto"
+  );
 }

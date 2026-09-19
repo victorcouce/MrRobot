@@ -82,8 +82,12 @@ export function buildProjectGraph(deps: ProjectDeps) {
     try {
       const newPlan = await planProject(project.goal, context, {
         execute: deps.plannerExecute,
-        agent: config.plannerAgent,
+        ...(project.defaultAllowedAgents?.length
+          ? { allowedAgents: project.defaultAllowedAgents }
+          : {}),
         maxAttempts: config.plannerMaxAttempts,
+        maxRetriesPerAgent: config.maxRetriesPerAgent,
+        ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
       });
 
       const merged = mergeReplan(project.tasks, newPlan);
@@ -142,7 +146,14 @@ export function buildProjectGraph(deps: ProjectDeps) {
           (task) => task.integrationError,
         ),
       },
-      { execute: deps.supervisorExecute, agent: config.supervisorAgent },
+      {
+        execute: deps.supervisorExecute,
+        ...(project.defaultAllowedAgents?.length
+          ? { allowedAgents: project.defaultAllowedAgents }
+          : {}),
+        maxRetriesPerAgent: config.maxRetriesPerAgent,
+        ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
+      },
     );
 
     const supervisorRun = {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
 import {
@@ -10,9 +11,17 @@ import {
   updateChatAllowedAgents as updateChatAllowedAgentsInService,
   type CreateChatInput,
 } from "../chats/service.js";
-import { buildAgentMatrix, TASK_COMPLEXITIES } from "../agents/selector.js";
+import {
+  assertFileWritingAgent,
+  buildAgentMatrix,
+  TASK_COMPLEXITIES,
+} from "../agents/selector.js";
 import { getFallbackChain } from "../agents/fallback.js";
+import { runAgent } from "../agents/router.js";
+import type { AgentCandidate } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/index.js";
+import { runGrill } from "../grill/grill.js";
+import type { GrillMessage, GrillOutcome } from "../grill/types.js";
 import { loadConfig, mergeConfig } from "../config/index.js";
 import type { Project } from "../projects/types.js";
 import {
@@ -22,6 +31,7 @@ import {
   emitProjectEvent,
   generatePlan,
   pauseProject,
+  recoverInterruptedProjects as recoverInterruptedProjectsInService,
   resumeProject,
   runProject,
   type CreateProjectInput,
@@ -41,6 +51,7 @@ import {
   type ImportProjectInput,
 } from "../projects/import.js";
 import { PreviewManager } from "../preview/preview.js";
+import type { RunOptions } from "../providers/types.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import { createPgliteStorage } from "../storage/pglite.js";
 import type {
@@ -60,8 +71,15 @@ import type {
   SearchResults,
 } from "../../shared/types.js";
 import type { Task } from "../tasks/types.js";
+import { askTaskAgent, type TaskInstructionMessage, type TaskInstructionOutcome } from "../tasks/instructions.js";
 import { checkAgentAvailability } from "./availability.js";
-import { createMockDeps, createMockWorkspace, type MockScenario } from "./mock.js";
+import {
+  createMockDeps,
+  createMockWorkspace,
+  mockGrill,
+  mockTaskInstruction,
+  type MockScenario,
+} from "./mock.js";
 import type { FallbackChainInput } from "./parse.js";
 import {
   computeStats,
@@ -84,6 +102,27 @@ export interface RuntimeOptions {
 }
 
 export class ProjectNotFoundError extends Error {}
+
+/**
+ * Ejecutor de un rol de orquestación (planner/reviewer/supervisor/grill). Fija
+ * el `cwd` al repo del proyecto para que el CLI inspeccione el repositorio
+ * correcto en vez del directorio del servidor, y en modo solo lectura: estos
+ * roles no deben modificar el repo (el worker escribe en su worktree).
+ */
+export function roleExecutor(
+  cwd: string | undefined,
+  execute: (
+    prompt: string,
+    agent: AgentCandidate,
+    options?: RunOptions,
+  ) => Promise<string> = runAgent,
+): (prompt: string, agent: AgentCandidate) => Promise<string> {
+  return (prompt, agent) =>
+    execute(prompt, agent, {
+      ...(cwd ? { cwd } : {}),
+      sandbox: "read-only",
+    });
+}
 
 function broadcastStorage(
   storage: Storage,
@@ -179,25 +218,45 @@ export class Runtime {
     if (this.mockDeps) {
       return this.mockDeps;
     }
-    return { storage: this.storage, workspace: this.workspace };
+    return {
+      storage: this.storage,
+      workspace: this.workspace,
+      // Evento efímero: solo va al bus/SSE, no se persiste en el event log.
+      onAgentOutput: (projectId, taskId, chunk) => {
+        const event: ProjectEvent = {
+          id: randomUUID(),
+          projectId,
+          taskId,
+          type: "task.output",
+          payload: { chunk },
+          createdAt: new Date(),
+        };
+        this.bus.emit("event", event);
+      },
+    };
   }
 
   private async depsFor(projectId: string): Promise<ProjectDeps> {
     const base = this.baseDeps();
 
-    if (!this.mockDeps && base.workspace) {
-      const project = await this.storage.getProject(projectId);
-
-      if (project?.repoPath) {
-        return {
-          ...base,
-          workspace: createGitWorkspaceManager(project.repoPath),
-          config: this.config,
-        };
-      }
+    if (this.mockDeps) {
+      return { ...base, config: this.config };
     }
 
-    return { ...base, config: this.config };
+    const project = await this.storage.getProject(projectId);
+    const repoPath = project?.repoPath ?? this.repoCwd;
+    const execute = roleExecutor(repoPath);
+
+    return {
+      ...base,
+      ...(project?.repoPath
+        ? { workspace: createGitWorkspaceManager(project.repoPath) }
+        : {}),
+      plannerExecute: execute,
+      reviewerExecute: execute,
+      supervisorExecute: execute,
+      config: this.config,
+    };
   }
 
   private mustGetProject(projectId: string): Promise<Project> {
@@ -234,18 +293,20 @@ export class Runtime {
     const c = this.config;
     return {
       concurrency: c.concurrency,
+      maxConcurrency: c.maxConcurrency ?? c.concurrency,
       maxRetriesPerAgent: c.maxRetriesPerAgent,
       maxReviewFixCycles: c.maxReviewFixCycles,
       plannerMaxAttempts: c.plannerMaxAttempts,
-      plannerAgent: serializeAgent(c.plannerAgent),
-      reviewerAgent: serializeAgent(c.reviewerAgent),
-      supervisorAgent: serializeAgent(c.supervisorAgent),
       checks: { commands: [...c.checks.commands] },
       defaultAllowedAgents: (c.defaultAllowedAgents ?? []).map(serializeAgent),
     };
   }
 
   updateConfig(overrides: Partial<OrchestratorConfig>): ConfigInfo {
+    if (overrides.defaultAllowedAgents) {
+      assertFileWritingAgent(overrides.defaultAllowedAgents);
+    }
+
     this.config = mergeConfig(this.config, overrides);
     return this.configInfo();
   }
@@ -280,6 +341,29 @@ export class Runtime {
     } as Task;
 
     return getFallbackChain(task, input.allowedAgents ?? []).map(serializeAgent);
+  }
+
+  async grill(
+    goal: string,
+    messages: GrillMessage[],
+    repoPath?: string,
+    allowedAgents?: AgentCandidate[],
+  ): Promise<GrillOutcome> {
+    if (this.mock) {
+      return mockGrill(messages);
+    }
+
+    return runGrill(
+      goal,
+      messages,
+      {
+        execute: roleExecutor(repoPath ?? this.repoCwd),
+        maxRetriesPerAgent: this.config.maxRetriesPerAgent,
+        ...(this.config.limitRetry ? { limitRetry: this.config.limitRetry } : {}),
+        ...(allowedAgents && allowedAgents.length > 0 ? { allowedAgents } : {}),
+      },
+      repoPath,
+    );
   }
 
   async search(rawQuery: string): Promise<SearchResults> {
@@ -333,6 +417,16 @@ export class Runtime {
       .map(serializeSummary);
   }
 
+  /**
+   * Recupera los proyectos que quedaron en un estado transitorio
+   * (`planning`/`running`) tras un reinicio del servidor. Se llama al arrancar,
+   * antes de aceptar peticiones.
+   */
+  async recoverInterruptedProjects(): Promise<ProjectSummary[]> {
+    const recovered = await recoverInterruptedProjectsInService(this.baseDeps());
+    return recovered.map((entry) => serializeSummary(entry.project));
+  }
+
   async getProject(projectId: string) {
     const project = await this.mustGetProject(projectId);
     return serializeProject(project);
@@ -354,6 +448,10 @@ export class Runtime {
     input: CreateProjectInput,
     configOverrides?: Partial<OrchestratorConfig>,
   ) {
+    if (configOverrides?.defaultAllowedAgents) {
+      assertFileWritingAgent(configOverrides.defaultAllowedAgents);
+    }
+
     const config =
       configOverrides && Object.keys(configOverrides).length > 0
         ? mergeConfig(this.config, configOverrides)
@@ -366,6 +464,7 @@ export class Runtime {
       deps = { ...this.mockDeps, config: this.config };
     } else {
       let workspace = this.workspace;
+      let repoPath = this.repoCwd;
 
       if (input.repoPath) {
         const prepared = await prepareProjectRepo(
@@ -374,9 +473,18 @@ export class Runtime {
         );
         effective = { ...input, repoPath: prepared.root };
         workspace = createGitWorkspaceManager(prepared.root);
+        repoPath = prepared.root;
       }
 
-      deps = { storage: this.storage, workspace, config: this.config };
+      const execute = roleExecutor(repoPath);
+      deps = {
+        storage: this.storage,
+        workspace,
+        plannerExecute: execute,
+        reviewerExecute: execute,
+        supervisorExecute: execute,
+        config: this.config,
+      };
     }
 
     const project = await createProjectDraft(
@@ -398,7 +506,7 @@ export class Runtime {
     return listFinalBranches(repoPath);
   }
 
-  async generatePlan(projectId: string) {
+  async generatePlan(projectId: string, instructions?: string) {
     const project = await this.mustGetProject(projectId);
 
     if (project.status === "running" || project.status === "completed") {
@@ -417,8 +525,12 @@ export class Runtime {
       await emitProjectEvent(this.storage, projectId, "plan.started");
     }
 
+    const context = instructions?.trim()
+      ? { instructions: instructions.trim() }
+      : {};
+
     this.runInBackground(projectId, async () => {
-      await generatePlan(projectId, await this.depsFor(projectId));
+      await generatePlan(projectId, await this.depsFor(projectId), context);
     });
 
     return this.getProject(projectId);
@@ -477,9 +589,9 @@ export class Runtime {
   async resume(projectId: string) {
     const project = await this.mustGetProject(projectId);
 
-    if (project.status !== "paused") {
+    if (project.status !== "paused" && project.status !== "blocked") {
       throw new Error(
-        `Solo se puede reanudar un proyecto pausado (estado actual: ${project.status}).`,
+        `Solo se puede reanudar un proyecto pausado o bloqueado (estado actual: ${project.status}).`,
       );
     }
 
@@ -611,6 +723,85 @@ export class Runtime {
   async removeTask(projectId: string, taskId: string) {
     const project = await removeTaskFromPlan(projectId, taskId, this.baseDeps());
     return serializeProject(project);
+  }
+
+  async sendTaskInstructions(
+    projectId: string,
+    taskId: string,
+    instructions: string,
+  ): Promise<TaskInstructionOutcome> {
+    const project = await this.mustGetProject(projectId);
+    const task = project.tasks.find((entry) => entry.id === taskId);
+
+    if (!task) {
+      throw new Error(`La tarea ${taskId} no existe en el proyecto.`);
+    }
+
+    if (task.status !== "failed" && task.status !== "blocked") {
+      throw new Error(
+        `Solo se pueden enviar instrucciones a tareas fallidas o bloqueadas (estado actual: ${task.status}).`,
+      );
+    }
+
+    const events = await this.storage.listEvents(projectId);
+    const history: TaskInstructionMessage[] = events
+      .filter((event) => event.taskId === taskId)
+      .filter(
+        (event) =>
+          event.type === "task.instruction" ||
+          event.type === "task.instruction_reply",
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((event) => {
+        const payload = event.payload as
+          | { instructions?: string; reply?: string }
+          | undefined;
+
+        if (event.type === "task.instruction") {
+          return { role: "user" as const, content: payload?.instructions ?? "" };
+        }
+
+        return { role: "assistant" as const, content: payload?.reply ?? "" };
+      })
+      .filter((message) => message.content.length > 0);
+
+    await emitProjectEvent(this.storage, projectId, "task.instruction", taskId, {
+      instructions,
+    });
+
+    let allowedAgents: AgentCandidate[] = project.defaultAllowedAgents ?? [];
+
+    if (task.chatId) {
+      const chat = await this.storage.getChat(task.chatId);
+      if (chat?.allowedAgents?.length) {
+        allowedAgents = chat.allowedAgents;
+      }
+    }
+
+    const outcome = this.mock
+      ? mockTaskInstruction([
+          ...history,
+          { role: "user", content: instructions },
+        ])
+      : await askTaskAgent(task, history, instructions, {
+          execute: roleExecutor(project.repoPath ?? this.repoCwd),
+          maxRetriesPerAgent: this.config.maxRetriesPerAgent,
+          ...(this.config.limitRetry ? { limitRetry: this.config.limitRetry } : {}),
+          ...(allowedAgents.length ? { allowedAgents } : {}),
+        });
+
+    await emitProjectEvent(
+      this.storage,
+      projectId,
+      "task.instruction_reply",
+      taskId,
+      {
+        reply: outcome.reply,
+        ...(outcome.questions ? { questions: outcome.questions } : {}),
+      },
+    );
+
+    return outcome;
   }
 
   async listChats(projectId: string) {

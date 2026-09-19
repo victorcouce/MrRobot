@@ -2,6 +2,7 @@ import { isAbsolute } from "node:path";
 import type { AgentSpec } from "../agents/types.js";
 import type { CreateChatInput } from "../chats/service.js";
 import type { OrchestratorConfig } from "../config/index.js";
+import type { GrillMessage } from "../grill/types.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
 import type { ImportProjectInput } from "../projects/import.js";
 import type {
@@ -369,11 +370,74 @@ export function parseChatMessage(body: Record<string, unknown>): ParsedChatMessa
   return parsed;
 }
 
+export interface ParsedGrillInput {
+  goal: string;
+  messages: GrillMessage[];
+  repoPath?: string;
+  allowedAgents?: AgentSpec[];
+}
+
+export function parseGrillInput(body: Record<string, unknown>): ParsedGrillInput {
+  const goal = body["goal"];
+
+  if (typeof goal !== "string" || !goal.trim()) {
+    throw new Error('El campo "goal" debe ser un texto no vacío.');
+  }
+
+  const rawMessages = body["messages"] ?? [];
+  if (!Array.isArray(rawMessages)) {
+    throw new Error('El campo "messages" debe ser un array.');
+  }
+
+  const messages: GrillMessage[] = rawMessages.map((item) => {
+    if (typeof item !== "object" || item === null) {
+      throw new Error("Cada mensaje del grill debe ser un objeto.");
+    }
+
+    const obj = item as Record<string, unknown>;
+    const role = obj["role"];
+    const content = obj["content"];
+
+    if (role !== "user" && role !== "assistant") {
+      throw new Error('El campo "role" del mensaje debe ser "user" o "assistant".');
+    }
+
+    if (typeof content !== "string" || !content.trim()) {
+      throw new Error('El campo "content" del mensaje debe ser un texto no vacío.');
+    }
+
+    return { role, content: content.trim() };
+  });
+
+  const parsed: ParsedGrillInput = { goal: goal.trim(), messages };
+  const repoPath = body["repoPath"];
+
+  if (typeof repoPath === "string" && repoPath.trim()) {
+    parsed.repoPath = repoPath.trim();
+  }
+
+  if (body["allowedAgents"] !== undefined) {
+    parsed.allowedAgents = parseAllowedAgents(body["allowedAgents"]);
+  }
+
+  return parsed;
+}
+
 export interface FallbackChainInput {
   type: TaskType;
   complexity: TaskComplexity;
   agent?: AgentSpec;
   allowedAgents?: AgentSpec[];
+}
+
+export function parseTaskInstructions(body: Record<string, unknown>): string {
+  const instructions = body["instructions"];
+
+  if (typeof instructions !== "string" || !instructions.trim()) {
+    throw new Error('El campo "instructions" debe ser un texto no vacío.');
+  }
+
+  return instructions.trim();
 }
 
 export function parseFallbackChainInput(
@@ -421,6 +485,7 @@ export function parseConfigOverrides(
 
   for (const field of [
     "concurrency",
+    "maxConcurrency",
     "maxRetriesPerAgent",
     "maxReviewFixCycles",
     "plannerMaxAttempts",
@@ -431,16 +496,6 @@ export function parseConfigOverrides(
       throw new Error(`El campo "${field}" debe ser un entero positivo.`);
     }
     (overrides as Record<string, unknown>)[field] = value;
-  }
-
-  for (const field of ["plannerAgent", "reviewerAgent", "supervisorAgent"] as const) {
-    const value = body[field];
-    if (value === undefined) continue;
-    const agent = parseAgent(value);
-    if (!agent) {
-      throw new Error(`El campo "${field}" requiere un agente concreto (no auto).`);
-    }
-    (overrides as Record<string, unknown>)[field] = agent;
   }
 
   const checks = body["checks"];

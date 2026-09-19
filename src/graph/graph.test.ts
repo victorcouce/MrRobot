@@ -69,6 +69,10 @@ function fakeWorkspace(): WorkspaceManager {
       commits += 1;
       return `commit-${commits}`;
     },
+    squash: async () => {
+      commits += 1;
+      return `commit-${commits}`;
+    },
     remove: async () => {},
     diff: async () => "",
     integrateDependencies: async (_taskId, _commits, baseRef) => ({

@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import type { Project, ProjectPreview } from "../../lib/types";
+import { Block } from "../ui/Block";
+import { Pill } from "../ui/Chip";
 import { Button, Spinner } from "../ui/Button";
+import { ExternalIcon, StopIcon } from "../ui/icons";
 
 const POLL_INTERVAL_MS = 1500;
 const ACTIVE_STATUSES = new Set(["starting", "installing", "running"]);
@@ -15,13 +18,13 @@ function isActive(preview: ProjectPreview | null): boolean {
 function statusLabel(preview: ProjectPreview | null): string {
   switch (preview?.status) {
     case "installing":
-      return "Instalando dependencias…";
+      return "Instalando dependencias";
     case "starting":
-      return "Levantando el servidor…";
+      return "Levantando el servidor";
     case "running":
-      return "Preview en marcha";
+      return "En marcha";
     case "failed":
-      return "El preview falló";
+      return "Falló";
     default:
       return "Sin preview activo";
   }
@@ -79,84 +82,99 @@ export function PreviewPanel({ project }: { project: Project }) {
   }
 
   const active = isActive(preview);
-  const runningUrl =
-    preview?.status === "running" ? preview.url : undefined;
+  const runningUrl = preview?.status === "running" ? preview.url : undefined;
+  const hasLog = Boolean(preview?.log && preview.log.trim().length > 0);
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-            Preview
-          </h3>
-          <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+    <Block aria-label="Preview">
+      <div className="flex items-center justify-between gap-4 border-b border-line px-[18px] py-3 pr-3.5">
+        <div className="flex items-center gap-2.5 text-sm font-semibold text-ink">
+          Preview
+          <Pill
+            className={
+              active
+                ? "bg-success-soft text-success-text"
+                : "bg-muted text-ink-3"
+            }
+          >
+            {active && (
+              <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-success" />
+            )}
             {statusLabel(preview)}
-          </p>
+          </Pill>
         </div>
-
-        <div className="flex items-center gap-2">
-          {active && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
-              <Spinner className="h-3.5 w-3.5" />
-              {preview?.command ?? ""}
-            </span>
-          )}
-
+        <div className="flex shrink-0 items-center gap-2">
           {runningUrl && (
             <a
               href={runningUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-surface transition-colors hover:bg-primary-hover"
+              aria-label="Abrir preview"
+              className="inline-flex items-center gap-1.5 px-2.5 font-mono text-[13px] text-primary hover:text-primary-hover"
             >
-              Abrir preview
+              {runningUrl.replace(/^https?:\/\//, "")}
+              <ExternalIcon />
             </a>
           )}
-
-          {!active && (
+          {active ? (
             <Button
-              variant="primary"
+              variant="secondary"
+              size="sm"
+              loading={busy}
+              onClick={() => void run(() => api.stopPreview(project.id))}
+            >
+              <StopIcon />
+              Detener
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
               loading={busy}
               onClick={() => void run(() => api.startPreview(project.id))}
             >
               {preview?.status === "failed" ? "Reintentar" : "Abrir preview"}
             </Button>
           )}
-
-          {active && (
-            <Button
-              variant="danger"
-              loading={busy}
-              onClick={() => void run(() => api.stopPreview(project.id))}
-            >
-              Detener
-            </Button>
-          )}
         </div>
       </div>
 
-      {error && (
-        <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-          {error}
-        </p>
-      )}
+      <div className="flex justify-center bg-muted p-5">
+        <div className="flex h-[300px] w-full flex-col overflow-hidden rounded-[12px] border border-line-strong bg-surface">
+          <div className="flex h-[30px] items-center gap-1.5 border-b border-line-soft px-3">
+            <span className="h-[7px] w-[7px] rounded-full bg-line-strong" />
+            <span className="h-[7px] w-[7px] rounded-full bg-line-strong" />
+            <span className="h-[7px] w-[7px] rounded-full bg-line-strong" />
+            <span className="ml-2 font-mono text-[11px] text-ink-4">
+              {runningUrl ? runningUrl : "[Vista previa en vivo del proyecto]"}
+            </span>
+          </div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden">
+            {runningUrl ? (
+              <iframe
+                src={runningUrl}
+                title="Vista previa del proyecto"
+                className="h-full w-full border-0"
+              />
+            ) : active ? (
+              <Spinner className="h-5 w-5 text-ink-4" />
+            ) : (
+              <span className="text-[12.5px] text-ink-4">
+                {preview?.error ?? "Sin preview activo"}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
-      {preview?.error && !error && (
-        <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-          {preview.error}
-        </p>
+      {(error || hasLog) && (
+        <div className="bg-ink px-[18px] py-3 font-mono text-[12px] leading-[1.7] text-line-strong">
+          {error && <div className="text-danger">{error}</div>}
+          {hasLog && (
+            <pre className="whitespace-pre-wrap">{preview?.log}</pre>
+          )}
+        </div>
       )}
-
-      {preview?.log && preview.log.trim().length > 0 && (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-zinc-400">
-            Log
-          </summary>
-          <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-200">
-            {preview.log}
-          </pre>
-        </details>
-      )}
-    </div>
+    </Block>
   );
 }

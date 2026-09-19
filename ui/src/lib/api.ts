@@ -7,6 +7,8 @@ import type {
   ChatSummary,
   ConfigInfo,
   FolderCheck,
+  GrillMessage,
+  GrillResponse,
   Project,
   ProjectEvent,
   ProjectPreview,
@@ -17,6 +19,7 @@ import type {
   SupervisorRun,
   Task,
   TaskComplexity,
+  TaskInstructionOutcome,
   TaskType,
 } from "./types";
 
@@ -141,8 +144,11 @@ export const api = {
       body: JSON.stringify(config),
     }),
 
-  generatePlan: (id: string) =>
-    request<Project>(`/api/projects/${id}/plan`, { method: "POST" }),
+  generatePlan: (id: string, instructions?: string) =>
+    request<Project>(`/api/projects/${id}/plan`, {
+      method: "POST",
+      body: JSON.stringify(instructions ? { instructions } : {}),
+    }),
 
   run: (id: string) =>
     request<Project>(`/api/projects/${id}/run`, { method: "POST" }),
@@ -195,6 +201,15 @@ export const api = {
     request<Project>(`/api/projects/${id}/tasks/${taskId}`, {
       method: "DELETE",
     }),
+
+  sendTaskInstructions: (id: string, taskId: string, instructions: string) =>
+    request<TaskInstructionOutcome>(
+      `/api/projects/${id}/tasks/${taskId}/instructions`,
+      {
+        method: "POST",
+        body: JSON.stringify({ instructions }),
+      },
+    ),
 
   listChats: (id: string) =>
     request<ChatSummary[]>(`/api/projects/${id}/chats`),
@@ -292,6 +307,17 @@ export const api = {
 
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
+
+  grill: (input: {
+    goal: string;
+    messages: GrillMessage[];
+    repoPath?: string;
+    allowedAgents?: AgentSpec[];
+  }) =>
+    request<GrillResponse>("/api/grill", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
 
 export function streamUrl(projectId: string): string {

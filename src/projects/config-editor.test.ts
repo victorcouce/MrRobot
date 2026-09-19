@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEEPSEEK_FLASH } from "../agents/selector.js";
 import { loadConfig } from "../config/index.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import { updateProjectConfig } from "./config-editor.js";
@@ -39,17 +38,17 @@ test("updateProjectConfig hereda del config global si el proyecto no tiene uno",
 
   const updated = await updateProjectConfig(
     "p1",
-    { plannerAgent: DEEPSEEK_FLASH },
+    { maxReviewFixCycles: 5 },
     deps,
   );
 
   assert.equal(updated.config?.concurrency, 5);
   assert.equal(updated.config?.plannerMaxAttempts, 7);
-  assert.equal(updated.config?.plannerAgent.provider, "deepseek");
+  assert.equal(updated.config?.maxReviewFixCycles, 5);
 
   const reloaded = await storage.getProject("p1");
   assert.equal(reloaded?.config?.concurrency, 5);
-  assert.equal(reloaded?.config?.plannerAgent.provider, "deepseek");
+  assert.equal(reloaded?.config?.maxReviewFixCycles, 5);
 
   const events = await storage.listEvents("p1");
   assert.ok(events.some((event) => event.type === "project.config_updated"));
@@ -64,13 +63,13 @@ test("updateProjectConfig parte del config propio del proyecto y conserva checks
 
   const updated = await updateProjectConfig(
     "p1",
-    { reviewerAgent: DEEPSEEK_FLASH },
+    { maxRetriesPerAgent: 3 },
     deps,
   );
 
   assert.equal(updated.config?.concurrency, 9);
   assert.deepEqual(updated.config?.checks.commands, ["npm run lint"]);
-  assert.equal(updated.config?.reviewerAgent.provider, "deepseek");
+  assert.equal(updated.config?.maxRetriesPerAgent, 3);
 });
 
 test("updateProjectConfig rechaza estados no editables", async () => {

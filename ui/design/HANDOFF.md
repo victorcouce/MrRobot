@@ -6,6 +6,7 @@ Este documento y la carpeta `screens/` describen el rediseño completo de la UI 
 
 - `screens/*.html` son la **fuente de verdad visual**: colores, tamaños, radios, espaciados y textos exactos están en los estilos inline y en el `<style>` de cada archivo. Ábrelos en el navegador para verlos.
 - **No copies el HTML tal cual.** Reimplementa con componentes React + Tailwind del proyecto, reutilizando lo que ya existe en `ui/src/components`.
+- `png/` tiene una captura de cada pantalla, con el mismo nombre que su HTML (`1-1-Main.png` ↔ `1-1-Main.html`). Úsalas como referencia visual rápida; ante cualquier diferencia entre imagen y código, **manda el HTML**.
 - Los archivos vienen de un editor de diseño: ignora `<x-dc>`, `<helmet>`, `<script src="./support.js">` y el bloque `<script data-dc-script>`. Los `<sc-for>` / `{{…}}` de `3-2-Plan.html` y `3-3-Run.html` no se rellenan fuera del editor; sus datos de ejemplo están en la sección 5.
 - Los nombres de proyecto, tareas, commits, rutas y eventos son **datos de ejemplo**. En la app salen de la API (`ui/src/lib/api.ts`, tipos en `shared/types.ts`).
 - Todo el copy de la UI está en **español**.

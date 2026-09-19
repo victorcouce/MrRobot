@@ -1,21 +1,18 @@
 "use client";
 
 import type { StoredReview, Task } from "../../lib/types";
-import {
-  COMPLEXITY_LABELS,
-  TASK_TYPE_LABELS,
-} from "../../lib/status";
-import { agentLabel } from "../../lib/api";
-import { shortSha } from "../../lib/format";
+import { COMPLEXITY_LABELS, TASK_TYPE_LABELS } from "../../lib/status";
+import { monoAgentLabel } from "../../lib/agents";
+import { formatDuration, shortSha } from "../../lib/format";
 import {
   Block,
-  BlockContent,
   BlockFooter,
   BlockHeader,
   BlockKV,
   StatusPill,
 } from "../ui/Block";
 import { Button } from "../ui/Button";
+import { WaveDots } from "../ui/WaveDots";
 import { clsx } from "../../lib/cx";
 
 interface TaskDetailBlockProps {
@@ -25,15 +22,19 @@ interface TaskDetailBlockProps {
   onDelete?: () => void;
 }
 
-function AttemptDot({ status }: { status: "success" | "failed" }) {
-  return (
-    <div
-      className={clsx(
-        "h-1.5 w-1.5 rounded-full flex-shrink-0",
-        status === "success" ? "bg-success" : "bg-danger",
-      )}
-    />
-  );
+function statusPillFor(task: Task) {
+  if (task.status === "done") return <StatusPill status="done" />;
+  if (task.status === "failed") return <StatusPill status="failed" />;
+  if (task.status === "blocked") return <StatusPill status="blocked" />;
+  if (task.status === "running") {
+    return (
+      <span className="flex items-center gap-2">
+        <StatusPill status="running" />
+        <WaveDots className="text-primary" label="Tarea en curso" />
+      </span>
+    );
+  }
+  return null;
 }
 
 export function TaskDetailBlock({
@@ -45,175 +46,132 @@ export function TaskDetailBlock({
   const taskReviews = reviews.filter((review) => review.taskId === task.id);
   const lastReview = taskReviews[taskReviews.length - 1];
   const attempts = task.attempts ?? [];
-  const lastSuccess = [...attempts].reverse().find((attempt) => attempt.status === "success");
+  const lastSuccess = [...attempts]
+    .reverse()
+    .find((attempt) => attempt.status === "success");
 
   return (
-    <Block>
+    <Block aria-label="Detalle de tarea">
       <BlockHeader
         title={
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-ink-4">{task.id}</span>
-            <span>{task.title}</span>
-          </div>
+          <>
+            <span className="font-mono text-[12.5px] font-medium text-ink-4">
+              {task.id}
+            </span>
+            <span className="truncate">{task.title}</span>
+          </>
         }
-        actions={
-          <div className="flex gap-2">
-            {task.status === "done" && <StatusPill status="done" />}
-            {task.status === "failed" && <StatusPill status="failed" />}
-            {task.status === "blocked" && <StatusPill status="blocked" />}
-            {task.status === "running" && <StatusPill status="running" />}
-          </div>
-        }
+        actions={statusPillFor(task)}
       />
 
-      <BlockContent>
-        <div className="divide-y divide-line-soft space-y-0">
-          <BlockKV label="Tipo · complejidad">
-            {TASK_TYPE_LABELS[task.type] ?? task.type} · {" "}
-            {COMPLEXITY_LABELS[task.complexity] ?? task.complexity}
+      <div className="px-[18px] pt-2.5 pb-1.5">
+        <BlockKV label="Tipo · complejidad">
+          {TASK_TYPE_LABELS[task.type] ?? task.type} ·{" "}
+          {COMPLEXITY_LABELS[task.complexity] ?? task.complexity}
+        </BlockKV>
+
+        {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
+          <BlockKV label="Criterios">
+            <span className="leading-relaxed">
+              {task.acceptanceCriteria.join(" · ")}
+            </span>
           </BlockKV>
+        )}
 
-          {task.acceptanceCriteria && task.acceptanceCriteria.length > 0 && (
-            <BlockKV label="Criterios">
-              <div className="space-y-1 text-sm">
-                {task.acceptanceCriteria.map((criterion, index) => (
-                  <div key={index} className="flex gap-2">
-                    <span className="text-ink-4 flex-shrink-0">·</span>
-                    <span>{criterion}</span>
-                  </div>
-                ))}
-              </div>
-            </BlockKV>
-          )}
+        {task.dependsOn && task.dependsOn.length > 0 && (
+          <BlockKV label="Depende de">
+            <span className="font-mono text-[12px]">
+              {task.dependsOn.join(" · ")}
+            </span>
+          </BlockKV>
+        )}
 
-          {(lastSuccess?.commitSha || task.resultCommit) && (
-            <BlockKV label="Resultado">
-              <div className="font-mono text-xs space-y-0.5">
-                <div>
-                  {shortSha(task.resultCommit ?? lastSuccess?.commitSha)}
-                </div>
-                {lastSuccess?.branchName && (
-                  <div className="text-ink-4">{lastSuccess.branchName}</div>
-                )}
-              </div>
-            </BlockKV>
-          )}
+        {(lastSuccess?.commitSha || task.resultCommit) && (
+          <BlockKV label="Resultado">
+            <span className="font-mono text-[12px]">
+              {shortSha(task.resultCommit ?? lastSuccess?.commitSha)}
+              {lastSuccess?.branchName ? ` · ${lastSuccess.branchName}` : ""}
+            </span>
+          </BlockKV>
+        )}
+      </div>
 
-          {task.dependsOn && task.dependsOn.length > 0 && (
-            <BlockKV label="Depende de">
-              <div className="font-mono text-xs space-x-2">
-                {task.dependsOn.map((dep) => (
-                  <span
-                    key={dep}
-                    className="inline-block bg-muted px-2 py-1 rounded-chip text-ink-2"
-                  >
-                    {dep}
+      {attempts.length > 0 && (
+        <div className="border-t border-line-soft px-[18px] pt-1 pb-2.5">
+          <div className="py-3 pb-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-4">
+            Intentos
+          </div>
+          {attempts.map((attempt, index) => {
+            const start = attempt.startedAt;
+            const end = attempt.finishedAt;
+            return (
+              <div
+                key={index}
+                className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-3 py-2.5"
+              >
+                <span
+                  className={clsx(
+                    "mt-1.5 h-[7px] w-[7px] rounded-full",
+                    attempt.status === "success" ? "bg-success" : "bg-danger",
+                  )}
+                />
+                <span className="flex flex-col gap-0.5 text-[13px]">
+                  <span>
+                    <span className="font-mono text-[12px]">
+                      {monoAgentLabel(attempt.agent)}
+                    </span>{" "}
+                    · intento {attempt.attempt}
                   </span>
-                ))}
+                  {attempt.error && (
+                    <span className="text-[12.5px] text-ink-4">
+                      {attempt.error}
+                    </span>
+                  )}
+                </span>
+                <span className="font-mono text-[11.5px] text-ink-4">
+                  {start && end ? formatDuration(start, end) : "—"}
+                </span>
               </div>
-            </BlockKV>
+            );
+          })}
+        </div>
+      )}
+
+      {lastReview && (
+        <div
+          className={clsx(
+            "border-t border-line-soft px-[18px] py-3 text-[13px]",
+            lastReview.approved
+              ? "bg-success-soft text-success-text"
+              : "bg-danger-soft text-danger-text",
+          )}
+        >
+          <div className="font-medium">
+            {lastReview.approved ? "✓ Review aprobado" : "✗ Review no aprobado"}
+          </div>
+          <p className="mt-0.5 opacity-90">{lastReview.summary}</p>
+          {lastReview.issues.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {lastReview.issues.map((issue, index) => (
+                <li key={index}>· {issue.description}</li>
+              ))}
+            </ul>
           )}
         </div>
+      )}
 
-        {attempts.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-line-soft">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-4 mb-4">
-              Intentos
-            </h4>
-            <div className="space-y-3">
-              {attempts.map((attempt, index) => (
-                <div key={index}>
-                  {index > 0 && (
-                    <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-4">
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                      >
-                        <path
-                          d="M8 3v10m0 0l-3.5-3.5M8 13l3.5-3.5"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      fallback
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between rounded-md border border-line bg-white p-3">
-                    <div className="flex items-center gap-2">
-                      <AttemptDot status={attempt.status} />
-                      <span className="text-xs text-ink-4">#{attempt.attempt}</span>
-                      <span className="font-mono text-sm font-medium text-ink">
-                        {agentLabel(attempt.agent)}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span
-                        className={clsx(
-                          "text-xs font-medium",
-                          attempt.status === "success"
-                            ? "text-success"
-                            : "text-danger",
-                        )}
-                      >
-                        {attempt.status === "success" ? "✓" : "✗"}
-                      </span>
-                      {attempt.error && (
-                        <div className="max-w-[200px] truncate text-xs text-ink-4 mt-1">
-                          {attempt.error}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {lastReview && (
-          <div className="mt-6 pt-4 border-t border-line-soft">
-            <div
-              className={clsx(
-                "rounded-md p-3 text-sm",
-                lastReview.approved
-                  ? "bg-success-soft text-success-text"
-                  : "bg-danger-soft text-danger-text",
-              )}
-            >
-              <div className="font-medium mb-1">
-                {lastReview.approved ? "✓ Aprobada" : "✗ Rechazada"}
-              </div>
-              <p className="text-xs opacity-90">{lastReview.summary}</p>
-              {lastReview.issues.length > 0 && (
-                <ul className="mt-2 space-y-1 text-xs">
-                  {lastReview.issues.map((issue, index) => (
-                    <li key={index}>· {issue.description}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {task.error && (
-          <div className="mt-6 pt-4 border-t border-line-soft">
-            <div className="rounded-md bg-danger-soft p-3 text-sm text-danger-text">
-              <div className="font-medium mb-1">Error</div>
-              <p className="text-xs">{task.error}</p>
-            </div>
-          </div>
-        )}
-      </BlockContent>
+      {(task.status === "failed" || task.status === "blocked") && task.error && (
+        <div className="border-t border-line-soft bg-danger-soft px-[18px] py-3 text-[13px] text-danger-text">
+          <div className="font-medium">Error</div>
+          <p className="mt-0.5">{task.error}</p>
+        </div>
+      )}
 
       <BlockFooter>
-        <span className="text-xs text-ink-4">
+        <span className="text-[12.5px] text-ink-4">
           Se abre desde cualquier tarjeta o ID mencionado
         </span>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           {onEdit && (
             <Button size="sm" variant="ghost" onClick={onEdit}>
               Editar

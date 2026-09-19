@@ -4,8 +4,10 @@ import { mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { AgentCandidate } from "../agents/types.js";
+import type { RunOptions } from "../providers/types.js";
 import type { ProjectEvent } from "../storage/types.js";
-import { Runtime } from "./runtime.js";
+import { roleExecutor, Runtime } from "./runtime.js";
 import { buildApiServer } from "./server.js";
 
 function git(args: string[], cwd: string): Promise<string> {
@@ -105,6 +107,36 @@ test("runtime mock: escenario fail deja el proyecto failed", async () => {
   await runtime.shutdown();
 });
 
+test("runtime mock: instrucciones a una tarea fallida responden y se registran", async () => {
+  const runtime = await Runtime.create({ mock: true, scenario: "fail" });
+
+  const draft = await runtime.createProject({ goal: "x" });
+  await runtime.generatePlan(draft.id);
+  await waitFor(runtime, draft.id, (status) => status === "ready");
+  await runtime.run(draft.id);
+  await waitFor(runtime, draft.id, (status) => status === "failed");
+
+  const failed = await runtime.getProject(draft.id);
+  const failedTask = failed.tasks.find((task) => task.status === "failed");
+  assert.ok(failedTask);
+
+  const outcome = await runtime.sendTaskInstructions(
+    draft.id,
+    failedTask.id,
+    "cambia el enfoque",
+  );
+
+  assert.equal(outcome.action, "proceed");
+  assert.ok(outcome.reply.length > 0);
+
+  const events = await runtime.listEvents(draft.id);
+  const types = events.map((event) => event.type);
+  assert.ok(types.includes("task.instruction"));
+  assert.ok(types.includes("task.instruction_reply"));
+
+  await runtime.shutdown();
+});
+
 test("runtime mock: escenario replan añade tareas", async () => {
   const runtime = await Runtime.create({ mock: true, scenario: "replan" });
 
@@ -125,6 +157,45 @@ test("runtime mock: escenario replan añade tareas", async () => {
   assert.ok(events.some((event) => event.type === "supervisor.replan"));
 
   await runtime.shutdown();
+});
+
+test("roleExecutor corre en el repo del proyecto y en solo lectura", async () => {
+  const calls: Array<{ agent: AgentCandidate; options: RunOptions | undefined }> =
+    [];
+
+  const execute = async (
+    _prompt: string,
+    agent: AgentCandidate,
+    options?: RunOptions,
+  ): Promise<string> => {
+    calls.push({ agent, options });
+    return "ok";
+  };
+
+  const run = roleExecutor("/repo/proyecto", execute);
+  await run("prompt", { provider: "codex" });
+
+  assert.deepEqual(calls[0]?.options, {
+    cwd: "/repo/proyecto",
+    sandbox: "read-only",
+  });
+});
+
+test("roleExecutor sin repo no fija cwd", async () => {
+  const calls: Array<{ options: RunOptions | undefined }> = [];
+
+  const execute = async (
+    _prompt: string,
+    _agent: AgentCandidate,
+    options?: RunOptions,
+  ): Promise<string> => {
+    calls.push({ options });
+    return "ok";
+  };
+
+  await roleExecutor(undefined, execute)("prompt", { provider: "claude" });
+
+  assert.deepEqual(calls[0]?.options, { sandbox: "read-only" });
 });
 
 test("runtime mock: pause y resume", async () => {
@@ -213,6 +284,33 @@ test("api server: flujo HTTP básico con modo mock", async () => {
     await fetch(`${base}/api/projects/${created.id}/events`)
   ).json();
   assert.ok(Array.isArray(events) && events.length > 0);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: POST /api/grill devuelve la entrevista en modo mock", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const response = await fetch(`${base}/api/grill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ goal: "una calculadora", messages: [] }),
+  });
+  assert.equal(response.status, 200);
+
+  const grill = await response.json();
+  assert.equal(grill.status, "questions");
+  assert.ok(Array.isArray(grill.questions) && grill.questions.length > 0);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();
@@ -466,14 +564,14 @@ test("runtime: updateProjectConfig persiste y se expone", async () => {
   assert.equal(draft.config?.concurrency, 4);
 
   const updated = await runtime.updateProjectConfig(draft.id, {
-    plannerAgent: { provider: "deepseek", model: "deepseek-flash" },
+    maxReviewFixCycles: 5,
   });
 
   assert.equal(updated.config?.concurrency, 4);
-  assert.equal(updated.config?.plannerAgent.provider, "deepseek");
+  assert.equal(updated.config?.maxReviewFixCycles, 5);
 
   const reloaded = await runtime.getProject(draft.id);
-  assert.equal(reloaded.config?.plannerAgent.provider, "deepseek");
+  assert.equal(reloaded.config?.maxReviewFixCycles, 5);
 
   const events = await runtime.listEvents(draft.id);
   assert.ok(events.some((event) => event.type === "project.config_updated"));
@@ -481,7 +579,7 @@ test("runtime: updateProjectConfig persiste y se expone", async () => {
   await runtime.shutdown();
 });
 
-test("api server: PATCH /api/projects/:id/config actualiza los modelos", async () => {
+test("api server: PATCH /api/projects/:id/config actualiza la config", async () => {
   const runtime = await Runtime.create({ mock: true });
   const server = buildApiServer(runtime);
 
@@ -504,18 +602,18 @@ test("api server: PATCH /api/projects/:id/config actualiza los modelos", async (
   const response = await fetch(`${base}/api/projects/${created.id}/config`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plannerAgent: "deepseek", concurrency: 3 }),
+    body: JSON.stringify({ maxReviewFixCycles: 5, concurrency: 3 }),
   });
   assert.equal(response.status, 200);
 
   const body = await response.json();
   assert.equal(body.config.concurrency, 3);
-  assert.equal(body.config.plannerAgent.provider, "deepseek");
+  assert.equal(body.config.maxReviewFixCycles, 5);
 
   const invalid = await fetch(`${base}/api/projects/${created.id}/config`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plannerAgent: "auto" }),
+    body: JSON.stringify({ concurrency: 0 }),
   });
   assert.equal(invalid.status, 400);
 
@@ -717,6 +815,37 @@ test("api server: los agentes del proyecto y los adjuntos llegan al cliente", as
   );
   assert.equal(userMessage.attachments?.length, 1);
   assert.equal(userMessage.attachments[0].name, "spec.md");
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
+test("api server: rechaza una selección de agentes sin ninguno que escriba archivos", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const response = await fetch(`${base}/api/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      goal: "crear algo",
+      defaultAllowedAgents: [
+        { provider: "deepseek", model: "deepseek-flash" },
+      ],
+    }),
+  });
+
+  assert.equal(response.status, 400);
+  const body = (await response.json()) as { error?: string };
+  assert.match(body.error ?? "", /escriba archivos/);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();

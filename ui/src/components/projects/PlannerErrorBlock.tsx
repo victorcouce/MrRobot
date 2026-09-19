@@ -2,6 +2,7 @@
 
 import { Block } from "../ui/Block";
 import { Button } from "../ui/Button";
+import { AlertIcon } from "../ui/icons";
 
 interface PlannerErrorBlockProps {
   error: string;
@@ -15,39 +16,29 @@ export function PlannerErrorBlock({
   onReformulate,
 }: PlannerErrorBlockProps) {
   return (
-    <Block>
-      <div className="flex gap-3 p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-danger-soft">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            className="text-danger-text"
-            aria-hidden="true"
-          >
-            <path d="M12 7v6M12 17h.01"></path>
-          </svg>
-        </div>
+    <Block className="shadow-none" aria-label="Error del planner">
+      <div className="flex items-start gap-3 px-[18px] py-4">
+        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-danger-soft text-danger">
+          <AlertIcon />
+        </span>
 
-        <div className="flex-1 space-y-3">
-          <h3 className="text-sm font-semibold text-ink">No pude generar el plan</h3>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="text-[13.5px] font-semibold text-ink">
+            No pude generar el plan
+          </span>
 
-          <p className="font-mono text-xs text-ink-2 leading-relaxed whitespace-pre-wrap break-words">
+          <p className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-ink-2">
             {error}
           </p>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-1.5 pt-1">
             {onRetry && (
-              <Button size="sm" variant="primary" onClick={onRetry}>
+              <Button size="sm" variant="secondary" onClick={onRetry}>
                 Reintentar
               </Button>
             )}
             {onReformulate && (
-              <Button size="sm" variant="secondary" onClick={onReformulate}>
+              <Button size="sm" variant="ghost" onClick={onReformulate}>
                 Reformular mensaje
               </Button>
             )}

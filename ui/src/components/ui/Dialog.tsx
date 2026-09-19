@@ -2,18 +2,23 @@
 
 import { useEffect, type ReactNode } from "react";
 import { clsx } from "../../lib/cx";
+import { CloseIcon } from "./icons";
 
 export function Dialog({
   open,
   onClose,
   title,
+  description,
   children,
+  footer,
   width = "max-w-lg",
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
+  footer?: ReactNode;
   width?: string;
 }) {
   useEffect(() => {
@@ -29,7 +34,7 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 p-4 pt-16"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -37,30 +42,38 @@ export function Dialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={typeof title === "string" ? title : undefined}
         className={clsx(
-          "w-full rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900",
+          "flex w-full flex-col overflow-hidden rounded-[18px] border border-line bg-surface shadow-modal",
           width,
         )}
       >
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-semibold">{title}</h2>
+        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-1">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-semibold text-ink">{title}</h2>
+            {description && (
+              <p className="mt-1 text-[13.5px] leading-normal text-ink-3">
+                {description}
+              </p>
+            )}
+          </div>
           <button
+            type="button"
             onClick={onClose}
-            className="focus-ring rounded p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            className="focus-ring -mr-1.5 -mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-btn text-ink-4 hover:bg-muted hover:text-ink"
             aria-label="Cerrar"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M4 4l8 8M12 4l-8 8"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+            <CloseIcon size={16} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+
+        <div className="flex flex-col gap-4 px-6 py-4">{children}</div>
+
+        {footer && (
+          <div className="flex items-center justify-between gap-2 border-t border-line bg-subtle px-6 py-3.5">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

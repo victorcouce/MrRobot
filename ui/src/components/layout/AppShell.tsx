@@ -1,142 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState, type ReactNode, useEffect } from "react";
-import { api } from "../../lib/api";
-import { useAllChats, useAppInfo, useProjects } from "../../lib/hooks";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+import { useAppInfo, useProjects } from "../../lib/hooks";
 import { clsx } from "../../lib/cx";
 import { PROJECT_STATUS } from "../../lib/status";
 import { DOT_CLASSES } from "../ui/Badge";
-import type { ChatSummary, ProjectSummary } from "../../lib/types";
-import { ThemeToggle } from "./ThemeToggle";
-
-function NavLink({
-  href,
-  active,
-  children,
-  collapsed,
-}: {
-  href: string;
-  active: boolean;
-  children: ReactNode;
-  collapsed?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={clsx(
-        "focus-ring flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-        collapsed ? "justify-center" : "",
-        active
-          ? "bg-muted text-ink dark:bg-zinc-800 dark:text-zinc-100"
-          : "text-ink-3 hover:bg-muted hover:text-ink-2 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
+import { Tooltip } from "../ui/Tooltip";
 
 const NAV_ICONS: Record<string, ReactNode> = {
-  projects: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <rect x="1.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="9.5" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="1.5" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="9.5" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  ),
   agents: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
       <circle cx="5.5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
       <circle cx="10.5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
       <path d="M1.5 13.5c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5M6.5 13.5c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   ),
   activity: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M2 8h2l1.5-4 3 8L10 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   settings: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
+      <circle cx="15" cy="6" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="17" cy="18" r="2" />
     </svg>
   ),
 };
 
 const SEARCH_ICON = (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
     <circle cx="11" cy="11" r="7" />
     <path d="m20 20-3.5-3.5" strokeLinecap="round" />
   </svg>
 );
 
-function ProjectChatGroups({
-  collapsed,
-  pathname,
-}: {
-  collapsed: boolean;
-  pathname: string;
-}) {
+function ProjectChatGroups({ pathname }: { pathname: string }) {
   const { projects } = useProjects();
-  const { chats, refresh } = useAllChats();
-  const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const chatsByProject = useMemo(() => {
-    const map = new Map<string, ChatSummary[]>();
-
-    for (const chat of chats) {
-      const list = map.get(chat.projectId) ?? [];
-      list.push(chat);
-      map.set(chat.projectId, list);
-    }
-
-    for (const list of map.values()) {
-      list.sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
-    }
-
-    return map;
-  }, [chats]);
-
-  const visibleProjects = projects;
-
-  async function createChat(project: ProjectSummary) {
-    setBusyId(project.id);
-    setError(null);
-    try {
-      const chat = await api.createChat(project.id, {});
-      await refresh();
-      router.push(`/projects/${project.id}?chat=${chat.id}`);
-    } catch (createError) {
-      setError(
-        createError instanceof Error ? createError.message : String(createError),
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  if (collapsed) {
-    return (
-      <div className="flex flex-col items-center gap-2">
-        {visibleProjects.map((project) => {
-          const isActive = pathname === `/projects/${project.id}`;
-          const dotColor = DOT_CLASSES[PROJECT_STATUS[project.status].color];
-          return (
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      {projects.map((project) => {
+        const isActive = pathname === `/projects/${project.id}`;
+        const dotColor = DOT_CLASSES[PROJECT_STATUS[project.status].color];
+        return (
+          <Tooltip key={project.id} label={project.name}>
             <Link
-              key={project.id}
               href={`/projects/${project.id}`}
-              title={project.name}
+              aria-label={project.name}
               className={clsx(
-                "focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn border text-ink-2 hover:border-ink hover:text-ink",
+                "focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn border bg-surface text-ink-2 hover:border-ink hover:text-ink",
                 isActive ? "border-ink" : "border-line",
               )}
             >
@@ -147,84 +65,7 @@ function ProjectChatGroups({
                 className={clsx("h-2 w-2 rounded-full absolute bottom-0 right-0", dotColor)}
               />
             </Link>
-          );
-        })}
-      </div>
-    );
-  }
-
-  if (visibleProjects.length === 0) {
-    return (
-      <p className="px-2.5 text-xs text-ink-4">
-        Sin proyectos.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {error && (
-        <p className="rounded-md border border-danger bg-danger-soft px-2 py-1.5 text-xs text-danger-text">
-          {error}
-        </p>
-      )}
-
-      {visibleProjects.map((project) => {
-        const projectChats = chatsByProject.get(project.id) ?? [];
-        const isRunning = project.status === "running";
-        const isActive = pathname === `/projects/${project.id}`;
-        const busy = busyId === project.id;
-
-        return (
-          <div key={project.id} className="space-y-0.5">
-            <div className="flex items-center gap-0.5">
-              <Link
-                href={`/projects/${project.id}`}
-                className={clsx(
-                  "focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm font-medium hover:bg-muted hover:text-ink",
-                  isActive ? "border-ink text-ink" : "border-transparent text-ink-2",
-                )}
-              >
-                <span className="truncate">{project.name}</span>
-              </Link>
-              <button
-                type="button"
-                aria-label={`Nuevo chat en ${project.name}`}
-                title={
-                  isRunning
-                    ? "Pausa el proyecto para crear un chat"
-                    : "Nuevo chat"
-                }
-                disabled={isRunning || busy}
-                onClick={() => void createChat(project)}
-                className="focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-4 transition-colors hover:bg-muted hover:text-ink-2 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-                  <path
-                    d="M6 1.5v9M1.5 6h9"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {projectChats.slice(0, 8).map((chat) => (
-              <Link
-                key={chat.id}
-                href={`/projects/${project.id}?chat=${chat.id}`}
-                className="focus-ring ml-3 flex items-center gap-2 rounded-md px-2.5 py-1 text-sm text-ink-3 hover:bg-muted hover:text-ink-2"
-              >
-                <span className="truncate">{chat.title}</span>
-                {chat.taskIds.length > 0 && (
-                  <span className="ml-auto shrink-0 text-xs tabular-nums text-ink-4">
-                    {chat.taskIds.length}
-                  </span>
-                )}
-              </Link>
-            ))}
-          </div>
+          </Tooltip>
         );
       })}
     </div>
@@ -243,203 +84,84 @@ export function AppShell({
   const pathname = usePathname();
   const { info } = useAppInfo();
   const anyAgentConnected = (info?.agents ?? []).some((agent) => agent.connected);
-  const [collapsed, setCollapsed] = useState(true);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem("mrrobot-sidebar-collapsed");
-    if (stored !== null) {
-      setCollapsed(stored === "true");
-    }
-  }, []);
-
-  const toggleCollapsed = () => {
-    const newState = !collapsed;
-    setCollapsed(newState);
-    localStorage.setItem("mrrobot-sidebar-collapsed", String(newState));
-  };
-
-  if (!mounted) {
-    return <div className="flex h-screen overflow-hidden" />;
-  }
-
-  const sidebarWidth = collapsed ? "w-16" : "w-[272px]";
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      <aside
-        className={clsx(
-          "flex shrink-0 flex-col border-r border-line bg-sidebar transition-all duration-200",
-          sidebarWidth,
-        )}
-      >
-        <div
-          className={clsx(
-            "flex h-14 items-center gap-2 px-3",
-            collapsed ? "justify-center" : "px-4",
-          )}
-        >
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-ink text-xs font-bold text-surface">
-            M
-          </span>
-          {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight text-ink">
-              MrRobot
-            </span>
-          )}
+      <aside className="flex w-16 shrink-0 flex-col overflow-hidden whitespace-nowrap border-r border-line bg-sidebar pt-3">
+        <div className="flex h-12 w-16 items-center justify-center gap-2 px-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-btn bg-[#E1DFD8]">
+            <Image
+              src="/logo.png"
+              alt="MrRobot"
+              width={32}
+              height={32}
+              priority
+              className="h-8 w-8 shrink-0"
+            />
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 px-2 mb-2">
-          <button
-            onClick={toggleCollapsed}
-            className="focus-ring flex items-center justify-center rounded-btn border border-line bg-surface p-1.5 text-ink-3 hover:bg-muted hover:text-ink-2"
-            aria-label={collapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              {collapsed ? (
-                <path d="M9 4v16M13 10l2 2-2 2" strokeLinecap="round" />
-              ) : (
-                <path d="M15 4v16M11 10l-2 2 2 2" strokeLinecap="round" />
-              )}
-            </svg>
-          </button>
-          {collapsed && (
+        <div className="mb-1.5 flex w-16 flex-col items-center gap-1.5 px-2">
+          <Tooltip label="Nuevo proyecto">
             <button
               onClick={() => onNewProject?.()}
-              className="focus-ring flex items-center justify-center rounded-btn bg-primary p-2 text-surface hover:bg-primary-hover"
+              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink hover:bg-muted"
               aria-label="Nuevo proyecto"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                 <path d="M12 5v14M5 12h14" strokeLinecap="round" />
               </svg>
             </button>
-          )}
-          {collapsed && (
+          </Tooltip>
+          <Tooltip label="Buscar">
             <button
               onClick={() => onOpenSearch?.()}
-              className="focus-ring flex items-center justify-center rounded-btn border border-line bg-surface p-1.5 text-ink-3 hover:bg-muted hover:text-ink-2"
+              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink hover:bg-muted"
               aria-label="Buscar"
             >
               {SEARCH_ICON}
             </button>
-          )}
+          </Tooltip>
+          <div className="h-px w-6 bg-line-strong" />
         </div>
 
-        {!collapsed && (
-          <>
-            <div className="px-3 mb-3">
-              <button
-                onClick={() => onNewProject?.()}
-                className="focus-ring flex w-full items-center justify-between gap-2 rounded-btn bg-primary px-3 py-2 text-sm font-medium text-surface hover:bg-primary-hover"
-              >
-                <span className="flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                  </svg>
-                  Nuevo proyecto
-                </span>
-                <kbd className="rounded border border-white/30 px-1.5 py-0.5 font-mono text-[11px] text-surface/80">
-                  ⌘N
-                </kbd>
-              </button>
-            </div>
-            <button
-              onClick={() => onOpenSearch?.()}
-              className="focus-ring mx-3 mb-3 flex items-center gap-2 rounded-btn border border-line-strong bg-surface px-3 py-2 text-sm text-ink-3 hover:bg-muted hover:text-ink-2"
+        <div className="w-16 flex-1 overflow-y-auto px-2">
+          <div className="mb-1.5" />
+          <ProjectChatGroups pathname={pathname} />
+        </div>
+
+        <div className="flex w-16 flex-col items-center gap-1.5 px-2 py-3">
+          <div className="h-px w-6 bg-line-strong" />
+          <Tooltip label="Agentes">
+            <Link
+              href="/agents"
+              aria-label="Agentes"
+              className="focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
             >
-              {SEARCH_ICON}
-              <span className="flex-1 text-left">Buscar</span>
-              <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-ink-4">
-                ⌘K
-              </kbd>
-            </button>
-            <nav className="space-y-0.5 px-3 py-2" aria-label="Principal">
-              <NavLink
-                href="/projects"
-                active={pathname === "/projects"}
-                collapsed={collapsed}
-              >
-                {NAV_ICONS.projects}
-                <span>Proyectos</span>
-              </NavLink>
-              <NavLink
-                href="/agents"
-                active={pathname === "/agents"}
-                collapsed={collapsed}
-              >
-                {NAV_ICONS.agents}
-                <span>Agentes</span>
-              </NavLink>
-              <NavLink
-                href="/activity"
-                active={pathname === "/activity"}
-                collapsed={collapsed}
-              >
-                {NAV_ICONS.activity}
-                <span>Actividad</span>
-              </NavLink>
-            </nav>
-          </>
-        )}
-
-        <div className={clsx("flex-1 overflow-y-auto", collapsed ? "px-2" : "px-3")}>
-          {!collapsed && (
-            <p className="px-2.5 pb-2 text-xs font-semibold uppercase tracking-wider text-ink-4">
-              Proyectos
-            </p>
-          )}
-          {collapsed && <div className="mb-2" />}
-          <ProjectChatGroups collapsed={collapsed} pathname={pathname} />
-        </div>
-
-        <div
-          className={clsx(
-            "border-t border-line py-3",
-            collapsed ? "px-2 flex flex-col items-center gap-2" : "px-3 space-y-0.5",
-          )}
-        >
-          {!collapsed && (
-            <>
-              <NavLink
-                href="/settings"
-                active={pathname === "/settings"}
-                collapsed={collapsed}
-              >
-                {NAV_ICONS.settings}
-                <span>Ajustes</span>
-              </NavLink>
-              <ThemeToggle />
-            </>
-          )}
-          {collapsed && (
-            <>
-              <Link
-                href="/agents"
-                title="Agentes"
-                className="focus-ring relative flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-              >
-                {NAV_ICONS.agents}
-                {anyAgentConnected && (
-                  <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-success" />
-                )}
-              </Link>
-              <Link
-                href="/activity"
-                title="Actividad"
-                className="focus-ring flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-              >
-                {NAV_ICONS.activity}
-              </Link>
-              <Link
-                href="/settings"
-                title="Ajustes"
-                className="focus-ring flex h-8 w-8 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-              >
-                {NAV_ICONS.settings}
-              </Link>
-            </>
-          )}
+              {NAV_ICONS.agents}
+              {anyAgentConnected && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-success" />
+              )}
+            </Link>
+          </Tooltip>
+          <Tooltip label="Actividad">
+            <Link
+              href="/activity"
+              aria-label="Actividad"
+              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
+            >
+              {NAV_ICONS.activity}
+            </Link>
+          </Tooltip>
+          <Tooltip label="Ajustes">
+            <Link
+              href="/settings"
+              aria-label="Ajustes"
+              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
+            >
+              {NAV_ICONS.settings}
+            </Link>
+          </Tooltip>
         </div>
       </aside>
 

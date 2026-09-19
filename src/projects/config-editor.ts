@@ -39,11 +39,7 @@ export async function updateProjectConfig(
   };
 
   await deps.storage.saveProject(updated);
-  await emitProjectEvent(deps.storage, projectId, "project.config_updated", undefined, {
-    plannerAgent: config.plannerAgent,
-    reviewerAgent: config.reviewerAgent,
-    supervisorAgent: config.supervisorAgent,
-  });
+  await emitProjectEvent(deps.storage, projectId, "project.config_updated");
 
   return updated;
 }

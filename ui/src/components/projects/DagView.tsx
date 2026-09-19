@@ -12,7 +12,6 @@ import "@xyflow/react/dist/style.css";
 import { useMemo } from "react";
 import type { Task } from "../../lib/types";
 import { TASK_STATUS } from "../../lib/status";
-import { agentLabel } from "../../lib/api";
 import { clsx } from "../../lib/cx";
 
 const NODE_WIDTH = 208;
@@ -25,13 +24,13 @@ function TaskNodeContent({ task }: { task: Task }) {
   return (
     <div
       className={clsx(
-        "flex h-full w-full flex-col justify-center rounded-md border px-3 text-left",
+        "flex h-full w-full flex-col justify-center gap-[3px] rounded-[12px] border bg-surface px-3 text-left",
         task.status === "running"
-          ? "border-blue-400 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10"
-          : "border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900",
+          ? "border-primary ring-4 ring-primary-soft"
+          : "border-line-strong",
       )}
     >
-      <div className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] text-ink-4">
         <span
           className={clsx(
             "h-1.5 w-1.5 rounded-full",
@@ -39,12 +38,11 @@ function TaskNodeContent({ task }: { task: Task }) {
             statusDotColor(status.color),
           )}
         />
-        <span className="font-mono text-[10px] text-zinc-400">{task.id}</span>
-      </div>
-      <div className="truncate text-xs font-medium text-zinc-800 dark:text-zinc-100">
+        {task.id}
+      </span>
+      <span className="truncate text-[13px] font-medium text-ink">
         {task.title}
-      </div>
-      <div className="text-[10px] text-zinc-400">{agentLabel(task.agent)}</div>
+      </span>
     </div>
   );
 }
@@ -124,7 +122,7 @@ function layout(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
         source: depId,
         target: task.id,
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { stroke: "#a1a1aa", strokeWidth: 1.5 },
+        style: { stroke: "#C9C7BF", strokeWidth: 1.5 },
       });
     }
   }
@@ -143,14 +141,14 @@ export function DagView({
 
   if (tasks.length === 0) {
     return (
-      <div className="flex h-96 items-center justify-center text-sm text-zinc-500">
+      <div className="flex h-96 items-center justify-center text-sm text-ink-4">
         No hay tareas que visualizar.
       </div>
     );
   }
 
   return (
-    <div className="h-[560px] w-full overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+    <div className="h-[460px] w-full overflow-hidden bg-surface">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -161,7 +159,7 @@ export function DagView({
         onNodeClick={(_, node) => onSelect(node.id)}
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={16} />
+        <Background gap={16} color="#ECEBE6" />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

@@ -69,6 +69,7 @@ function fakeWorkspace(dir: string): WorkspaceManager {
       baseRef,
     }),
     commit: async () => undefined,
+    squash: async () => "squashed",
     remove: async () => {},
     diff: async () => "",
     integrateDependencies: async () => ({

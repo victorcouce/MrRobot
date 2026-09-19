@@ -7,7 +7,7 @@ import type {
 import { clsx } from "../../lib/cx";
 
 const CONTROL_CLASSES =
-  "w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+  "w-full rounded-btn border border-line-strong bg-surface px-3 text-[13.5px] text-ink placeholder:text-ink-4 outline-none focus:border-primary";
 
 export function Field({
   label,
@@ -16,22 +16,20 @@ export function Field({
   id,
 }: {
   label: string;
-  hint?: string;
+  hint?: ReactNode;
   children: ReactNode;
   id: string;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
-        className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        className="text-[12.5px] font-medium text-ink-2"
       >
         {label}
       </label>
       {children}
-      {hint && (
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">{hint}</p>
-      )}
+      {hint && <p className="text-[12px] text-ink-4">{hint}</p>}
     </div>
   );
 }
@@ -40,12 +38,7 @@ export function Input({
   className,
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={clsx(CONTROL_CLASSES, "h-9", className)}
-      {...props}
-    />
-  );
+  return <input className={clsx(CONTROL_CLASSES, "h-[38px]", className)} {...props} />;
 }
 
 export function Textarea({
@@ -54,7 +47,7 @@ export function Textarea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={clsx(CONTROL_CLASSES, "py-2 leading-relaxed", className)}
+      className={clsx(CONTROL_CLASSES, "py-2.5 leading-normal", className)}
       {...props}
     />
   );
@@ -67,7 +60,7 @@ export function Select({
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={clsx(CONTROL_CLASSES, "h-9 appearance-none pr-8", className)}
+      className={clsx(CONTROL_CLASSES, "h-[38px] appearance-none pr-8", className)}
       {...props}
     >
       {children}

@@ -1,9 +1,9 @@
 import { errorMessage } from "../agents/fallback.js";
-import { runAgent } from "../agents/router.js";
+import type { LimitRetryPolicy } from "../agents/limit-retry.js";
+import { runRoleAgent } from "../agents/role.js";
 import type { AgentCandidate } from "../agents/types.js";
 import type { CheckResult } from "../checks/types.js";
-import { defaultConfig } from "../config/index.js";
-import type { Task } from "../tasks/types.js";
+import type { Task, TaskComplexity } from "../tasks/types.js";
 import { reviewResultSchema } from "./schema.js";
 import type { ReviewResult } from "./types.js";
 
@@ -18,7 +18,13 @@ export interface ReviewerDeps {
   execute?:
     | ((prompt: string, agent: AgentCandidate) => Promise<string>)
     | undefined;
-  agent?: AgentCandidate | undefined;
+  /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
+  allowedAgents?: AgentCandidate[] | undefined;
+  complexity?: TaskComplexity | undefined;
+  /** Reintentos por agente antes de pasar al siguiente de la cadena. */
+  maxRetriesPerAgent?: number | undefined;
+  /** Reintento de la cadena completa cuando todos caen por límite. */
+  limitRetry?: Partial<LimitRetryPolicy> | undefined;
 }
 
 function buildPrompt(task: Task, context: ReviewContext): string {
@@ -92,12 +98,16 @@ export async function reviewTask(
   context: ReviewContext = {},
   deps: ReviewerDeps = {},
 ): Promise<ReviewResult> {
-  const execute =
-    deps.execute ?? ((prompt, agent) => runAgent(prompt, agent));
-  const agent = deps.agent ?? defaultConfig.reviewerAgent;
-
   try {
-    const raw = await execute(buildPrompt(task, context), agent);
+    const raw = await runRoleAgent(buildPrompt(task, context), "reviewer", {
+      ...(deps.execute ? { execute: deps.execute } : {}),
+      ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
+      complexity: deps.complexity ?? task.complexity,
+      ...(deps.maxRetriesPerAgent !== undefined
+        ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }
+        : {}),
+      ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
+    });
     const json = JSON.parse(extractJson(raw)) as unknown;
     const parsed = reviewResultSchema.safeParse(json);
 

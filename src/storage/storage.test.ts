@@ -31,9 +31,6 @@ function makeProject(): Project {
       maxRetriesPerAgent: 2,
       maxReviewFixCycles: 3,
       plannerMaxAttempts: 2,
-      plannerAgent: { provider: "claude", model: "opus" },
-      reviewerAgent: { provider: "claude", model: "opus" },
-      supervisorAgent: { provider: "codex" },
       checks: { commands: ["test"] },
     },
     tasks: [
@@ -82,8 +79,7 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.equal(loaded.status, "running");
   assert.equal(loaded.tasks.length, 2);
   assert.equal(loaded.config?.concurrency, 4);
-  assert.deepEqual(loaded.config?.plannerAgent, { provider: "claude", model: "opus" });
-  assert.deepEqual(loaded.config?.supervisorAgent, { provider: "codex" });
+  assert.equal(loaded.config?.maxReviewFixCycles, 3);
   assert.deepEqual(loaded.defaultAllowedAgents, [{ provider: "codex" }]);
 
   const task1 = loaded.tasks.find((task) => task.id === "TASK-001");

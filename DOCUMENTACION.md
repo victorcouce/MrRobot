@@ -203,8 +203,8 @@ cd ui && npm install && cd ..   # interfaz gráfica
 Abre **dos terminales** desde la raíz del repo:
 
 ```bash
-# Terminal 1 — backend (API en http://127.0.0.1:4000)
-npm run api
+# Terminal 1 — backend (API en http://127.0.0.1:4000, recarga al cambiar el código)
+npm run dev
 
 # Terminal 2 — interfaz (http://localhost:3000)
 cd ui && npm run dev
@@ -215,7 +215,7 @@ Luego abre **http://localhost:3000**.
 ### Modo mock (sin tokens)
 
 ```bash
-MRROBOT_MOCK=1 npm run api     # Terminal 1
+MRROBOT_MOCK=1 npm run dev     # Terminal 1
 cd ui && npm run dev           # Terminal 2
 ```
 
@@ -223,7 +223,8 @@ cd ui && npm run dev           # Terminal 2
 
 | Script | Comando | Uso |
 |---|---|---|
-| `npm run api` / `npm run dev` | `tsx --env-file=.env src/api/index.ts` | Arranca la API. |
+| `npm run dev` | `tsx watch --env-file=.env src/api/index.ts` | Arranca la API recargando al cambiar el código. |
+| `npm run api` | `tsx --env-file=.env src/api/index.ts` | Arranca la API sin recarga automática. |
 | `npm run demo` | `tsx --env-file=.env src/index.ts` | Demo del scheduler con 2 tareas. |
 | `npm run mrrobot` | `tsx --env-file=.env src/cli/index.ts` | CLI. |
 | `npm test` | `tsx --test src/**/*.test.ts` | Tests del motor. |
@@ -239,16 +240,26 @@ Configuración central en `src/config/index.ts` (`loadConfig`, `mergeConfig`).
 
 ```ts
 {
-  concurrency: 2,             // tareas en paralelo por batch
+  concurrency: 2,             // concurrencia inicial
+  maxConcurrency: 4,          // tope de la concurrencia adaptativa
   maxRetriesPerAgent: 1,      // reintentos por agente (=> hasta 2 intentos)
   maxReviewFixCycles: 2,      // ciclos review/fix (=> hasta 3 ejecuciones)
   plannerMaxAttempts: 2,      // intentos del planner para un plan válido
-  plannerAgent: { provider: "claude", model: "opus" },
-  reviewerAgent: { provider: "claude", model: "opus" },
-  supervisorAgent: { provider: "claude", model: "opus" },
+  limitRetry: {               // reintento de la cadena completa al agotar límites
+    maxLimitRetries: 3,       //   veces que se re-recorre la cadena
+    baseDelayMs: 30000,       //   espera base si no hay "retry after"
+    maxDelayMs: 900000,       //   tope de la espera (15 min)
+  },
   checks: { commands: [] },   // [] => autodetecta scripts npm
+  defaultAllowedAgents: [],   // [] => sin restricción (el usuario los elige en el chat)
 }
 ```
+
+No hay agentes fijos por rol. El usuario elige el conjunto de agentes permitidos
+al lanzar el primer prompt del chat; el motor selecciona el agente por tipo y
+complejidad (`selectAgent`/`getFallbackChain`) tanto para las tareas como para
+los roles de orquestación (planner, reviewer, supervisor, grill e instrucciones)
+a través de `runRoleAgent` (`src/agents/role.ts`).
 
 - `loadConfig(overrides)`: `{ ...defaultConfig, ...overrides, checks: { ...defaultConfig.checks, ...overrides.checks } }`.
 - `mergeConfig(base, overrides)`: igual pero partiendo de `base`.
@@ -354,19 +365,20 @@ ejecutó), `attempts?`, `resultCommit?`, `output?`, `error?`, `startedAt?`,
 
 | Provider | Implementación | Invocación |
 |---|---|---|
-| **Codex** | `src/providers/codex.ts` | `codex exec --sandbox workspace-write <prompt>` (CLI, `execFile`, sin shell). |
+| **Codex** | `src/providers/codex.ts` | `codex exec --sandbox workspace-write <prompt>` (CLI, sin shell). |
 | **Claude** | `src/providers/claude.ts` | `claude -p <prompt>` + `--model sonnet|opus` si se indica modelo. |
 | **DeepSeek** | `src/providers/deepseek.ts` | HTTP con SDK `openai` apuntando a `https://api.deepseek.com`; `chat.completions.create` con un único mensaje de usuario. Modelo por defecto `deepseek-flash`. |
 
 Detalles de `execCli` (`src/providers/exec.ts`):
 
-- Usa `child_process.execFile` (sin shell), `maxBuffer` de 10 MiB.
+- Usa `child_process.spawn` (sin shell) y **emite stdout/stderr en vivo** por
+  `RunOptions.onOutput`, acumulando hasta 10 MiB.
 - Soporta `cwd` (worktree) y `AbortSignal` (cancelación).
 - Tras spawn hace `stdin.end()` porque algunos CLIs (Codex) esperan EOF aunque
   el prompt vaya como argumento.
 - Al fallar: `[<provider>] falló la ejecución (exit code: <code>): <stderr|stdout|message>`.
-- DeepSeek **no** acepta `cwd`/`signal` (no soporta aislamiento por worktree ni
-  cancelación de proceso; se detiene al final del batch).
+- DeepSeek **no** acepta `cwd`/`signal` ni streaming (no soporta aislamiento por
+  worktree ni cancelación de proceso; se detiene al final del batch).
 
 ### 9.2 Selección de agente (`selectAgent`)
 
@@ -410,6 +422,12 @@ Cada cadena tiene **3 candidatos**. Si la tarea define `task.agent`, este se
 Invariante garantizada: `getFallbackChain(task)[0]` es siempre `selectAgent(task)`
 (cuando no hay agente explícito).
 
+La cadena se **restringe a los agentes permitidos** del chat/proyecto
+(`restrictToAllowed`); una lista vacía significa «sin restricción». Los roles de
+orquestación reutilizan estas mismas cadenas mapeando rol → tipo de tarea
+(`runRoleAgent`, `src/agents/role.ts`): planner/supervisor/instrucciones →
+`planning`, reviewer → `review`, grill → `research`.
+
 ### 9.4 Clasificación de errores y disponibilidad
 
 **Retryable** (`isRetryableError`): primero descarta si aparece un patrón **no
@@ -431,10 +449,21 @@ reintentable**; si no, es reintentable solo si coincide un patrón reintentable.
 > que se tratan como no reintentables y provocan **salto inmediato** al
 > siguiente agente de la cadena.
 
+**Reintento de cadena al agotar límites** (`src/agents/limit-retry.ts`): si
+*ningún* candidato pudo ejecutar porque **todos** cayeron por límite
+(`rate_limit`/`usage_limit`), `runTask` y `runRoleAgent` no se rinden: esperan
+(respetando un `retry after N` del proveedor si aparece, o un backoff exponencial)
+y vuelven a recorrer la cadena completa hasta `limitRetry.maxLimitRetries`. Un
+fallo transitorio o de otro tipo desactiva este reintento (no se re-recorre la
+cadena). La espera es cancelable con `AbortSignal`.
+
 **Disponibilidad** (`classifyAvailability`, `src/agents/availability.ts`):
 clasifica en `usage_limit | rate_limit | auth | cli_missing | network | unknown`
-según orden de precedencia. *(Nota: esta función existe pero actualmente no está
-conectada; la API usa `checkAgentAvailability`.)*
+según orden de precedencia. Está conectada a la ejecución: cuando un proveedor
+no está disponible, `runTask` y `runRoleAgent` **saltan al siguiente candidato
+sin reintentarlo** (tiene prioridad sobre `isRetryableError`); si todos caen por
+límite, se aplica el reintento de cadena descrito arriba. La API usa además
+`checkAgentAvailability` para exponer el estado de cada proveedor a la UI.
 
 **Disponibilidad de agentes en la API** (`src/api/availability.ts`):
 
@@ -450,7 +479,8 @@ conectada; la API usa `checkAgentAvailability`.)*
 
 `src/planner/planner.ts` — `planProject(goal, context?, deps?)`.
 
-- **Agente por defecto**: `claude/opus` (config `plannerAgent`).
+- **Agente**: se elige por complejidad y se restringe a los agentes permitidos
+  del proyecto/chat, con cadena de fallback por disponibilidad (`runRoleAgent`).
 - **Intentos**: `plannerMaxAttempts` (por defecto 2). En cada intento construye
   el prompt, ejecuta el agente, extrae y valida el JSON; si falla, reintenta con
   el error como feedback.
@@ -505,7 +535,8 @@ conectada; la API usa `checkAgentAvailability`.)*
 
 `runPlan` es un bucle por **batches** (no un pool deslizante):
 
-1. Resuelve `concurrency` (default 2; entero ≥ 1 o lanza).
+1. Resuelve `concurrency` (default 2; entero ≥ 1 o lanza) y `maxConcurrency`
+   (tope; si no se define, la concurrencia es fija).
 2. `validatePlan`; clona tareas; `updateTaskStatuses`; `onUpdate`.
 3. Bucle:
    - Todas `done` → **`completed`**.
@@ -517,6 +548,10 @@ conectada; la API usa `checkAgentAvailability`.)*
    - `Promise.all` de esas tareas (cada una vía `executeTask`, con try/catch).
    - Según termina cada tarea, pliega su resultado en `current` y llama a
      `onUpdate` (progreso intermedio visible).
+   - **Ajuste de concurrencia** (`nextConcurrency`): si alguna tarea del lote
+     agotó sus agentes por disponibilidad (`classifyAvailability` no disponible)
+     baja a la mitad (mín. 1); si el lote terminó entero `done` sube de uno en
+     uno hasta `maxConcurrency`. Cada cambio se emite por `onConcurrencyChange`.
    - `updateTaskStatuses` de nuevo y siguiente batch.
 4. `executeTask` por defecto es `runTask`. Una tarea que resuelve en un estado
    inesperado (ni `done`/`failed`/`blocked`) se fuerza a `failed`.
@@ -545,10 +580,16 @@ para cada candidato en getFallbackChain(task):        // 3 candidatos
     3. commit del resultado en la branch del intento
     4. eliminar worktree (borrando branch si no hubo commit)
     si éxito -> tarea done con executedBy, output, resultCommit
+    si el proveedor no está disponible (cuota/rate limit/auth/CLI) -> siguiente candidato
     si fallo retryable y quedan intentos -> reintentar mismo candidato
     si fallo no retryable o se agotan intentos -> siguiente candidato
+si TODOS los candidatos cayeron por límite (rate/usage) -> esperar y re-recorrer
+  la cadena hasta limitRetry.maxLimitRetries (retry after del proveedor o backoff)
 si se agotan candidatos -> tarea failed
 ```
+
+Los roles de orquestación (planner, reviewer, supervisor, grill, instrucciones)
+usan el mismo mecanismo vía `runRoleAgent` (`src/agents/role.ts`), sin worktrees.
 
 Detalles:
 
@@ -558,9 +599,22 @@ Detalles:
   lanza `Aislamiento inválido...`.
 - Cada intento registra un `TaskAttempt` (agente, nº, fechas, status, error,
   workspace, branch, baseRef, commitSha).
-- Cada intento parte de un worktree **limpio** desde el mismo `baseRef`: los
-  artefactos parciales de un intento fallido **no** contaminan el siguiente.
+- Cada intento de un mismo agente parte de un worktree **limpio** desde el mismo
+  punto de partida: los artefactos parciales de un intento fallido **no**
+  contaminan el siguiente.
+- **Ciclos de fix**: `runTask` acepta `startRef`. En el primer ciclo el worktree
+  parte de `baseRef`; en los ciclos de review/fix parte del `resultCommit`
+  anterior, de modo que el agente **continúa** el trabajo en vez de rehacerlo.
+  Al terminar, `squash(workspace, baseRef, msg)` reaplica el árbol final como un
+  único commit sobre `baseRef` (con `git reset --soft` + `commit`), para que el
+  cherry-pick de la tarea siga siendo un solo commit. Si el fix no introduce
+  cambios, se conserva el commit anterior.
 - Si `AbortSignal` está abortado → `failed` con `Ejecución cancelada por el usuario.`
+- Una tarea de tipo `coding` que no produce ningún commit (primer intento, sin
+  ciclo de fix) se considera fallida: un proveedor que solo devuelve texto
+  (DeepSeek) no escribe en el worktree y sin este guard el proyecto se marcaría
+  `completed` sin haber creado ningún fichero. La cadena de fallback pasa
+  entonces a un agente capaz de editar (Codex/Claude) o la tarea falla.
 
 ---
 
@@ -571,13 +625,25 @@ Detalles:
 - `detectCheckScripts(dir)`: lee `package.json` y devuelve la intersección de
   `["typecheck", "build", "test"]` con los scripts declarados (en ese orden).
   Si no hay `package.json` o falla el parseo → `[]`.
-- `runProjectChecks(dir, scripts)`: ejecuta `npm run <script>` **en secuencia**
-  con `execFile`; nunca rechaza; trunca stdout/stderr a 4000 caracteres.
+- `ensureDependencies(dir)`: si falta `node_modules`, detecta el gestor
+  (`detectPackageManager`) y ejecuta su `install`. Los checks corren en el
+  worktree del agente (no en uno aparte), así que si el agente ya instaló las
+  dependencias se reutilizan. Es best-effort: si falla, se avisa y se corren
+  igualmente los checks.
+- `runProjectChecks(dir, scripts)`: ejecuta `npm run <script>` con `execFile`;
+  nunca rechaza; trunca stdout/stderr a 4000 caracteres. `build` y `test` se
+  mantienen **en orden** (test puede necesitar el build); el resto (`typecheck`,
+  `lint`…) corre **en paralelo** con esa cadena. Los resultados se devuelven en
+  el orden original.
 - `DEFAULT_CHECK_SCRIPTS = ["typecheck", "build", "test"]`.
 
 ### Reviewer LLM (`src/reviewer/reviewer.ts`)
 
-- `reviewTask(task, context, deps)`: agente por defecto `claude/opus`.
+- `reviewTask(task, context, deps)`: agente elegido por la complejidad de la
+  tarea, restringido a los permitidos y con fallback (`runRoleAgent`).
+- `shouldSkipReview(task, checks)`: omite el review LLM solo si la tarea es
+  `low`, no tiene `acceptanceCriteria` y hay checks que existen y pasan. Si no
+  hay checks, el review sigue siendo la única validación.
 - **Contexto**: `diff` (del commit), `output` (del agente), `checks` (resultados
   locales) y `acceptanceCriteria` (de la tarea).
 - Prompt estricto: `approved` debe ser `false` si algún criterio no se cumple o
@@ -590,9 +656,11 @@ Detalles:
 
 Para cada tarea, hasta `maxReviewFixCycles + 1` iteraciones (default **3**):
 
-1. Ejecuta la tarea (`runTask`) con el feedback acumulado.
-2. Ejecuta los checks locales sobre el `resultCommit` (en un worktree temporal
-   `<task>-checks`, que se elimina al terminar).
+1. Ejecuta la tarea (`runTask`) con el feedback acumulado. A partir del segundo
+   ciclo pasa `startRef = resultCommit` anterior: el agente continúa sobre su
+   propio trabajo y el resultado se aplana en un commit sobre la base.
+2. Ejecuta los checks locales en el worktree del agente, antes de eliminarlo
+   (callback `onWorkspaceSuccess`), reutilizando su `node_modules` si existe.
 3. Obtiene el `diff` del commit.
 4. Llama al reviewer.
 5. **Aprobado** solo si `review.approved === true` **Y** todos los checks pasan.
@@ -607,7 +675,7 @@ Para cada tarea, hasta `maxReviewFixCycles + 1` iteraciones (default **3**):
 
 `src/supervisor/supervisor.ts` — `superviseProject(project, context, deps)`.
 
-- Agente por defecto `claude/opus`.
+- Agente elegido por complejidad, restringido a los permitidos, con fallback.
 - Decide entre: `continue`, `replan` (con `instructions?`), `pause`, `fail`.
 - Prompt con objetivo, resumen del estado de tareas, estado del proyecto,
   trigger, número de fallos y aviso de conflicto de integración.
@@ -714,6 +782,9 @@ colapsan `..`, se quitan prefijos/sufijos `-`/`.`; si queda vacío → `task`.
 ### Operaciones
 
 - `getRepoRoot` / `resolveBaseRef`: `git rev-parse` (`--show-toplevel`, `HEAD`).
+  La raíz se **memoriza por ruta** durante el proceso (se consulta muchas veces
+  por tarea e intento); un fallo no se cachea. `resolveBaseRef` reutiliza la raíz
+  cacheada y solo lanza `rev-parse HEAD`.
 - `prepareProjectRepo(repoPath, remoteUrl?)`: crea la carpeta si no existe,
   `git init` si no es repo, commit inicial vacío si no hay HEAD
   (`chore: initial commit`, identidad `MrRobot <mrrobot@localhost>`), configura
@@ -925,6 +996,7 @@ Capa fina en `src/api` (Node `http`, sin dependencias extra). Base:
 | POST | `/api/projects/:id/tasks` | tarea nueva | `200 Project` |
 | PATCH | `/api/projects/:id/tasks/:taskId` | patch de tarea | `200 Project` |
 | DELETE | `/api/projects/:id/tasks/:taskId` | — | `200 Project` |
+| POST | `/api/projects/:id/tasks/:taskId/instructions` | `{instructions}` | `200 TaskInstructionOutcome` |
 
 ### Detalles de comportamiento
 
@@ -933,6 +1005,10 @@ Capa fina en `src/api` (Node `http`, sin dependencias extra). Base:
 - **Plan/run/resume**: lanzan la ejecución **en segundo plano** y responden
   `202` con el proyecto; los errores se emiten como `project.error`.
 - **Edición de tareas**: solo en estados `draft`/`ready`; valida el DAG.
+- **Instrucciones a una tarea** (`POST .../tasks/:taskId/instructions`): solo
+  para tareas `failed`/`blocked`; pregunta al agente de la tarea, que responde
+  `proceed` (cambia la aproximación) o `ask` (pide aclaraciones al usuario), y
+  registra el intercambio como `task.instruction` / `task.instruction_reply`.
 - **Edición de config**: solo en `draft`/`ready`/`paused`.
 - **Pause**: cooperativo a nivel de batch (las tareas en curso terminan).
 - **Cancel**: aborta los procesos CLI en curso (`AbortSignal`); DeepSeek se
@@ -1138,19 +1214,25 @@ todo → blocked → ready → running → done | failed
 
 ## 26. Event log
 
-Eventos emitidos por el motor (todos persistidos y retransmitidos por SSE):
+Eventos emitidos por el motor (persistidos y retransmitidos por SSE):
 
 ```text
 project.created          project.started         project.paused
-project.resumed          project.completed       project.cancelled
-project.error            project.deleted         project.config_updated
+project.resumed          project.recovered       project.completed
+project.cancelled        project.error           project.deleted
+project.config_updated
 project.pushed           project.push_failed
 plan.started             plan.generated          plan.updated
 task.started             task.completed          task.failed
 task.review_passed       task.review_failed
+task.instruction         task.instruction_reply
 git.conflict             supervisor.replan
 chat.created             chat.message            chat.deleted
 ```
+
+Además, `task.output` es **efímero**: solo va al bus/SSE (no se persiste) y
+transporta la salida del agente en vivo, agrupada cada ~400 ms. La UI la acumula
+por tarea sin recargar el proyecto.
 
 Categorías en la UI: **Tasks**, **Reviews**, **Git**, **System**.
 
@@ -1205,12 +1287,15 @@ Escenarios (`MRROBOT_MOCK_SCENARIO`):
 
 ### 28.3 Flujo con fallback de agente
 
-1. El agente preferido falla (error reintentable) → reintento del mismo agente
-   (`maxRetriesPerAgent`).
+1. El agente preferido falla (error transitorio) → reintento del mismo agente
+   (`maxRetriesPerAgent`). Si el proveedor no está disponible (cuota, rate limit,
+   auth o CLI ausente) se salta directamente al siguiente.
 2. Si sigue fallando o el error es no reintentable (p. ej. cuota/`401`) → salta
    al siguiente agente de la cadena.
 3. Cada intento parte de un worktree limpio.
-4. Si se agotan los 3 candidatos → `task.failed`.
+4. Si **todos** los candidatos caen por límite (rate/usage) → se espera (retry
+   after o backoff) y se re-recorre la cadena hasta `limitRetry.maxLimitRetries`.
+5. Si se agotan los candidatos (o los reintentos de límite) → `task.failed`.
 
 ### 28.4 Flujo de replanificación
 
@@ -1363,7 +1448,6 @@ estado.
   (HTTP) se detiene al final del batch actual.
 - **Activity global**: la página global usa polling ligero (5 s); el stream en
   tiempo real es por proyecto (SSE).
-- **`classifyAvailability`** (agents) existe pero no está conectada.
 - **DeepSeek** no soporta `cwd`/`signal` (sin aislamiento por worktree ni
   cancelación de proceso).
 

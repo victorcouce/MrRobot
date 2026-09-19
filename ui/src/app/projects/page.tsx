@@ -54,7 +54,7 @@ export default function ProjectsPage() {
               </p>
             </div>
             <Link href="/">
-              <button className="inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-4 py-2 text-sm font-medium text-surface hover:bg-primary-hover">
+              <button className="inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-hover">
                 <svg
                   width="16"
                   height="16"
@@ -152,7 +152,7 @@ export default function ProjectsPage() {
                 </p>
                 {!search && !statusFilter && (
                   <Link href="/">
-                    <button className="mt-2 inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-3 py-1.5 text-sm font-medium text-surface hover:bg-primary-hover">
+                    <button className="mt-2 inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-3 py-1.5 text-sm font-medium text-ink hover:bg-primary-hover">
                       <svg
                         width="14"
                         height="14"
