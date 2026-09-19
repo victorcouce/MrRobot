@@ -30,8 +30,20 @@ function colorFor(type: string): string {
 // duración total al verla terminar (`task.completed` / `task.failed`).
 const taskStartedAt = new Map<string, number>();
 
+// Un evento persistido (con `id`) solo se imprime una vez, aunque llegue por
+// SSE y también en la recarga REST que sigue a cada evento: sin esto, abrir
+// la pestaña de un proyecto que ya llevaba un rato en marcha no muestra nada
+// hasta el siguiente evento (lo ya ocurrido solo estaba en el REST, no en el
+// SSE que alimenta la consola).
+const loggedEventIds = new Set<string>();
+
 export function logProjectEvent(event: ProjectEvent): void {
   if (event.type === "task.output") return;
+
+  if (event.id) {
+    if (loggedEventIds.has(event.id)) return;
+    loggedEventIds.add(event.id);
+  }
 
   if (event.type === "task.started" && event.taskId) {
     taskStartedAt.set(event.taskId, new Date(event.createdAt).getTime());
@@ -52,4 +64,15 @@ export function logProjectEvent(event: ProjectEvent): void {
 
   // eslint-disable-next-line no-console
   console.log(`%c[MrRobot] ${line}`, `color:${colorFor(event.type)}`);
+}
+
+/**
+ * Vuelca el histórico (en orden cronológico) más lo que vaya llegando por
+ * SSE: se llama cada vez que se recarga el proyecto, así que si ya se
+ * imprimió un evento (mismo `id`) se ignora.
+ */
+export function logProjectEvents(events: ProjectEvent[]): void {
+  [...events]
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .forEach(logProjectEvent);
 }

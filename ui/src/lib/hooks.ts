@@ -6,7 +6,7 @@ import {
   notifyProjectsChanged,
   subscribeProjectsChanged,
 } from "./project-store";
-import { logProjectEvent } from "./monitor-log";
+import { logProjectEvent, logProjectEvents } from "./monitor-log";
 import { subscribeProject } from "./sse";
 import type {
   AgentMatrixRow,
@@ -209,6 +209,7 @@ export function useProject(id: string, chatId?: string | null): ProjectState {
         ]);
       setProject(project);
       setEvents(events);
+      logProjectEvents(events);
       setReviews(reviews);
       setSupervisorRuns(supervisorRuns);
       setChats(chats);
