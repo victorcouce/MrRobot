@@ -28,7 +28,9 @@ const COMPLEXITY_LABELS: Record<TaskComplexity, string> = {
 function shortAgentLabel(agent: AgentSpec): string {
   if (agent.provider === "codex") return "Codex";
   if (agent.provider === "claude") {
-    return agent.model === "opus" ? "Opus" : "Sonnet";
+    if (agent.model === "opus") return "Opus";
+    if (agent.model === "haiku") return "Haiku";
+    return "Sonnet";
   }
   return agent.model === "deepseek-v4-pro" ? "V4 Pro" : "Flash";
 }

@@ -868,10 +868,13 @@ test("api server: GET /api/agents/matrix coincide con selectAgent", async () => 
 
   const coding = matrix.find((row: { type: string }) => row.type === "coding");
   assert.deepEqual(coding.agents.low, {
-    provider: "deepseek",
-    model: "deepseek-flash",
+    provider: "claude",
+    model: "haiku",
   });
-  assert.deepEqual(coding.agents.high, { provider: "codex" });
+  assert.deepEqual(coding.agents.high, {
+    provider: "claude",
+    model: "haiku",
+  });
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();
@@ -898,7 +901,7 @@ test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", asy
   ).json();
 
   assert.deepEqual(chain, [
-    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "claude", model: "haiku" },
     { provider: "claude", model: "sonnet" },
     { provider: "codex" },
   ]);
@@ -916,8 +919,8 @@ test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", asy
   ).json();
 
   assert.deepEqual(restricted, [
-    { provider: "codex" },
     { provider: "claude", model: "sonnet" },
+    { provider: "codex" },
   ]);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));

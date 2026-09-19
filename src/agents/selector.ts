@@ -71,22 +71,14 @@ export const CLAUDE_SONNET: AgentSelection = {
   model: "sonnet",
 };
 export const CLAUDE_OPUS: AgentSelection = { provider: "claude", model: "opus" };
+export const CLAUDE_HAIKU: AgentSelection = {
+  provider: "claude",
+  model: "haiku",
+};
 export const CODEX: AgentSelection = { provider: "codex" };
 
 function isHigh(complexity: TaskComplexity): boolean {
   return complexity === "high" || complexity === "critical";
-}
-
-function selectCoding(complexity: TaskComplexity): AgentSelection {
-  switch (complexity) {
-    case "low":
-      return DEEPSEEK_FLASH;
-    case "medium":
-      return CLAUDE_SONNET;
-    case "high":
-    case "critical":
-      return CODEX;
-  }
 }
 
 function selectResearch(complexity: TaskComplexity): AgentSelection {
@@ -103,16 +95,16 @@ function selectResearch(complexity: TaskComplexity): AgentSelection {
 
 function autoSelect(task: Task): AgentSelection {
   switch (task.type) {
+    // Planificar y diseñar exige el modelo más capaz; el trabajo de desarrollo
+    // ya planificado lo asume Haiku, rápido y económico.
     case "architecture":
-      return CLAUDE_OPUS;
     case "planning":
-      return isHigh(task.complexity) ? CLAUDE_OPUS : CLAUDE_SONNET;
+      return CLAUDE_OPUS;
     case "coding":
-      return selectCoding(task.complexity);
+    case "testing":
+      return CLAUDE_HAIKU;
     case "review":
       return isHigh(task.complexity) ? CLAUDE_OPUS : CLAUDE_SONNET;
-    case "testing":
-      return task.complexity === "low" ? DEEPSEEK_FLASH : CLAUDE_SONNET;
     case "research":
       return selectResearch(task.complexity);
   }

@@ -22,30 +22,31 @@ function makeTask(overrides: Partial<Task>): Task {
   };
 }
 
-test("coding + low -> deepseek flash", () => {
+test("coding + low -> claude haiku", () => {
   assert.deepEqual(selectAgent(makeTask({ type: "coding", complexity: "low" })), {
-    provider: "deepseek",
-    model: "deepseek-flash",
+    provider: "claude",
+    model: "haiku",
   });
 });
 
-test("coding + medium -> claude sonnet", () => {
+test("coding + medium -> claude haiku", () => {
   assert.deepEqual(
     selectAgent(makeTask({ type: "coding", complexity: "medium" })),
-    { provider: "claude", model: "sonnet" },
+    { provider: "claude", model: "haiku" },
   );
 });
 
-test("coding + high -> codex", () => {
+test("coding + high -> claude haiku", () => {
   assert.deepEqual(selectAgent(makeTask({ type: "coding", complexity: "high" })), {
-    provider: "codex",
+    provider: "claude",
+    model: "haiku",
   });
 });
 
-test("coding + critical -> codex", () => {
+test("coding + critical -> claude haiku", () => {
   assert.deepEqual(
     selectAgent(makeTask({ type: "coding", complexity: "critical" })),
-    { provider: "codex" },
+    { provider: "claude", model: "haiku" },
   );
 });
 
@@ -56,10 +57,10 @@ test("architecture + high -> claude opus", () => {
   );
 });
 
-test("planning + low -> claude sonnet", () => {
+test("planning + low -> claude opus", () => {
   assert.deepEqual(
     selectAgent(makeTask({ type: "planning", complexity: "low" })),
-    { provider: "claude", model: "sonnet" },
+    { provider: "claude", model: "opus" },
   );
 });
 
@@ -84,17 +85,17 @@ test("review + medium -> claude sonnet", () => {
   );
 });
 
-test("testing + low -> deepseek flash", () => {
+test("testing + low -> claude haiku", () => {
   assert.deepEqual(
     selectAgent(makeTask({ type: "testing", complexity: "low" })),
-    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "claude", model: "haiku" },
   );
 });
 
-test("testing + high -> claude sonnet", () => {
+test("testing + high -> claude haiku", () => {
   assert.deepEqual(
     selectAgent(makeTask({ type: "testing", complexity: "high" })),
-    { provider: "claude", model: "sonnet" },
+    { provider: "claude", model: "haiku" },
   );
 });
 
@@ -127,8 +128,8 @@ test("explicit agent has priority over auto-selection", () => {
   });
 
   assert.deepEqual(selectAgent(task), {
-    provider: "deepseek",
-    model: "deepseek-flash",
+    provider: "claude",
+    model: "haiku",
   });
   assert.deepEqual(resolveAgent(task), { provider: "claude", model: "opus" });
 });
@@ -142,7 +143,7 @@ test("no explicit agent falls back to auto-selection", () => {
 test("selectAgent respeta los agentes permitidos del chat", () => {
   const task = makeTask({ type: "coding", complexity: "low" });
 
-  // El automático sería deepseek-flash; el chat solo permite codex.
+  // El automático sería haiku; el chat solo permite codex.
   assert.deepEqual(selectAgent(task, [{ provider: "codex" }]), {
     provider: "codex",
   });
@@ -151,9 +152,9 @@ test("selectAgent respeta los agentes permitidos del chat", () => {
   assert.deepEqual(
     selectAgent(task, [
       { provider: "codex" },
-      { provider: "deepseek", model: "deepseek-flash" },
+      { provider: "claude", model: "haiku" },
     ]),
-    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "claude", model: "haiku" },
   );
 });
 

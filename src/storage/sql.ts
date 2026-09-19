@@ -554,7 +554,7 @@ export class SqlStorage implements Storage {
       row.provider === "codex"
         ? { provider: "codex" }
         : row.provider === "claude"
-          ? { provider: "claude", model: (row.model as "sonnet" | "opus") ?? "sonnet" }
+          ? { provider: "claude", model: (row.model as "sonnet" | "opus" | "haiku") ?? "sonnet" }
           : { provider: "deepseek", model: (row.model as "deepseek-flash" | "deepseek-v4-pro") ?? "deepseek-flash" };
 
     const attempt: TaskAttempt = {

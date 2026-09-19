@@ -23,6 +23,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * Los refrescos se solapan (carga inicial, pub/sub, foco de ventana…). Este
+ * guardia descarta la respuesta de una petición si ya salió otra más reciente:
+ * una respuesta lenta y antigua no debe pisar el estado actual (p. ej.
+ * re-añadir a la lista un proyecto que se acaba de borrar).
+ */
+function useLatestRequestGuard() {
+  const latest = useRef(0);
+
+  const begin = useCallback(() => {
+    latest.current += 1;
+    return latest.current;
+  }, []);
+
+  const isCurrent = useCallback(
+    (version: number) => latest.current === version,
+    [],
+  );
+
+  return { begin, isCurrent };
+}
+
 export function useAppInfo() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,17 +69,22 @@ export function useProjects() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { begin, isCurrent } = useLatestRequestGuard();
 
   const refresh = useCallback(async () => {
+    const version = begin();
     try {
-      setProjects(await api.listProjects());
+      const next = await api.listProjects();
+      if (!isCurrent(version)) return;
+      setProjects(next);
       setError(null);
     } catch (error) {
+      if (!isCurrent(version)) return;
       setError(errorMessage(error));
     } finally {
-      setLoading(false);
+      if (isCurrent(version)) setLoading(false);
     }
-  }, []);
+  }, [begin, isCurrent]);
 
   useEffect(() => {
     void refresh();
@@ -83,17 +110,22 @@ export function useAllChats() {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { begin, isCurrent } = useLatestRequestGuard();
 
   const refresh = useCallback(async () => {
+    const version = begin();
     try {
-      setChats(await api.listAllChats());
+      const next = await api.listAllChats();
+      if (!isCurrent(version)) return;
+      setChats(next);
       setError(null);
     } catch (error) {
+      if (!isCurrent(version)) return;
       setError(errorMessage(error));
     } finally {
-      setLoading(false);
+      if (isCurrent(version)) setLoading(false);
     }
-  }, []);
+  }, [begin, isCurrent]);
 
   useEffect(() => {
     void refresh();

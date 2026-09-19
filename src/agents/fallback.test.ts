@@ -85,24 +85,24 @@ test("el primer candidato coincide con selectAgent en todas las combinaciones", 
   }
 });
 
-test("coding low -> deepseek flash, sonnet, codex", () => {
+test("coding low -> haiku, sonnet, codex", () => {
   assert.deepEqual(
     getFallbackChain(makeTask({ type: "coding", complexity: "low" })),
     [
-      { provider: "deepseek", model: "deepseek-flash" },
+      { provider: "claude", model: "haiku" },
       { provider: "claude", model: "sonnet" },
       { provider: "codex" },
     ],
   );
 });
 
-test("coding high -> codex, sonnet, opus", () => {
+test("coding high -> haiku, sonnet, codex", () => {
   assert.deepEqual(
     getFallbackChain(makeTask({ type: "coding", complexity: "high" })),
     [
-      { provider: "codex" },
+      { provider: "claude", model: "haiku" },
       { provider: "claude", model: "sonnet" },
-      { provider: "claude", model: "opus" },
+      { provider: "codex" },
     ],
   );
 });
@@ -144,8 +144,8 @@ test("no hay candidatos duplicados en la cadena", () => {
   assert.equal(new Set(keys).size, keys.length);
   assert.deepEqual(chain, [
     { provider: "claude", model: "sonnet" },
+    { provider: "claude", model: "haiku" },
     { provider: "codex" },
-    { provider: "deepseek", model: "deepseek-flash" },
   ]);
 });
 
@@ -158,11 +158,11 @@ test("los agentes permitidos del chat filtran la cadena", () => {
     ],
   );
 
-  // Conserva el orden automático (codex antes que sonnet en coding high) y
-  // descarta opus, que el chat no permite.
+  // Conserva el orden automático (sonnet antes que codex en coding high) y
+  // descarta haiku, que el chat no permite.
   assert.deepEqual(chain, [
-    { provider: "codex" },
     { provider: "claude", model: "sonnet" },
+    { provider: "codex" },
   ]);
 });
 
@@ -240,7 +240,7 @@ test("isRetryableError clasifica errores permanentes como no reintentables", () 
   );
 });
 
-test("Caso 1: Codex success -> 1 intento, DONE, executedBy Codex", async () => {
+test("Caso 1: Haiku success -> 1 intento, DONE, executedBy Haiku", async () => {
   const calls: AgentCandidate[] = [];
   const execute = async (
     _prompt: string,
@@ -256,18 +256,18 @@ test("Caso 1: Codex success -> 1 intento, DONE, executedBy Codex", async () => {
   );
 
   assert.equal(result.status, "done");
-  assert.deepEqual(result.executedBy, { provider: "codex" });
+  assert.deepEqual(result.executedBy, { provider: "claude", model: "haiku" });
   assert.equal(result.attempts?.length, 1);
   assert.equal(result.attempts?.[0]?.status, "success");
   assert.equal(calls.length, 1);
 });
 
-test("Caso 2: codex sin cuota, se pasa a sonnet -> 2 intentos", async () => {
+test("Caso 2: haiku sin cuota, se pasa a sonnet -> 2 intentos", async () => {
   const execute = async (
     _prompt: string,
     agent: AgentCandidate,
   ): Promise<string> => {
-    if (agent.provider === "codex") {
+    if (agent.provider === "claude" && agent.model === "haiku") {
       throw new Error("429 rate limit");
     }
     return "ok";
@@ -287,7 +287,10 @@ test("Caso 2: codex sin cuota, se pasa a sonnet -> 2 intentos", async () => {
   );
   assert.deepEqual(
     result.attempts?.map((attempt) => attempt.agent),
-    [{ provider: "codex" }, { provider: "claude", model: "sonnet" }],
+    [
+      { provider: "claude", model: "haiku" },
+      { provider: "claude", model: "sonnet" },
+    ],
   );
 });
 
@@ -314,7 +317,7 @@ test("runTask: si todos caen por límite, espera y reintenta la cadena", async (
   );
 
   assert.equal(result.status, "done");
-  // Cadena high = [codex, sonnet, opus]: recorrido completo + reintento.
+  // Cadena high = [haiku, sonnet, codex]: recorrido completo + reintento.
   assert.equal(used.length, 4);
   assert.equal(result.attempts?.length, 4);
 });
@@ -344,8 +347,8 @@ test("Caso 4: error no reintentable pasa al fallback sin repetir", async () => {
     _prompt: string,
     agent: AgentCandidate,
   ): Promise<string> => {
-    if (agent.provider === "codex") {
-      throw new Error("spawn codex ENOENT");
+    if (agent.provider === "claude" && agent.model === "haiku") {
+      throw new Error("spawn claude ENOENT");
     }
     return "ok";
   };

@@ -1,6 +1,6 @@
 import type { DeepSeekModel } from "../providers/deepseek.js";
 
-export type ClaudeModel = "sonnet" | "opus";
+export type ClaudeModel = "sonnet" | "opus" | "haiku";
 
 export type AgentSpec =
   | { provider: "codex" }

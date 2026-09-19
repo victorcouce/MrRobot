@@ -35,7 +35,11 @@ export function describeAgent(agent: DomainAgentSpec): string {
   }
 
   if (agent.provider === "claude") {
-    return agent.model === "opus" ? "Claude Opus" : "Claude Sonnet";
+    return agent.model === "opus"
+      ? "Claude Opus"
+      : agent.model === "haiku"
+        ? "Claude Haiku"
+        : "Claude Sonnet";
   }
 
   return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";

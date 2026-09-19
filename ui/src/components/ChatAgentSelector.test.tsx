@@ -31,12 +31,12 @@ describe("ChatAgentSelector", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Agentes de este chat: 3 de 5 marcados",
+        name: "Agentes de este chat: 3 de 6 marcados",
       }),
     ).toBeInTheDocument();
   });
 
-  it("abre el popover con los cinco agentes y marca los permitidos", async () => {
+  it("abre el popover con los seis agentes y marca los permitidos", async () => {
     const user = userEvent.setup();
     render(
       <ChatAgentSelector
@@ -55,10 +55,10 @@ describe("ChatAgentSelector", () => {
     expect(
       screen.getByRole("dialog", { name: "Agentes de este chat" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("3 de 5")).toBeInTheDocument();
+    expect(screen.getByText("3 de 6")).toBeInTheDocument();
 
     const checkboxes = screen.getAllByRole("checkbox");
-    expect(checkboxes).toHaveLength(5);
+    expect(checkboxes).toHaveLength(6);
     expect(checkboxes.filter((box) => (box as HTMLInputElement).checked)).toHaveLength(3);
   });
 

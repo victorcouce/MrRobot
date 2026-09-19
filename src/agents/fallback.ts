@@ -1,6 +1,7 @@
 import type { Task, TaskComplexity } from "../tasks/types.js";
 import {
   agentKey,
+  CLAUDE_HAIKU,
   CLAUDE_OPUS,
   CLAUDE_SONNET,
   CODEX,
@@ -14,34 +15,9 @@ function isHigh(complexity: TaskComplexity): boolean {
   return complexity === "high" || complexity === "critical";
 }
 
-function codingChain(complexity: TaskComplexity): AgentCandidate[] {
-  switch (complexity) {
-    case "low":
-      return [DEEPSEEK_FLASH, CLAUDE_SONNET, CODEX];
-    case "medium":
-      return [CLAUDE_SONNET, CODEX, DEEPSEEK_FLASH];
-    case "high":
-      return [CODEX, CLAUDE_SONNET, CLAUDE_OPUS];
-    case "critical":
-      return [CODEX, CLAUDE_OPUS, CLAUDE_SONNET];
-  }
-}
-
-function planningChain(complexity: TaskComplexity): AgentCandidate[] {
-  return isHigh(complexity)
-    ? [CLAUDE_OPUS, CODEX, CLAUDE_SONNET]
-    : [CLAUDE_SONNET, DEEPSEEK_FLASH, CODEX];
-}
-
 function reviewChain(complexity: TaskComplexity): AgentCandidate[] {
   return isHigh(complexity)
     ? [CLAUDE_OPUS, CODEX, CLAUDE_SONNET]
-    : [CLAUDE_SONNET, CODEX, DEEPSEEK_FLASH];
-}
-
-function testingChain(complexity: TaskComplexity): AgentCandidate[] {
-  return complexity === "low"
-    ? [DEEPSEEK_FLASH, CLAUDE_SONNET, CODEX]
     : [CLAUDE_SONNET, CODEX, DEEPSEEK_FLASH];
 }
 
@@ -59,16 +35,16 @@ function researchChain(complexity: TaskComplexity): AgentCandidate[] {
 
 function autoChain(task: Task): AgentCandidate[] {
   switch (task.type) {
+    // Planificación y arquitectura en Opus; el desarrollo ya planificado
+    // (coding y testing) arranca en Haiku y escala a Sonnet/Codex si falla.
     case "architecture":
-      return [CLAUDE_OPUS, CODEX, CLAUDE_SONNET];
     case "planning":
-      return planningChain(task.complexity);
+      return [CLAUDE_OPUS, CODEX, CLAUDE_SONNET];
     case "coding":
-      return codingChain(task.complexity);
+    case "testing":
+      return [CLAUDE_HAIKU, CLAUDE_SONNET, CODEX];
     case "review":
       return reviewChain(task.complexity);
-    case "testing":
-      return testingChain(task.complexity);
     case "research":
       return researchChain(task.complexity);
   }

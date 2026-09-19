@@ -66,6 +66,7 @@ const config: Config = {
       animation: {
         "pulse-dot": "pulse-dot 1.6s ease-in-out infinite",
         "slide-up": "slide-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both",
+        zzz: "zzz 2s ease-out both",
       },
       keyframes: {
         "pulse-dot": {
@@ -75,6 +76,12 @@ const config: Config = {
         "slide-up": {
           "0%": { opacity: "0", transform: "translateY(16px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        zzz: {
+          "0%": { opacity: "0", transform: "translateY(0) scale(0.9)" },
+          "30%": { opacity: "1", transform: "translateY(-6px) scale(1)" },
+          "70%": { opacity: "0.85", transform: "translateY(-16px) scale(1)" },
+          "100%": { opacity: "0", transform: "translateY(-26px) scale(0.95)" },
         },
       },
     },

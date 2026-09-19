@@ -40,6 +40,8 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
         return { provider: "claude", model: "sonnet" };
       case "claude-opus":
         return { provider: "claude", model: "opus" };
+      case "claude-haiku":
+        return { provider: "claude", model: "haiku" };
       case "deepseek":
         return { provider: "deepseek", model: "deepseek-flash" };
       case "deepseek-v4-pro":
@@ -58,7 +60,13 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
     }
 
     if (provider === "claude") {
-      return { provider: "claude", model: obj["model"] === "opus" ? "opus" : "sonnet" };
+      const model = obj["model"];
+
+      if (model === "opus" || model === "haiku") {
+        return { provider: "claude", model };
+      }
+
+      return { provider: "claude", model: "sonnet" };
     }
 
     if (provider === "deepseek") {

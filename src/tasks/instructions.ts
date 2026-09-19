@@ -80,7 +80,9 @@ function renderAttempts(task: Task): string {
         : attempt.agent.provider === "claude"
           ? attempt.agent.model === "opus"
             ? "Claude Opus"
-            : "Claude Sonnet"
+            : attempt.agent.model === "haiku"
+              ? "Claude Haiku"
+              : "Claude Sonnet"
           : attempt.agent.model === "deepseek-v4-pro"
             ? "DeepSeek V4 Pro"
             : "DeepSeek Flash";

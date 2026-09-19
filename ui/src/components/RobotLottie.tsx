@@ -4,9 +4,24 @@ import Image from "next/image";
 import type { AnimationItem } from "lottie-web";
 import { useEffect, useRef, useState } from "react";
 
+const ZZZ = ["z", "Z", "Z", "z"];
+
 export function RobotLottie({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+  const [zzzVisible, setZzzVisible] = useState(false);
+
+  useEffect(() => {
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    const interval = setInterval(() => {
+      setZzzVisible(true);
+      hideTimer = setTimeout(() => setZzzVisible(false), 2500);
+    }, 30_000);
+    return () => {
+      clearInterval(interval);
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, []);
 
   useEffect(() => {
     let animation: AnimationItem | undefined;
@@ -51,6 +66,27 @@ export function RobotLottie({ className }: { className?: string }) {
         role="img"
         aria-label="MrRobot"
       />
+      {zzzVisible && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-[10%] left-[58%] rotate-[16deg]"
+        >
+          <div className="flex items-end gap-[2px] font-display font-medium leading-none text-ink-2">
+            {ZZZ.map((letter, index) => (
+              <span
+                key={index}
+                className="animate-zzz motion-reduce:animate-none"
+                style={{
+                  animationDelay: `${index * 0.15}s`,
+                  fontSize: `${0.55 + index * 0.09}rem`,
+                }}
+              >
+                {letter}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

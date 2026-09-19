@@ -4,6 +4,7 @@ export type AgentChoice =
   | "codex"
   | "claude-sonnet"
   | "claude-opus"
+  | "claude-haiku"
   | "deepseek"
   | "deepseek-v4-pro";
 
@@ -13,7 +14,9 @@ export function agentToChoice(agent: AgentSpec | undefined): AgentChoice {
   if (agent.provider === "deepseek") {
     return agent.model === "deepseek-v4-pro" ? "deepseek-v4-pro" : "deepseek";
   }
-  return agent.model === "opus" ? "claude-opus" : "claude-sonnet";
+  if (agent.model === "opus") return "claude-opus";
+  if (agent.model === "haiku") return "claude-haiku";
+  return "claude-sonnet";
 }
 
 export function choiceToAgent(choice: AgentChoice): AgentSpec {
@@ -24,6 +27,8 @@ export function choiceToAgent(choice: AgentChoice): AgentSpec {
       return { provider: "claude", model: "sonnet" };
     case "claude-opus":
       return { provider: "claude", model: "opus" };
+    case "claude-haiku":
+      return { provider: "claude", model: "haiku" };
     case "deepseek":
       return { provider: "deepseek", model: "deepseek-flash" };
     case "deepseek-v4-pro":
@@ -35,6 +40,7 @@ export const AGENT_CHOICES: Array<{ value: AgentChoice; label: string }> = [
   { value: "codex", label: "Codex (default)" },
   { value: "claude-sonnet", label: "Claude Sonnet" },
   { value: "claude-opus", label: "Claude Opus" },
+  { value: "claude-haiku", label: "Claude Haiku" },
   { value: "deepseek", label: "DeepSeek Flash" },
   { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
 ];
@@ -90,7 +96,7 @@ export interface ChatAgentOption {
   hint: string;
 }
 
-/** Los cinco agentes que ofrece el selector de agentes del chat. */
+/** Los seis agentes que ofrece el selector de agentes del chat. */
 export const CHAT_AGENT_OPTIONS: ChatAgentOption[] = [
   {
     choice: "codex",
@@ -109,6 +115,12 @@ export const CHAT_AGENT_OPTIONS: ChatAgentOption[] = [
     spec: { provider: "claude", model: "opus" },
     label: "claude / opus",
     hint: "arquitectura",
+  },
+  {
+    choice: "claude-haiku",
+    spec: { provider: "claude", model: "haiku" },
+    label: "claude / haiku",
+    hint: "rápido y ligero",
   },
   {
     choice: "deepseek",

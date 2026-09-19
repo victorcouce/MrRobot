@@ -1,5 +1,5 @@
 import { DEFAULT_LIMIT_RETRY } from "../agents/limit-retry.js";
-import { DEEPSEEK_FLASH } from "../agents/selector.js";
+import { CLAUDE_HAIKU } from "../agents/selector.js";
 import type { OrchestratorConfig } from "./types.js";
 
 export const defaultConfig: OrchestratorConfig = {
@@ -15,7 +15,7 @@ export const defaultConfig: OrchestratorConfig = {
   defaultAllowedAgents: [],
 };
 
-export const fallbackCodingAgent = DEEPSEEK_FLASH;
+export const fallbackCodingAgent = CLAUDE_HAIKU;
 
 export function loadConfig(
   overrides: Partial<OrchestratorConfig> = {},

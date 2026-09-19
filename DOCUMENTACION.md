@@ -90,7 +90,7 @@ tests y README"*), el motor:
 | **Proyecto** | Entidad de alto nivel con un objetivo, un DAG de tareas y un estado. |
 | **Tarea (Task)** | Unidad de trabajo atómica con `type`, `complexity`, `dependsOn`, `acceptanceCriteria`. |
 | **Plan / DAG** | Grafo acíclico dirigido de tareas generado por el planner. |
-| **Agente** | Un proveedor + modelo concreto: `codex`, `claude/sonnet`, `claude/opus`, `deepseek-flash`, `deepseek-v4-pro`. |
+| **Agente** | Un proveedor + modelo concreto: `codex`, `claude/sonnet`, `claude/opus`, `claude/haiku`, `deepseek-flash`, `deepseek-v4-pro`. |
 | **Fallback chain** | Lista ordenada de agentes candidatos para una tarea. |
 | **Worktree** | Copia de trabajo Git aislada (`.worktrees/...`) por intento de tarea. |
 | **Attempt** | Un intento concreto de un agente sobre una tarea. |
@@ -263,7 +263,7 @@ a través de `runRoleAgent` (`src/agents/role.ts`).
 
 - `loadConfig(overrides)`: `{ ...defaultConfig, ...overrides, checks: { ...defaultConfig.checks, ...overrides.checks } }`.
 - `mergeConfig(base, overrides)`: igual pero partiendo de `base`.
-- `fallbackCodingAgent = { provider: "deepseek", model: "deepseek-flash" }`.
+- `fallbackCodingAgent = { provider: "claude", model: "haiku" }`.
 
 ### Config por proyecto
 
@@ -327,7 +327,7 @@ AgentProvider = codex | claude | deepseek
 
 ```ts
 | { provider: "codex" }                                       // sin modelo
-| { provider: "claude"; model?: "sonnet" | "opus" }
+| { provider: "claude"; model?: "sonnet" | "opus" | "haiku" }
 | { provider: "deepseek"; model?: "deepseek-flash" | "deepseek-v4-pro" }
 ```
 
@@ -388,11 +388,15 @@ Selección determinista por `type` y `complexity` (el agente explícito
 | Tipo | low | medium | high | critical |
 |---|---|---|---|---|
 | `architecture` | Opus | Opus | Opus | Opus |
-| `planning` | Sonnet | Sonnet | Opus | Opus |
-| `coding` | DeepSeek Flash | Sonnet | Codex | Codex |
+| `planning` | Opus | Opus | Opus | Opus |
+| `coding` | Haiku | Haiku | Haiku | Haiku |
 | `review` | Sonnet | Sonnet | Opus | Opus |
-| `testing` | DeepSeek Flash | Sonnet | Sonnet | Sonnet |
+| `testing` | Haiku | Haiku | Haiku | Haiku |
 | `research` | DeepSeek Flash | Sonnet | Opus | Opus |
+
+La planificación y la arquitectura van siempre a Opus (el modelo más capaz);
+el desarrollo ya planificado (`coding` y `testing`) lo asume Haiku. `review` y
+`research` conservan su reparto por complejidad.
 
 `describeAgent`: `codex` → `"codex"`; el resto → `"<provider> / <model>"` (p. ej.
 `"claude / opus"`).
@@ -405,16 +409,11 @@ Cada cadena tiene **3 candidatos**. Si la tarea define `task.agent`, este se
 | Tipo | Complejidad | Cadena |
 |---|---|---|
 | `architecture` | todas | Opus → Codex → Sonnet |
-| `planning` | high/critical | Opus → Codex → Sonnet |
-| `planning` | resto | Sonnet → DeepSeek Flash → Codex |
+| `planning` | todas | Opus → Codex → Sonnet |
 | `review` | high/critical | Opus → Codex → Sonnet |
 | `review` | resto | Sonnet → Codex → DeepSeek Flash |
-| `coding` | low | DeepSeek Flash → Sonnet → Codex |
-| `coding` | medium | Sonnet → Codex → DeepSeek Flash |
-| `coding` | high | Codex → Sonnet → Opus |
-| `coding` | critical | Codex → Opus → Sonnet |
-| `testing` | low | DeepSeek Flash → Sonnet → Codex |
-| `testing` | resto | Sonnet → Codex → DeepSeek Flash |
+| `coding` | todas | Haiku → Sonnet → Codex |
+| `testing` | todas | Haiku → Sonnet → Codex |
 | `research` | low | DeepSeek Flash → Sonnet → Opus |
 | `research` | medium | Sonnet → DeepSeek Flash → Opus |
 | `research` | high/critical | Opus → Sonnet → DeepSeek Flash |

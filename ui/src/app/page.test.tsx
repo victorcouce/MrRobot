@@ -118,7 +118,7 @@ describe("Inicio", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Agentes de este chat: 2 de 5 marcados",
+        name: "Agentes de este chat: 2 de 6 marcados",
       }),
     ).toBeInTheDocument();
 

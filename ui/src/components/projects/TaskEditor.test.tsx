@@ -11,7 +11,9 @@ vi.mock("../../lib/api", () => ({
     if (!agent) return "Auto";
     if (agent.provider === "codex") return "Codex";
     if (agent.provider === "claude") {
-      return agent.model === "opus" ? "Claude Opus" : "Claude Sonnet";
+      if (agent.model === "opus") return "Claude Opus";
+      if (agent.model === "haiku") return "Claude Haiku";
+      return "Claude Sonnet";
     }
     return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
   },

@@ -143,7 +143,7 @@ Cárgalas con `next/font/google` y exponlas en `--font-sans`, `--font-mono`, `--
 
 Estos puntos **no existen hoy** en la API; planifícalos antes de la UI correspondiente y propón el diseño de endpoints:
 
-1. **Agentes por chat**: cada chat guarda la lista de agentes permitidos (`codex`, `claude/sonnet`, `claude/opus`, `deepseek-flash`, `deepseek-v4-pro`). `selectAgent`/`getFallbackChain` deben filtrar la cadena a esos agentes. Los no disponibles (p. ej. DeepSeek sin clave) aparecen deshabilitados. Valores por defecto en Ajustes.
+1. **Agentes por chat**: cada chat guarda la lista de agentes permitidos (`codex`, `claude/sonnet`, `claude/opus`, `claude/haiku`, `deepseek-flash`, `deepseek-v4-pro`). `selectAgent`/`getFallbackChain` deben filtrar la cadena a esos agentes. Los no disponibles (p. ej. DeepSeek sin clave) aparecen deshabilitados. Valores por defecto en Ajustes.
 2. **Adjuntos en mensajes y al crear proyecto**: imágenes (PNG/JPG/WebP) y `.md`. Se guardan con el mensaje, se pasan al contexto del planner y cada tarea puede referenciar los adjuntos que necesita (se inyectan en el prompt del worker).
 3. **Configuración solo global**: se retira la edición de config por proyecto de la UI (`PATCH /api/projects/:id/config` puede quedar sin uso). Un proyecto en ejecución mantiene la config con la que empezó.
 4. **"Generar el plan al crear"** opcional en el modal (si no, el proyecto queda en `draft`).

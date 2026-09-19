@@ -196,8 +196,8 @@ test("Caso 5: el fallback parte de un workspace limpio", async () => {
     ): Promise<string> => {
       const cwd = cwdOf(options);
 
-      if (agent.provider === "codex") {
-        await writeFile(join(cwd, "parcial.txt"), "codex\n", "utf8");
+      if (agent.provider === "claude" && agent.model === "haiku") {
+        await writeFile(join(cwd, "parcial.txt"), "haiku\n", "utf8");
         throw new Error("boom");
       }
 
@@ -244,7 +244,7 @@ test("Caso 6: todos los intentos parten del mismo baseRef", async () => {
       agent: AgentCandidate,
       options?: RunOptions,
     ): Promise<string> => {
-      if (agent.provider === "codex") {
+      if (agent.provider === "claude" && agent.model === "haiku") {
         throw new Error("429 rate limit");
       }
 

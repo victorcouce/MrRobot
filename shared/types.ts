@@ -35,7 +35,7 @@ export type AgentProvider = "codex" | "claude" | "deepseek";
 
 export type AgentSpec =
   | { provider: "codex" }
-  | { provider: "claude"; model?: "sonnet" | "opus" }
+  | { provider: "claude"; model?: "sonnet" | "opus" | "haiku" }
   | { provider: "deepseek"; model?: "deepseek-flash" | "deepseek-v4-pro" };
 
 export interface TaskAttempt {
@@ -249,6 +249,7 @@ export type AgentChoice =
   | "codex"
   | "claude-sonnet"
   | "claude-opus"
+  | "claude-haiku"
   | "deepseek"
   | "deepseek-v4-pro";
 
