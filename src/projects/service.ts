@@ -540,6 +540,92 @@ function collectDependencyCommits(
   return ordered;
 }
 
+function doneCommits(
+  project: Project,
+): Array<{ taskId: string; commit: string }> {
+  return project.tasks
+    .filter((task) => task.status === "done" && task.resultCommit)
+    .map((task) => ({
+      taskId: task.id,
+      commit: task.resultCommit as string,
+    }));
+}
+
+/**
+ * Vuelca `ref` en el directorio del proyecto y lo anota como evento. El
+ * resultado de las tareas vive en ramas `agent/*`; sin este paso el directorio
+ * que abre el usuario se queda vacío (solo `.git` y `.worktrees`) y el planner
+ * y el supervisor, que inspeccionan ese mismo directorio, deciden sobre un
+ * repositorio fantasma.
+ */
+async function syncWorkingTree(
+  project: Project,
+  workspace: WorkspaceManager,
+  storage: Storage,
+  ref: string,
+): Promise<void> {
+  if (!workspace.syncWorkingTree) {
+    return;
+  }
+
+  const sync = await workspace.syncWorkingTree(
+    ref,
+    `mrrobot: resultado de ${project.name}`,
+  );
+
+  if (sync.status === "failed" || sync.status === "skipped") {
+    await emit(storage, project.id, "worktree.sync_failed", undefined, {
+      status: sync.status,
+      message: sync.message,
+    });
+    return;
+  }
+
+  await emit(storage, project.id, "worktree.synced", undefined, {
+    status: sync.status,
+    ...(sync.ref ? { commit: sync.ref } : {}),
+    ...(sync.branch ? { branch: sync.branch } : {}),
+  });
+}
+
+/**
+ * Deja en el directorio del proyecto el trabajo completado hasta ahora, aunque
+ * el plan no haya terminado. Así el usuario ve los archivos de las tareas que
+ * sí salieron y la siguiente ronda (supervisor y replanificación) razona sobre
+ * el estado real del repositorio.
+ */
+async function syncProgress(
+  project: Project,
+  workspace: WorkspaceManager,
+  storage: Storage,
+): Promise<void> {
+  if (!workspace.syncWorkingTree || !workspace.integrateProgress) {
+    return;
+  }
+
+  const commits = doneCommits(project);
+
+  if (commits.length === 0) {
+    return;
+  }
+
+  const integration = await workspace.integrateProgress(
+    project.id,
+    commits,
+    project.baseRef,
+  );
+
+  if (!integration.ok) {
+    await emit(storage, project.id, "worktree.sync_failed", undefined, {
+      status: "failed",
+      message: integration.error.message,
+    });
+    return;
+  }
+
+  await syncWorkingTree(project, workspace, storage, integration.ref);
+}
+
 function makeTaskExecutor(
   pid: string,
   projectBaseRef: string,
@@ -851,6 +937,11 @@ export async function runProject(
       break;
     }
 
+    // El supervisor y el planner inspeccionan el directorio del proyecto: si
+    // no se vuelca lo ya hecho, lo ven vacío y replanifican como si ninguna
+    // tarea hubiera producido nada.
+    await syncProgress(project, workspace, storage);
+
     if (roundResult.status === "paused") {
       project = { ...project, status: "paused", updatedAt: new Date() };
       await storage.saveProject(project);
@@ -1025,6 +1116,8 @@ export async function finalizeProjectRun(
         commit: integration.ref,
       });
 
+      await syncWorkingTree(project, workspace, storage, integration.ref);
+
       if (project.remoteUrl && workspace.push) {
         try {
           await workspace.push(integration.branchName);
@@ -1059,6 +1152,10 @@ export async function finalizeProjectRun(
       finishedAt: new Date(),
       updatedAt: new Date(),
     };
+
+    // Aunque el plan no haya terminado, lo que sí se completó se deja en el
+    // directorio del proyecto en vez de quedarse solo dentro de git.
+    await syncProgress(project, workspace, storage);
   }
 
   await storage.saveProject(project);

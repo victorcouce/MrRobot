@@ -337,7 +337,9 @@ async function runTaskOnce(
           throw new Error(
             `${label} no creó ni modificó ningún archivo en el workspace. ` +
               `Los proveedores que solo devuelven texto (DeepSeek) no escriben en disco; ` +
-              `usa Codex o Claude para tareas de código.`,
+              `usa Codex o Claude para tareas de código. Si era Codex o Claude, ` +
+              `el CLI no tenía permiso para escribir: revisa su configuración ` +
+              `(en Claude, MRROBOT_CLAUDE_PERMISSION_MODE).`,
           );
         }
 

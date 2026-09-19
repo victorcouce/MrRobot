@@ -140,6 +140,7 @@ function eventVisual(event: ProjectEvent): {
       };
     case "git.conflict":
     case "supervisor.replan":
+    case "worktree.sync_failed":
       return {
         icon: <GitConflictIcon />,
         className: "bg-warning-soft text-warning-text",

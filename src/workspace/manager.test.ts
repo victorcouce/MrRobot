@@ -16,10 +16,12 @@ import {
   finalizeProject,
   getRepoRoot,
   integrateDependencies,
+  integrateProgress,
   prepareProjectRepo,
   removeTaskWorkspace,
   resolveBaseRef,
   sanitizeTaskId,
+  syncWorkingTree,
 } from "./manager.js";
 
 function git(args: string[], cwd: string): Promise<string> {
@@ -498,3 +500,233 @@ test("Caso 7: el fix continúa el intento anterior y aplana en un commit sobre l
   }
 });
 
+
+test("syncWorkingTree deja el resultado en el directorio del repo", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const task = await runTask(makeTask({ id: "TASK-SYNC" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "index.html", ), "<h1>ok</h1>\n", "utf8");
+        return "ok";
+      },
+    });
+
+    const commit = task.resultCommit;
+    assert.ok(commit);
+
+    // Antes del volcado el trabajo solo existe dentro de git.
+    assert.equal(existsSync(join(repo, "index.html")), false);
+
+    const sync = await syncWorkingTree(commit, "mrrobot: resultado", repo);
+
+    assert.equal(sync.status, "synced");
+    assert.equal(sync.branch, "main");
+    assert.equal(existsSync(join(repo, "index.html")), true);
+    assert.equal(
+      await readFile(join(repo, "index.html"), "utf8"),
+      "<h1>ok</h1>\n",
+    );
+
+    // Avance rápido: la rama del usuario apunta al commit de la tarea.
+    assert.equal(await git(["rev-parse", "HEAD"], repo), commit);
+
+    // Repetirlo no cambia nada.
+    const again = await syncWorkingTree(commit, "mrrobot: resultado", repo);
+    assert.equal(again.status, "unchanged");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("syncWorkingTree no pisa cambios sin commitear del usuario", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const task = await runTask(makeTask({ id: "TASK-DIRTY" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "a.txt"), "A\n", "utf8");
+        return "ok";
+      },
+    });
+
+    await writeFile(join(repo, "README.md"), "# tocado a mano\n", "utf8");
+
+    const sync = await syncWorkingTree(
+      task.resultCommit as string,
+      "mrrobot: resultado",
+      repo,
+    );
+
+    assert.equal(sync.status, "skipped");
+    assert.equal(existsSync(join(repo, "a.txt")), false);
+    assert.equal(
+      await readFile(join(repo, "README.md"), "utf8"),
+      "# tocado a mano\n",
+    );
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("syncWorkingTree suma una segunda ronda sin perder la primera", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const first = await runTask(makeTask({ id: "TASK-R1" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "uno.txt"), "1\n", "utf8");
+        return "ok";
+      },
+    });
+
+    const firstSync = await syncWorkingTree(
+      first.resultCommit as string,
+      "mrrobot: ronda 1",
+      repo,
+    );
+    assert.equal(firstSync.status, "synced");
+
+    // Segunda ronda: las tareas siguen partiendo de la base del proyecto, así
+    // que la integración no desciende de lo ya volcado.
+    const second = await runTask(makeTask({ id: "TASK-R2" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "dos.txt"), "2\n", "utf8");
+        return "ok";
+      },
+    });
+
+    const integration = await integrateProgress(
+      "proyecto",
+      [
+        { taskId: "TASK-R1", commit: first.resultCommit as string },
+        { taskId: "TASK-R2", commit: second.resultCommit as string },
+      ],
+      base,
+      repo,
+    );
+
+    assert.equal(integration.ok, true);
+    assert.ok(integration.ok);
+
+    const secondSync = await syncWorkingTree(
+      integration.ref,
+      "mrrobot: ronda 2",
+      repo,
+    );
+
+    assert.equal(secondSync.status, "synced");
+    assert.equal(secondSync.branch, "main");
+
+    // El directorio contiene el trabajo de las dos rondas...
+    assert.equal(existsSync(join(repo, "uno.txt")), true);
+    assert.equal(existsSync(join(repo, "dos.txt")), true);
+
+    // ...y el volcado anterior sigue en la historia de la rama.
+    const history = await git(["log", "--format=%H"], repo);
+    assert.ok(history.includes(firstSync.ref as string));
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("los commits de tarea funcionan sin identidad de git configurada", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "mrrobot-noident-"));
+  const previousGlobal = process.env.GIT_CONFIG_GLOBAL;
+  const previousSystem = process.env.GIT_CONFIG_SYSTEM;
+
+  // Una máquina recién estrenada no tiene user.name/user.email: sin identidad
+  // propia, `git commit` aborta y la tarea muere sin haber escrito nada.
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+  process.env.GIT_CONFIG_SYSTEM = "/dev/null";
+
+  try {
+    const prepared = await prepareProjectRepo(repo);
+    const manager = createGitWorkspaceManager(prepared.root);
+    const base = await resolveBaseRef(prepared.root);
+
+    const task = await runTask(makeTask({ id: "TASK-IDENT" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "a.txt"), "A\n", "utf8");
+        return "ok";
+      },
+    });
+
+    assert.equal(task.status, "done");
+    assert.ok(task.resultCommit);
+
+    const sync = await syncWorkingTree(
+      task.resultCommit as string,
+      "mrrobot: resultado",
+      prepared.root,
+    );
+
+    assert.equal(sync.status, "synced");
+    assert.equal(existsSync(join(prepared.root, "a.txt")), true);
+  } finally {
+    if (previousGlobal === undefined) {
+      delete process.env.GIT_CONFIG_GLOBAL;
+    } else {
+      process.env.GIT_CONFIG_GLOBAL = previousGlobal;
+    }
+
+    if (previousSystem === undefined) {
+      delete process.env.GIT_CONFIG_SYSTEM;
+    } else {
+      process.env.GIT_CONFIG_SYSTEM = previousSystem;
+    }
+
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("syncWorkingTree convive con archivos sin seguir del usuario", async () => {
+  const repo = await createTempRepo();
+
+  try {
+    const base = await resolveBaseRef(repo);
+    const manager = createGitWorkspaceManager(repo);
+
+    const task = await runTask(makeTask({ id: "TASK-UNTRACKED" }), {
+      workspace: manager,
+      baseRef: base,
+      execute: async (_prompt, _agent, options) => {
+        await writeFile(join(cwdOf(options), "a.txt"), "A\n", "utf8");
+        return "ok";
+      },
+    });
+
+    await writeFile(join(repo, "notas.txt"), "mis notas\n", "utf8");
+
+    const sync = await syncWorkingTree(
+      task.resultCommit as string,
+      "mrrobot: resultado",
+      repo,
+    );
+
+    assert.equal(sync.status, "synced");
+    assert.equal(existsSync(join(repo, "a.txt")), true);
+    assert.equal(await readFile(join(repo, "notas.txt"), "utf8"), "mis notas\n");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});

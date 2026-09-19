@@ -6,6 +6,7 @@ import type {
   IntegrationResult,
   RemoveWorkspaceOptions,
   TaskWorkspace,
+  WorkingTreeSync,
   WorkspaceManager,
 } from "./types.js";
 
@@ -49,6 +50,39 @@ async function runGitBestEffort(args: string[], cwd?: string): Promise<void> {
   } catch {
     // Limpieza best-effort: los errores aquí no deben romper el flujo.
   }
+}
+
+/**
+ * Identidad para los commits que crea el orquestador (commit de tarea, squash,
+ * cherry-pick). Si la máquina no tiene `user.name`/`user.email` configurados,
+ * `git commit` aborta con "Author identity unknown" y la tarea falla sin haber
+ * escrito nada: se usa entonces una identidad propia. Si el usuario tiene la
+ * suya, se respeta.
+ */
+const IDENTITY_FALLBACK = [
+  "-c",
+  "user.name=MrRobot",
+  "-c",
+  "user.email=mrrobot@localhost",
+];
+
+const identityCache = new Map<string, Promise<string[]>>();
+
+export async function identityArgs(cwd: string): Promise<string[]> {
+  const key = resolve(cwd);
+  const cached = identityCache.get(key);
+
+  if (cached) {
+    return cached;
+  }
+
+  const pending = runGit(["var", "GIT_COMMITTER_IDENT"], cwd).then(
+    () => [] as string[],
+    () => IDENTITY_FALLBACK,
+  );
+
+  identityCache.set(key, pending);
+  return pending;
 }
 
 export function sanitizeTaskId(taskId: string): string {
@@ -223,10 +257,7 @@ export async function prepareProjectRepo(
   if (!(await hasHead(root))) {
     await runGit(
       [
-        "-c",
-        "user.name=MrRobot",
-        "-c",
-        "user.email=mrrobot@localhost",
+        ...(await identityArgs(root)),
         "commit",
         "--allow-empty",
         "-m",
@@ -298,7 +329,10 @@ export async function commitTaskWorkspace(
   }
 
   await runGit(["add", "-A"], workspace.path);
-  await runGit(["commit", "-m", message], workspace.path);
+  await runGit(
+    [...(await identityArgs(workspace.path)), "commit", "-m", message],
+    workspace.path,
+  );
 
   return runGit(["rev-parse", "HEAD"], workspace.path);
 }
@@ -320,7 +354,10 @@ export async function squashTaskWorkspace(
     return ontoRef;
   }
 
-  await runGit(["commit", "-m", message], workspace.path);
+  await runGit(
+    [...(await identityArgs(workspace.path)), "commit", "-m", message],
+    workspace.path,
+  );
 
   return runGit(["rev-parse", "HEAD"], workspace.path);
 }
@@ -392,9 +429,11 @@ async function integrateCommits(
     };
   }
 
+  const ident = await identityArgs(path);
+
   for (const entry of commits) {
     try {
-      await runGit(["cherry-pick", entry.commit], path);
+      await runGit([...ident, "cherry-pick", entry.commit], path);
     } catch (error) {
       const files = await conflictFiles(path);
 
@@ -444,6 +483,136 @@ export async function integrateDependencies(
   );
 }
 
+export async function integrateProgress(
+  projectId: string,
+  commits: Array<{ taskId: string; commit: string }>,
+  baseRef: string,
+  cwd?: string,
+): Promise<IntegrationResult> {
+  const safe = sanitizeTaskId(projectId);
+  return integrateCommits(
+    `agent/project-${safe}-progress`,
+    `project-${safe}-progress`,
+    commits,
+    baseRef,
+    cwd,
+  );
+}
+
+async function currentBranch(root: string): Promise<string | undefined> {
+  try {
+    const branch = await runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], root);
+    return branch.length > 0 ? branch : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function isAncestor(
+  ancestor: string,
+  descendant: string,
+  root: string,
+): Promise<boolean> {
+  try {
+    await runGit(["merge-base", "--is-ancestor", ancestor, descendant], root);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deja el directorio de trabajo del repo del proyecto en `ref`, que es donde el
+ * usuario espera encontrar los archivos y donde miran el planner y el
+ * supervisor. Las tareas trabajan en worktrees y sus commits viven en ramas
+ * `agent/*`: sin este volcado el directorio del proyecto se queda con `.git` y
+ * `.worktrees` y nada más, aunque el plan haya terminado entero.
+ *
+ * Nunca destruye trabajo del usuario: si hay cambios sin commitear no toca
+ * nada, y si la historia ha divergido (ya se volcó una ronda anterior) añade el
+ * resultado como un commit nuevo encima en vez de reescribir la rama.
+ */
+export async function syncWorkingTree(
+  ref: string,
+  message: string,
+  cwd?: string,
+): Promise<WorkingTreeSync> {
+  try {
+    const root = await getRepoRoot(cwd);
+
+    // Solo bloquean los cambios sobre archivos versionados: lo que el usuario
+    // haya editado a mano no se pisa. Los archivos sin seguir (node_modules,
+    // notas sueltas) conviven con el volcado, y si alguno estorbase de verdad
+    // git se niega y el error se reporta tal cual.
+    const status = await runGit(
+      ["status", "--porcelain", "--untracked-files=no"],
+      root,
+    );
+
+    if (status.length > 0) {
+      return {
+        status: "skipped",
+        message:
+          "El directorio del proyecto tiene cambios sin commitear; no se " +
+          "sobrescriben. Commitea o descarta esos cambios para volcar el resultado.",
+      };
+    }
+
+    const head = await runGit(["rev-parse", "HEAD"], root);
+    const target = await runGit(["rev-parse", ref], root);
+    const branch = await currentBranch(root);
+
+    if (head === target) {
+      return {
+        status: "unchanged",
+        ref: target,
+        ...(branch ? { branch } : {}),
+      };
+    }
+
+    if (await isAncestor(head, target, root)) {
+      await runGit(["merge", "--ff-only", target], root);
+
+      return {
+        status: "synced",
+        ref: target,
+        ...(branch ? { branch } : {}),
+      };
+    }
+
+    // Historias divergentes: se reescribe el árbol con el resultado y se anota
+    // como un commit encima del actual, de modo que nada de lo anterior se
+    // pierde y la rama del usuario sigue avanzando en línea recta.
+    await runGit(["read-tree", "-m", "-u", target], root);
+
+    const staged = await runGit(
+      ["diff", "--cached", "--name-only", "HEAD"],
+      root,
+    );
+
+    if (staged.length === 0) {
+      return {
+        status: "unchanged",
+        ref: head,
+        ...(branch ? { branch } : {}),
+      };
+    }
+
+    await runGit(
+      [...(await identityArgs(root)), "commit", "-m", message],
+      root,
+    );
+
+    return {
+      status: "synced",
+      ref: await runGit(["rev-parse", "HEAD"], root),
+      ...(branch ? { branch } : {}),
+    };
+  } catch (error) {
+    return { status: "failed", message: messageOf(error) };
+  }
+}
+
 export async function finalizeProject(
   projectId: string,
   commits: Array<{ taskId: string; commit: string }>,
@@ -477,6 +646,9 @@ export function createGitWorkspaceManager(cwd?: string): WorkspaceManager {
       integrateDependencies(taskId, dependencyCommits, baseRef, cwd),
     finalizeProject: (projectId, commits, baseRef) =>
       finalizeProject(projectId, commits, baseRef, cwd),
+    integrateProgress: (projectId, commits, baseRef) =>
+      integrateProgress(projectId, commits, baseRef, cwd),
+    syncWorkingTree: (ref, message) => syncWorkingTree(ref, message, cwd),
   };
 }
 
