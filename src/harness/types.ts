@@ -55,8 +55,9 @@ export interface HarnessBounds {
 }
 
 export interface HarnessConfig {
-  enabled: boolean;
-  bounds: HarnessBounds;
+  enabled?: boolean;
+  bounds?: Partial<HarnessBounds>;
+  sandbox?: { allowedCommands?: string[] };
 }
 
 export interface HarnessIterationResult {

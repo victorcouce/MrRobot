@@ -535,5 +535,60 @@ export function parseConfigOverrides(
     );
   }
 
+  if (body["harness"] !== undefined && body["harness"] !== null) {
+    const harness = body["harness"] as Record<string, unknown>;
+    overrides.harness = {};
+
+    if (harness["enabled"] !== undefined) {
+      if (typeof harness["enabled"] !== "boolean") {
+        throw new Error('harness.enabled debe ser booleano');
+      }
+      overrides.harness.enabled = harness["enabled"];
+    }
+
+    if (harness["bounds"] !== undefined && harness["bounds"] !== null) {
+      const bounds = harness["bounds"] as Record<string, unknown>;
+      overrides.harness.bounds = {};
+
+      if (bounds["maxIterations"] !== undefined) {
+        const val = bounds["maxIterations"];
+        if (typeof val !== "number" || val < 1 || val > 100) {
+          throw new Error('maxIterations debe estar entre 1 y 100');
+        }
+        (overrides.harness.bounds as Partial<typeof overrides.harness.bounds>).maxIterations = val;
+      }
+
+      if (bounds["timeoutMs"] !== undefined) {
+        const val = bounds["timeoutMs"];
+        if (typeof val !== "number" || val < 1000 || val > 3_600_000) {
+          throw new Error('timeoutMs debe estar entre 1000 y 3600000');
+        }
+        (overrides.harness.bounds as Partial<typeof overrides.harness.bounds>).timeoutMs = val;
+      }
+    }
+
+    if (harness["sandbox"] !== undefined && harness["sandbox"] !== null) {
+      const sandbox = harness["sandbox"] as Record<string, unknown>;
+      overrides.harness.sandbox = {};
+
+      if (sandbox["allowedCommands"] !== undefined) {
+        if (!Array.isArray(sandbox["allowedCommands"])) {
+          throw new Error('sandbox.allowedCommands debe ser un array');
+        }
+        const commands = sandbox["allowedCommands"] as unknown[];
+        for (const cmd of commands) {
+          if (typeof cmd !== "string") {
+            throw new Error('allowedCommands debe contener strings');
+          }
+          // Rechazar comandos con caracteres peligrosos
+          if (cmd.includes("/") || cmd.includes("\\") || cmd.includes("..") || cmd.includes(";")) {
+            throw new Error(`comando peligroso: "${cmd}" (sin /, \\, .., ;)`);
+          }
+        }
+        overrides.harness.sandbox.allowedCommands = commands as string[];
+      }
+    }
+  }
+
   return overrides;
 }

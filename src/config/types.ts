@@ -1,5 +1,6 @@
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import type { AgentCandidate } from "../agents/types.js";
+import type { HarnessConfig } from "../harness/types.js";
 
 export interface ChecksConfig {
   commands: string[];
@@ -26,4 +27,10 @@ export interface OrchestratorConfig {
    * Opcional porque hay configuraciones guardadas de antes de que existiera.
    */
   defaultAllowedAgents?: AgentCandidate[];
+
+  /**
+   * Harness agéntico para DeepSeek. Ausente = valores por defecto
+   * (enabled: true, bounds y sandbox defaults).
+   */
+  harness?: HarnessConfig;
 }
