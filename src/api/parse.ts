@@ -62,8 +62,8 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
     if (provider === "claude") {
       const model = obj["model"];
 
-      if (model === "opus" || model === "haiku") {
-        return { provider: "claude", model };
+      if (model === "opus" || model === "sonnet" || model === "haiku") {
+        return { provider: "claude", model: model as "opus" | "sonnet" | "haiku" };
       }
 
       return { provider: "claude", model: "sonnet" };
