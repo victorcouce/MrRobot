@@ -1,4 +1,5 @@
 import type { ClaudeModel } from "../agents/types.js";
+import { createStreamJsonRelay, extractStreamJsonResult } from "./claude-stream.js";
 import { execCli } from "./exec.js";
 import type { RunOptions } from "./types.js";
 
@@ -73,13 +74,33 @@ export function claudeArgs(
     args.push("--model", model);
   }
 
+  // Con alguien escuchando la salida en vivo (el worker de una tarea), se
+  // pide el stream estructurado para narrar qué hace el agente —qué
+  // herramienta usa y sobre qué fichero— en vez de mostrar solo la respuesta
+  // final cuando termina. Sin eso (planner/reviewer/supervisor: una sola
+  // respuesta JSON) no hace falta.
+  if (options.onOutput) {
+    args.push("--output-format", "stream-json", "--verbose");
+  }
+
   return args;
 }
 
-export function runClaude(
+export async function runClaude(
   prompt: string,
   model?: ClaudeModel,
   options: RunOptions = {},
 ): Promise<string> {
-  return execCli("claude", "claude", claudeArgs(prompt, model, options), options);
+  const args = claudeArgs(prompt, model, options);
+
+  if (!options.onOutput) {
+    return execCli("claude", "claude", args, options);
+  }
+
+  const raw = await execCli("claude", "claude", args, {
+    ...options,
+    onOutput: createStreamJsonRelay(options.onOutput),
+  });
+
+  return extractStreamJsonResult(raw) ?? raw;
 }
