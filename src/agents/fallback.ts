@@ -121,6 +121,8 @@ export function errorMessage(error: unknown): string {
 }
 
 const NON_RETRYABLE_PATTERNS = [
+  "[harness]",
+  "[sandbox]",
   "api key",
   "apikey",
   "unauthorized",

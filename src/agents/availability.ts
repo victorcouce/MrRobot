@@ -39,10 +39,17 @@ const PATTERNS: Array<[AvailabilityReason, string[]]> = [
 ];
 
 export function classifyAvailability(error: unknown): AgentAvailability {
-  const message = errorMessage(error).toLowerCase();
+  const message = errorMessage(error);
+  const lowerMessage = message.toLowerCase();
+
+  // Errores del harness o sandbox no son indisponibilidad del proveedor
+  const NEVER_UNAVAILABLE = ["[harness]", "[sandbox]"];
+  if (NEVER_UNAVAILABLE.some((marker) => message.includes(marker))) {
+    return { available: true };
+  }
 
   for (const [reason, patterns] of PATTERNS) {
-    if (patterns.some((pattern) => message.includes(pattern))) {
+    if (patterns.some((pattern) => lowerMessage.includes(pattern))) {
       return { available: false, reason };
     }
   }
