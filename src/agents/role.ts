@@ -6,6 +6,7 @@ import {
   isRetryableError,
   MAX_RETRIES_PER_AGENT,
 } from "./fallback.js";
+import type { AgentHealth } from "./health.js";
 import {
   isLimitReason,
   limitRetryDelayMs,
@@ -41,6 +42,11 @@ export interface RunRoleOptions {
   execute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
   allowedAgents?: AgentCandidate[];
+  /**
+   * Memoria compartida de agentes agotados por límite: los relegados al final
+   * de la cadena hasta que se repongan. Sin ella no cambia el orden.
+   */
+  agentHealth?: AgentHealth;
   /** Complejidad que decide el tramo de la matriz de agentes. */
   complexity?: TaskComplexity;
   /** Agente preferido (p. ej. `task.agent`); va primero en la cadena. */
@@ -87,12 +93,13 @@ export async function runRoleAgent(
   options: RunRoleOptions = {},
 ): Promise<string> {
   const execute = options.execute ?? ((p, agent) => runAgent(p, agent));
-  const chain = roleFallbackChain(
+  const baseChain = roleFallbackChain(
     role,
     options.allowedAgents ?? [],
     options.complexity,
     options.preferred,
   );
+  const chain = options.agentHealth?.order(baseChain) ?? baseChain;
   const maxRetries = options.maxRetriesPerAgent ?? MAX_RETRIES_PER_AGENT;
   const limitRetry = resolveLimitRetry(options.limitRetry);
 
@@ -120,6 +127,7 @@ export async function runRoleAgent(
 
         try {
           const output = await execute(prompt, candidate);
+          options.agentHealth?.recordSuccess(candidate);
           options.onAgent?.(candidate);
           await options.onAgentEvent?.({
             phase: "success",
@@ -150,6 +158,16 @@ export async function runRoleAgent(
           if (!availability.available) {
             if (isLimitReason(availability.reason)) {
               limitError = error;
+              const cooldown = options.agentHealth?.markLimited(
+                candidate,
+                error,
+              );
+
+              if (cooldown) {
+                console.log(
+                  `⏳ ${describeAgent(candidate)} en cuarentena ${Math.round(cooldown / 1000)}s: al final de la cadena.`,
+                );
+              }
             } else {
               allLimited = false;
             }

@@ -7,6 +7,7 @@ import {
   isRetryableError,
   MAX_RETRIES_PER_AGENT,
 } from "../agents/fallback.js";
+import type { AgentHealth } from "../agents/health.js";
 import { runAgent } from "../agents/router.js";
 import {
   isLimitReason,
@@ -44,6 +45,13 @@ export interface RunTaskOptions {
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
   /** Agentes permitidos del chat. Vacío o ausente = sin restricción. */
   allowedAgents?: AgentCandidate[] | undefined;
+  /**
+   * Memoria compartida de agentes agotados por límite. Cuando se pasa, el
+   * agente que cae por rate limit/cuota pasa al final de la cadena en las
+   * siguientes tareas hasta que se reponga, de modo que no se vuelve a empezar
+   * por el que falló. Sin ella, el orden es siempre el de `getFallbackChain`.
+   */
+  agentHealth?: AgentHealth | undefined;
   /** Adjuntos que la tarea referencia, ya resueltos. */
   attachments?: Attachment[] | undefined;
   signal?: AbortSignal | undefined;
@@ -184,10 +192,14 @@ async function runTaskOnce(
   // devuelven texto (DeepSeek) para no gastar una llamada ni ensuciar el
   // resultado. Si la restricción del chat solo deja agentes de texto, se
   // conserva la cadena y el guard de "sin cambios" dará el error explicativo.
-  const chain =
+  const baseChain =
     task.type === "coding" && fullChain.some(canWriteFiles)
       ? fullChain.filter(canWriteFiles)
       : fullChain;
+
+  // Los agentes en cuarentena por límite se relegan al final: la siguiente
+  // tarea sigue con el agente que funcionó en vez de repetir el que falló.
+  const chain = options.agentHealth?.order(baseChain) ?? baseChain;
 
   const running: Task = {
     ...task,
@@ -412,6 +424,8 @@ async function runTaskOnce(
 
         console.log(`\n${running.id} → DONE`);
 
+        options.agentHealth?.recordSuccess(candidate);
+
         const done: Task = {
           ...running,
           status: "done",
@@ -463,6 +477,13 @@ async function runTaskOnce(
         if (!availability.available) {
           if (isLimitReason(availability.reason)) {
             limitError = error;
+            const cooldown = options.agentHealth?.markLimited(candidate, error);
+
+            if (cooldown) {
+              console.log(
+                `En cuarentena ${Math.round(cooldown / 1000)}s: seguirá al final de la cadena.`,
+              );
+            }
           } else {
             allLimited = false;
           }

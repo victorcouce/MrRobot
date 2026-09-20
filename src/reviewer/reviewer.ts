@@ -1,4 +1,5 @@
 import { errorMessage } from "../agents/fallback.js";
+import type { AgentHealth } from "../agents/health.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
 import { runRoleAgent } from "../agents/role.js";
 import { runAgent } from "../agents/router.js";
@@ -31,6 +32,8 @@ export interface ReviewerDeps {
   cwd?: string | undefined;
   /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
   allowedAgents?: AgentCandidate[] | undefined;
+  /** Memoria compartida de agentes agotados por límite (rate limit/cuota). */
+  agentHealth?: AgentHealth | undefined;
   complexity?: TaskComplexity | undefined;
   /** Reintentos por agente antes de pasar al siguiente de la cadena. */
   maxRetriesPerAgent?: number | undefined;
@@ -130,6 +133,7 @@ export async function reviewTask(
     const raw = await runRoleAgent(buildPrompt(task, context), "reviewer", {
       execute,
       ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
+      ...(deps.agentHealth ? { agentHealth: deps.agentHealth } : {}),
       complexity: deps.complexity ?? task.complexity,
       ...(deps.maxRetriesPerAgent !== undefined
         ? { maxRetriesPerAgent: deps.maxRetriesPerAgent }

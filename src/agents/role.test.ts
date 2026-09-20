@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AgentHealth } from "./health.js";
 import { roleFallbackChain, runRoleAgent } from "./role.js";
 import {
   CLAUDE_OPUS,
@@ -123,4 +124,40 @@ test("runRoleAgent: si todos fallan lanza", async () => {
       }),
     /Ningún agente pudo completar el rol "reviewer"/,
   );
+});
+
+test("runRoleAgent: un agente agotado pasa al final en la siguiente llamada", async () => {
+  const health = new AgentHealth({ now: () => 0 });
+  const first: AgentCandidate[] = [];
+
+  const output = await runRoleAgent("p", "reviewer", {
+    complexity: "high",
+    agentHealth: health,
+    execute: async (_prompt, agent) => {
+      first.push(agent);
+
+      if (agent.provider === "claude" && agent.model === "opus") {
+        throw new Error("429 rate limit");
+      }
+
+      return "ok";
+    },
+  });
+
+  assert.equal(output, "ok");
+  assert.deepEqual(first, [CLAUDE_OPUS, CODEX]);
+
+  // La cuarentena de Opus hace que la siguiente llamada empiece por Codex.
+  const second: AgentCandidate[] = [];
+  const again = await runRoleAgent("p", "reviewer", {
+    complexity: "high",
+    agentHealth: health,
+    execute: async (_prompt, agent) => {
+      second.push(agent);
+      return "ok";
+    },
+  });
+
+  assert.equal(again, "ok");
+  assert.deepEqual(second, [CODEX]);
 });

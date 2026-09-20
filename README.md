@@ -287,6 +287,15 @@ re-recorren la cadena hasta `limitRetry.maxLimitRetries` (por defecto 3). Este
 mecanismo lo comparten las tareas y los roles de orquestación (`runRoleAgent` en
 `src/agents/role.ts`).
 
+Cuando un agente cae por límite y otro candidato completa la tarea, `AgentHealth`
+(`src/agents/health.ts`) lo deja **en cuarentena**: en las siguientes tareas y
+roles ese agente pasa al final de la cadena hasta que se reponga, de modo que el
+motor no vuelve a empezar por el que falló y sigue con el que funcionó. La
+cuarentena dura el `retry after` del proveedor o, si no lo indica, 5 minutos
+(configurable con `AgentHealthOptions`), con un tope de 1 hora. En el servidor la
+memoria es única y sobrevive entre rondas y proyectos; sin `agentHealth` el orden
+de `getFallbackChain` no cambia.
+
 ## Review
 
 Tras completar una tarea, los checks locales (`npm run typecheck|build|test`;

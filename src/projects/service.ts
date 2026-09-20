@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pickAttachments } from "../agents/attachments.js";
+import { AgentHealth } from "../agents/health.js";
 import { assertFileWritingAgent } from "../agents/selector.js";
 import type { AgentCandidate, AgentSpec, Attachment } from "../agents/types.js";
 import {
@@ -38,6 +39,12 @@ export interface ProjectDeps {
   supervisorExecute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   /** Salida del agente en vivo, para mostrarla en la UI (no se persiste). */
   onAgentOutput?: (projectId: string, taskId: string, chunk: string) => void;
+  /**
+   * Memoria de agentes agotados por límite (rate limit/cuota). Si se comparte
+   * entre rondas, el agente que falló no vuelve a ir primero hasta reponerse.
+   * Ausente: se crea una por ronda.
+   */
+  agentHealth?: AgentHealth;
 }
 
 export interface CreateProjectInput {
@@ -641,6 +648,10 @@ function makeTaskExecutor(
   // para reanclar los criterios con rutas absolutas dentro del repo.
   const repoRootPromise = workspace.getRepoRoot().catch(() => undefined);
 
+  // Memoria compartida por todas las tareas y reviews de la ronda: el agente
+  // que cae por límite se relega para no volver a empezar por él.
+  const agentHealth = deps.agentHealth ?? new AgentHealth();
+
   // Monitorización: un intento de agente por tarea (worker) y por reviewer,
   // cada uno con su duración (fichero .log + SSE → consola del navegador).
   const onWorkerAgentEvent = createAgentEventEmitter(storage, pid, "worker");
@@ -671,6 +682,7 @@ function makeTaskExecutor(
       execute: deps.reviewerExecute,
       ...(cwd ? { cwd } : {}),
       ...(allowedAgents.length ? { allowedAgents } : {}),
+      agentHealth,
       maxRetriesPerAgent: config.maxRetriesPerAgent,
       ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
       onAgentEvent: (info) => onReviewerAgentEvent(target.id, info),
@@ -726,6 +738,7 @@ function makeTaskExecutor(
         maxRetriesPerAgent: config.maxRetriesPerAgent,
         ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
         allowedAgents: chatContext.allowedAgentsFor(task),
+        agentHealth,
         attachments: chatContext.attachmentsFor(task),
         // Los checks y el reviewer corren en el worktree del agente antes de
         // borrarlo: así se reutiliza su `node_modules` y el reviewer inspecciona

@@ -8,6 +8,7 @@ import {
   isRetryableError,
   MAX_RETRIES_PER_AGENT,
 } from "./fallback.js";
+import { AgentHealth } from "./health.js";
 import { selectAgent } from "./selector.js";
 import type { AgentCandidate } from "./types.js";
 
@@ -292,6 +293,85 @@ test("Caso 2: haiku sin cuota, se pasa a sonnet -> 2 intentos", async () => {
       { provider: "claude", model: "sonnet" },
     ],
   );
+});
+
+test("un agente agotado por límite pasa al final en la siguiente tarea", async () => {
+  const health = new AgentHealth({ now: () => 0 });
+
+  const execute = async (
+    _prompt: string,
+    agent: AgentCandidate,
+  ): Promise<string> => {
+    if (agent.provider === "claude" && agent.model === "haiku") {
+      throw new Error("429 rate limit");
+    }
+
+    return "ok";
+  };
+
+  const firstCalls: AgentCandidate[] = [];
+  const first = await runTask(
+    makeTask({ id: "T-1", type: "coding", complexity: "high" }),
+    {
+      execute: async (prompt, agent) => {
+        firstCalls.push(agent);
+        return execute(prompt, agent);
+      },
+      workspace: fakeWorkspace(),
+      agentHealth: health,
+    },
+  );
+
+  assert.equal(first.status, "done");
+  assert.deepEqual(first.executedBy, { provider: "claude", model: "sonnet" });
+  assert.deepEqual(firstCalls, [
+    { provider: "claude", model: "haiku" },
+    { provider: "claude", model: "sonnet" },
+  ]);
+
+  // La siguiente tarea ya no vuelve a empezar por el agente agotado.
+  const secondCalls: AgentCandidate[] = [];
+  const second = await runTask(
+    makeTask({ id: "T-2", type: "coding", complexity: "high" }),
+    {
+      execute: async (_prompt, agent) => {
+        secondCalls.push(agent);
+        return "ok";
+      },
+      workspace: fakeWorkspace(),
+      agentHealth: health,
+    },
+  );
+
+  assert.equal(second.status, "done");
+  assert.deepEqual(second.executedBy, { provider: "claude", model: "sonnet" });
+  assert.deepEqual(secondCalls, [{ provider: "claude", model: "sonnet" }]);
+});
+
+test("sin memoria de agentes el orden de la cadena no cambia", async () => {
+  const calls: AgentCandidate[] = [];
+  const execute = async (
+    _prompt: string,
+    agent: AgentCandidate,
+  ): Promise<string> => {
+    calls.push(agent);
+
+    if (agent.provider === "claude" && agent.model === "haiku") {
+      throw new Error("429 rate limit");
+    }
+
+    return "ok";
+  };
+
+  await runTask(makeTask({ type: "coding", complexity: "high" }), {
+    execute,
+    workspace: fakeWorkspace(),
+  });
+
+  assert.deepEqual(calls, [
+    { provider: "claude", model: "haiku" },
+    { provider: "claude", model: "sonnet" },
+  ]);
 });
 
 test("runTask: si todos caen por límite, espera y reintenta la cadena", async () => {

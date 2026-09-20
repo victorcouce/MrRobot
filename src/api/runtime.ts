@@ -17,6 +17,7 @@ import {
   TASK_COMPLEXITIES,
 } from "../agents/selector.js";
 import { getFallbackChain } from "../agents/fallback.js";
+import { AgentHealth } from "../agents/health.js";
 import { runAgent } from "../agents/router.js";
 import type { AgentCandidate } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/index.js";
@@ -159,6 +160,12 @@ export class Runtime {
   private readonly activeRuns = new Set<string>();
   private readonly pauseFlags = new Map<string, boolean>();
   private readonly cancelControllers = new Map<string, AbortController>();
+  /**
+   * Memoria de agentes agotados por límite, viva mientras dure el servidor: el
+   * proveedor que cae por rate limit/cuota no vuelve a ir primero hasta que se
+   * reponga, ni siquiera en otra ronda o en otro proyecto.
+   */
+  private readonly agentHealth = new AgentHealth();
   private readonly mock: boolean;
   private readonly scenario: MockScenario;
   private readonly mockDelayMs: number;
@@ -234,6 +241,7 @@ export class Runtime {
     return {
       storage: this.storage,
       workspace: this.workspace,
+      agentHealth: this.agentHealth,
       // Evento efímero: solo va al bus/SSE, no se persiste en el event log.
       onAgentOutput: (projectId, taskId, chunk) => {
         const event: ProjectEvent = {

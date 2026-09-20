@@ -140,7 +140,7 @@ Principios de la arquitectura:
 | Módulo | Responsabilidad |
 |---|---|
 | `providers/` | Ejecutan CLIs/API: `runCodex`, `runClaude`, `runDeepSeek`. |
-| `agents/` | `selectAgent`, `getFallbackChain`, `isRetryableError`, `runAgent`. |
+| `agents/` | `selectAgent`, `getFallbackChain`, `isRetryableError`, `AgentHealth`, `runAgent`. |
 | `tasks/` | `runTask`: retries por agente + fallback entre agentes, cada intento en worktree limpio. |
 | `scheduler/` | Valida el DAG y lo ejecuta en paralelo con límite de concurrencia. |
 | `workspace/` | Worktrees, commits, cherry-pick de dependencias y branch final. |
@@ -464,6 +464,19 @@ sin reintentarlo** (tiene prioridad sobre `isRetryableError`); si todos caen por
 límite, se aplica el reintento de cadena descrito arriba. La API usa además
 `checkAgentAvailability` para exponer el estado de cada proveedor a la UI.
 
+**Cuarentena de agentes agotados** (`AgentHealth`, `src/agents/health.ts`): el
+reintento de cadena anterior vale para *una* tarea, pero el motor no debe volver
+a empezar por un proveedor que acaba de agotarse. `runTask` y `runRoleAgent`
+aceptan un `agentHealth` opcional: cuando un candidato cae por
+`rate_limit`/`usage_limit`, se marca y `order()` lo relega al final de la cadena
+en las siguientes ejecuciones, de modo que se sigue con el agente que funcionó.
+La cuarentena dura el `retry after` del proveedor o, si no lo hay, `cooldownMs`
+(por defecto 5 min), con tope `maxCooldownMs` (1 h); `recordSuccess` la levanta
+si el agente vuelve a responder. No elimina candidatos: el agotado sigue siendo
+el último recurso. El `Runtime` del servidor comparte una única instancia entre
+rondas y proyectos (`ProjectDeps.agentHealth`); sin ella, el orden de
+`getFallbackChain` no cambia.
+
 **Disponibilidad de agentes en la API** (`src/api/availability.ts`):
 
 - `codex --version` y `claude --version` (5 s de timeout) → conectado si el
@@ -577,14 +590,15 @@ con `status ∈ completed | failed | blocked | paused | cancelled`.
 **Bucle de ejecución**:
 
 ```
-para cada candidato en getFallbackChain(task):        // 3 candidatos
+para cada candidato en agentHealth.order(getFallbackChain(task)):  // 3 candidatos
   para attempt en 0..maxRetriesPerAgent:              // 2 intentos por candidato
     1. crear worktree limpio desde baseRef
     2. ejecutar el agente con cwd = worktree
     3. commit del resultado en la branch del intento
     4. eliminar worktree (borrando branch si no hubo commit)
-    si éxito -> tarea done con executedBy, output, resultCommit
+    si éxito -> tarea done con executedBy, output, resultCommit (+ recordSuccess)
     si el proveedor no está disponible (cuota/rate limit/auth/CLI) -> siguiente candidato
+      (si es límite -> agentHealth.markLimited: al final en las siguientes tareas)
     si fallo retryable y quedan intentos -> reintentar mismo candidato
     si fallo no retryable o se agotan intentos -> siguiente candidato
 si TODOS los candidatos cayeron por límite (rate/usage) -> esperar y re-recorrer
@@ -1306,7 +1320,10 @@ Escenarios (`MRROBOT_MOCK_SCENARIO`):
 3. Cada intento parte de un worktree limpio.
 4. Si **todos** los candidatos caen por límite (rate/usage) → se espera (retry
    after o backoff) y se re-recorre la cadena hasta `limitRetry.maxLimitRetries`.
-5. Si se agotan los candidatos (o los reintentos de límite) → `task.failed`.
+5. Un agente que cae por límite queda en cuarentena (`AgentHealth`) y pasa al
+   final de la cadena en las siguientes tareas y roles hasta que se reponga, así
+   el motor no vuelve a empezar por el que falló.
+6. Si se agotan los candidatos (o los reintentos de límite) → `task.failed`.
 
 ### 28.4 Flujo de replanificación
 
