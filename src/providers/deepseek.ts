@@ -1,4 +1,9 @@
 import OpenAI from "openai";
+import type { RunOptions } from "./types.js";
+import type { OnAgentEvent } from "../agents/types.js";
+import { OpenAIChatClient } from "./agentic.js";
+import { harnessLoop } from "../harness/index.js";
+import { LocalSandbox, DEFAULT_SANDBOX_POLICY } from "../sandbox/index.js";
 
 export type DeepSeekModel = "deepseek-flash" | "deepseek-v4-pro";
 
@@ -50,5 +55,45 @@ export async function runDeepSeek(
     const message = error instanceof Error ? error.message : String(error);
 
     throw new Error(`[deepseek] falló la ejecución: ${message}`);
+  }
+}
+
+export async function runDeepSeekAgentic(
+  options: RunOptions & { cwd: string; prompt: string },
+  onEvent?: OnAgentEvent,
+): Promise<{ text: string; commitCreated?: boolean }> {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "[deepseek] falta DEEPSEEK_API_KEY (defínela en el archivo .env).",
+    );
+  }
+
+  const model =
+    (options.agent?.provider === "deepseek" && (options.agent as { model?: string })?.model === "deepseek-v4-pro")
+      ? "deepseek-v4-pro"
+      : "deepseek-flash";
+
+  const client = getClient(apiKey);
+  const chatClient = new OpenAIChatClient(client, `deepseek / ${model}`);
+
+  const sandbox = new LocalSandbox(options.cwd, DEFAULT_SANDBOX_POLICY);
+
+  try {
+    const result = await harnessLoop({
+      client: chatClient,
+      sandbox,
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.onOutput ? { onOutput: options.onOutput } : {}),
+      ...(options.harness?.bounds ? { bounds: options.harness.bounds } : {}),
+    });
+
+    return {
+      text: result.finalOutput || "Completado.",
+      commitCreated: result.complete,
+    };
+  } finally {
+    await sandbox.dispose();
   }
 }
