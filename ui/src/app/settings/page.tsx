@@ -15,7 +15,7 @@ import { LoadingState } from "@/components/ui/Badge";
 
 const DEFAULT_CHECKS = ["typecheck", "build", "test"];
 
-type Section = "ejecucion" | "agentes" | "checks" | "github";
+type Section = "ejecucion" | "agentes" | "checks" | "github" | "harness";
 
 export default function SettingsPage() {
   const { info, refresh } = useAppInfo();
@@ -36,6 +36,10 @@ export default function SettingsPage() {
   const [autoChecks, setAutoChecks] = useState(true);
   const [checkCommands, setCheckCommands] = useState<string[]>(DEFAULT_CHECKS);
   const [defaultAgents, setDefaultAgents] = useState<AgentChoice[]>([]);
+  const [harnessEnabled, setHarnessEnabled] = useState(false);
+  const [maxIterations, setMaxIterations] = useState(24);
+  const [maxToolCalls, setMaxToolCalls] = useState(60);
+  const [harnessTimeoutMs, setHarnessTimeoutMs] = useState(300000);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +58,12 @@ export default function SettingsPage() {
       config.checks.commands.length > 0 ? config.checks.commands : DEFAULT_CHECKS,
     );
     setDefaultAgents(config.defaultAllowedAgents.map(agentToChoice));
+    if (config.harness) {
+      setHarnessEnabled(config.harness.enabled ?? false);
+      setMaxIterations(config.harness.bounds?.maxIterations ?? 24);
+      setMaxToolCalls(config.harness.bounds?.maxToolCalls ?? 60);
+      setHarnessTimeoutMs(config.harness.bounds?.timeoutMs ?? 300000);
+    }
   }, [info]);
 
   const handleChange = useCallback(() => {
@@ -75,6 +85,16 @@ export default function SettingsPage() {
         plannerMaxAttempts: plannerAttempts,
         checks: { commands: autoChecks ? [] : checkCommands },
         defaultAllowedAgents: defaultAgents.map(choiceToAgent),
+        ...(harnessEnabled && {
+          harness: {
+            enabled: harnessEnabled,
+            bounds: {
+              maxIterations,
+              maxToolCalls,
+              timeoutMs: harnessTimeoutMs,
+            },
+          },
+        }),
       });
       setSaved(true);
       setHasChanges(false);
@@ -99,6 +119,17 @@ export default function SettingsPage() {
       config.checks.commands.length > 0 ? config.checks.commands : DEFAULT_CHECKS,
     );
     setDefaultAgents(config.defaultAllowedAgents.map(agentToChoice));
+    if (config.harness) {
+      setHarnessEnabled(config.harness.enabled ?? false);
+      setMaxIterations(config.harness.bounds?.maxIterations ?? 24);
+      setMaxToolCalls(config.harness.bounds?.maxToolCalls ?? 60);
+      setHarnessTimeoutMs(config.harness.bounds?.timeoutMs ?? 300000);
+    } else {
+      setHarnessEnabled(false);
+      setMaxIterations(24);
+      setMaxToolCalls(60);
+      setHarnessTimeoutMs(300000);
+    }
     setHasChanges(false);
     setSaved(false);
   }
@@ -192,7 +223,7 @@ export default function SettingsPage() {
       <div className="flex flex-1 gap-14 overflow-hidden px-16 py-10">
         {/* Navigation */}
         <nav className="w-44 flex-shrink-0 space-y-1" aria-label="Secciones">
-          {(["ejecucion", "agentes", "checks", "github"] as Section[]).map(
+          {(["ejecucion", "agentes", "checks", "harness", "github"] as Section[]).map(
             (sec) => (
               <button
                 key={sec}
@@ -206,6 +237,7 @@ export default function SettingsPage() {
                 {sec === "ejecucion" && "Ejecución"}
                 {sec === "agentes" && "Agentes"}
                 {sec === "checks" && "Checks"}
+                {sec === "harness" && "Harness"}
                 {sec === "github" && "GitHub"}
               </button>
             )
@@ -490,6 +522,92 @@ export default function SettingsPage() {
                       />
                     )}
                   </div>
+                </div>
+              </section>
+            )}
+
+            {section === "harness" && (
+              <section className="space-y-0 rounded-2xl border border-line bg-surface overflow-hidden">
+                <div className="border-b border-line px-5 py-3">
+                  <h2 className="text-sm font-semibold text-ink">Harness Agéntico</h2>
+                  <p className="mt-1 text-xs text-ink-3">
+                    Tool-calling + sandbox para DeepSeek en tareas coding.
+                  </p>
+                </div>
+                <div className="divide-y divide-line-soft px-5 py-3">
+                  <SettingRow
+                    label="Habilitar harness"
+                    desc="Activa tool-calling y sandbox para DeepSeek (agentic mode)."
+                  >
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={harnessEnabled}
+                        onChange={(e) => {
+                          setHarnessEnabled(e.target.checked);
+                          handleChange();
+                        }}
+                        className="h-4 w-4 rounded border border-line-strong bg-surface"
+                      />
+                      <span className="text-sm text-ink-3">
+                        {harnessEnabled ? "Habilitado" : "Deshabilitado"}
+                      </span>
+                    </label>
+                  </SettingRow>
+                  {harnessEnabled && (
+                    <>
+                      <SettingRow
+                        label="Máximo de iteraciones"
+                        desc="Vueltas del loop de tool-calling antes de terminar."
+                      >
+                        <Stepper
+                          value={maxIterations}
+                          onChange={(val) => {
+                            setMaxIterations(val);
+                            handleChange();
+                          }}
+                          min={1}
+                          max={100}
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Máximo de llamadas de herramientas"
+                        desc="Tool calls permitidas antes de terminar."
+                      >
+                        <Stepper
+                          value={maxToolCalls}
+                          onChange={(val) => {
+                            setMaxToolCalls(val);
+                            handleChange();
+                          }}
+                          min={1}
+                          max={200}
+                        />
+                      </SettingRow>
+                      <SettingRow
+                        label="Timeout (segundos)"
+                        desc="Tiempo máximo para completar el harness."
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={Math.floor(harnessTimeoutMs / 1000)}
+                            onChange={(e) => {
+                              setHarnessTimeoutMs(Math.max(1, parseInt(e.target.value) || 0) * 1000);
+                              handleChange();
+                            }}
+                            min="1"
+                            max="3600"
+                            className="w-20 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none"
+                          />
+                          <span className="text-xs text-ink-3">s</span>
+                        </div>
+                      </SettingRow>
+                    </>
+                  )}
+                </div>
+                <div className="bg-subtle px-5 py-3 text-xs text-ink-3">
+                  Confines de sandbox: solo npm/node/git. Home aislado. Timeout no reintentable.
                 </div>
               </section>
             )}

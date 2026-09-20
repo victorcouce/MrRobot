@@ -19,7 +19,7 @@ test("harness loop: ejecuta iteraciones y respeta límites", async () => {
       toolCalls: [
         {
           name: "finish",
-          argumentsRaw: { output: "Completado" },
+          argumentsRaw: JSON.stringify({ output: "Completado" }),
         },
       ],
     }));
@@ -66,11 +66,11 @@ test("harness loop: rechaza cuando excede maxToolCalls", async () => {
       toolCalls: [
         {
           name: "write_file",
-          argumentsRaw: { path: "file1.txt", content: "contenido 1" },
+          argumentsRaw: JSON.stringify({ path: "file1.txt", content: "contenido 1" }),
         },
         {
           name: "write_file",
-          argumentsRaw: { path: "file2.txt", content: "contenido 2" },
+          argumentsRaw: JSON.stringify({ path: "file2.txt", content: "contenido 2" }),
         },
       ],
     }));
@@ -122,7 +122,7 @@ test("harness loop: respeta maxIterations", async () => {
       toolCalls: [
         {
           name: "write_file",
-          argumentsRaw: { path: "test.txt", content: "contenido" },
+          argumentsRaw: JSON.stringify({ path: "test.txt", content: "contenido" }),
         },
       ],
     }));
