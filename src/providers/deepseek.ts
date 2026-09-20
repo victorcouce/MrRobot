@@ -4,6 +4,7 @@ import type { OnAgentEvent } from "../agents/types.js";
 import { OpenAIChatClient } from "./agentic.js";
 import { harnessLoop } from "../harness/index.js";
 import { LocalSandbox, DEFAULT_SANDBOX_POLICY } from "../sandbox/index.js";
+import { ensureDependencies } from "../checks/checks.js";
 
 export type DeepSeekModel = "deepseek-flash" | "deepseek-v4-pro";
 
@@ -81,6 +82,10 @@ export async function runDeepSeekAgentic(
   const sandbox = new LocalSandbox(options.cwd, DEFAULT_SANDBOX_POLICY);
 
   try {
+    // Pre-calentar node_modules para que npm run/git/node estén disponibles
+    options.onOutput?.("▸ pre-calentando dependencias...");
+    await ensureDependencies(options.cwd);
+
     const result = await harnessLoop({
       client: chatClient,
       sandbox,

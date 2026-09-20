@@ -41,13 +41,23 @@ export const DEFAULT_ALLOWED_COMMANDS = [
 ] as const;
 
 export const DEFAULT_ARGV_RULES = [
+  // npm
   ["npm", "run", "typecheck"],
   ["npm", "run", "build"],
   ["npm", "run", "test"],
+  ["npm", "run", "dev"],
   ["npm", "test"],
+  ["npm", "ci"],
+  // git
   ["git", "status"],
   ["git", "diff"],
+  ["git", "add"],
+  ["git", "commit"],
+  ["git", "log"],
+  ["git", "show"],
+  // node
   ["node", "--version"],
+  ["node", "-e"],
 ];
 
 /**
