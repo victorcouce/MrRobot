@@ -296,6 +296,58 @@ cuarentena dura el `retry after` del proveedor o, si no lo indica, 5 minutos
 memoria es única y sobrevive entre rondas y proyectos; sin `agentHealth` el orden
 de `getFallbackChain` no cambia.
 
+## Harness Agéntico (DeepSeek con Tool-Calling)
+
+DeepSeek puede operar en dos modos:
+
+### 1. Modo texto (por defecto)
+- Una sola llamada de API
+- Devuelve texto (resumen/análisis)
+- Sin acceso a disco ni comandos
+- Rápido y barato
+
+### 2. Modo agentic (tool-calling + sandbox)
+Disponible en tareas `coding` cuando hay configuración de harness:
+- **Bucle de tool-calling**: DeepSeek llama a herramientas (`read_file`, `write_file`, `run_command`, etc.) y recibe resultados, iterando hasta terminar
+- **Sandbox local**: Las operaciones están confinadas en el worktree (`cwd`), con:
+  - **Contención de rutas**: rechaza `../`, symlinks que escapan, `.git`
+  - **Allowlist de comandos**: solo `npm`, `node`, `git` + reglas de argv específicas (ej. `npm run test`, `git commit`)
+  - **Límites de recursos**: máx. 24 iteraciones, 60 tool calls, 300s timeout, 4 MiB escritura total
+  - **Credenciales filtradas**: `HOME` apunta a un directorio temporal para evitar que npm lea `~/.npmrc` con tokens
+- **Pre-calentamiento**: antes de llamar al harness, `npm ci` se ejecuta en el worktree para que `node_modules` esté disponible (reutiliza lo que el agente ya instaló)
+- **Commit automático**: al terminar, los cambios se commitean
+
+El harness es **agnóstico del proveedor**: OpenAI/DeepSeek/Claude que soporten tool-calling pueden usarlo. Actualmente está activado para DeepSeek.
+
+### Configuración
+
+En `OrchestratorConfig` (proyecto o global):
+
+```ts
+harness?: {
+  enabled?: boolean;
+  bounds?: {
+    maxIterations?: number;     // defecto: 24
+    maxToolCalls?: number;      // defecto: 60
+    timeoutMs?: number;         // defecto: 300000 (5 min)
+    maxInvalidToolCalls?: number; // defecto: 3
+    maxNoToolReplies?: number;  // defecto: 2
+    maxSandboxViolations?: number; // defecto: 5
+  };
+  sandbox?: {
+    allowedCommands?: string[]; // defecto: ["npm", "node", "git"]
+  };
+}
+```
+
+Las tareas `coding` automáticamente usan modo agentic si:
+- `harness` está definido en config
+- DeepSeek es elegido por la cadena de fallback
+
+### Errores
+
+Los errores del harness (`[harness]` y `[sandbox]` prefijos) **no se reintentан** en otros agentes; son fatales para esa tarea. Esto evita ciclos inútiles de timeout/violación de sandbox.
+
 ## Review
 
 Tras completar una tarea, los checks locales (`npm run typecheck|build|test`;
