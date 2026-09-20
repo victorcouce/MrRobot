@@ -36,13 +36,13 @@ function researchChain(complexity: TaskComplexity): AgentCandidate[] {
 function autoChain(task: Task): AgentCandidate[] {
   switch (task.type) {
     // Planificación y arquitectura en Opus; el desarrollo ya planificado
-    // (coding y testing) arranca en Haiku y escala a Sonnet/Codex si falla.
+    // (coding y testing) arranca en Haiku con DeepSeek como alternativa barata.
     case "architecture":
     case "planning":
       return [CLAUDE_OPUS, CODEX, CLAUDE_SONNET];
     case "coding":
     case "testing":
-      return [CLAUDE_HAIKU, CLAUDE_SONNET, CODEX];
+      return [CLAUDE_HAIKU, DEEPSEEK_FLASH, CLAUDE_SONNET, CODEX];
     case "review":
       return reviewChain(task.complexity);
     case "research":

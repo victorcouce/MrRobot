@@ -740,6 +740,8 @@ function makeTaskExecutor(
         allowedAgents: chatContext.allowedAgentsFor(task),
         agentHealth,
         attachments: chatContext.attachmentsFor(task),
+        ...(task.type === "coding" ? { mode: "agentic" } : {}),
+        ...(config.harness ? { harness: config.harness } : {}),
         // Los checks y el reviewer corren en el worktree del agente antes de
         // borrarlo: así se reutiliza su `node_modules` y el reviewer inspecciona
         // los archivos reales en vez del checkout principal (que no los tiene).

@@ -76,6 +76,10 @@ export interface RunTaskOptions {
         result: { commit?: string; output: string },
       ) => Promise<void> | void)
     | undefined;
+  /** Modo de ejecución: "text" (respuesta) o "agentic" (tool-calling con harness). */
+  mode?: "text" | "agentic" | undefined;
+  /** Configuración del harness (sandbox + tool-calling loop). */
+  harness?: import("../harness/types.js").HarnessConfig | undefined;
 }
 
 function buildPrompt(
@@ -334,6 +338,8 @@ async function runTaskOnce(
           cwd: workspace.path,
           ...(options.signal ? { signal: options.signal } : {}),
           ...(options.onOutput ? { onOutput: options.onOutput } : {}),
+          ...(options.mode ? { mode: options.mode } : {}),
+          ...(options.harness ? { harness: options.harness } : {}),
         });
 
         const commitMessage = `agent(${running.id}): ${running.title}`;
