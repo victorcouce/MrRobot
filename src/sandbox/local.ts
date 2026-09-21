@@ -55,6 +55,11 @@ export const DEFAULT_ARGV_RULES = [
   ["git", "commit"],
   ["git", "log"],
   ["git", "show"],
+  // git de solo lectura que usan los agentes para orientarse
+  ["git", "remote", "-v"],
+  ["git", "ls-files"],
+  ["git", "rev-parse"],
+  ["git", "branch", "--show-current"],
   // node
   ["node", "--version"],
   ["node", "-e"],
@@ -305,6 +310,25 @@ export class LocalSandbox implements Sandbox {
         let stdout = "";
         let stderr = "";
 
+        // El temporizador de plazo debe limpiarse al terminar: si no, mantiene
+        // vivo el event loop (y con él el proceso) hasta que vence, aunque el
+        // comando ya haya acabado.
+        const timeout = setTimeout(() => {
+          if (child.exitCode === null) {
+            try {
+              process.kill(-child.pid!, "SIGKILL");
+            } catch {
+              // Ya terminó
+            }
+            reject(
+              new Error(
+                `[sandbox] comando superó el plazo: ${this.policy.limits.commandTimeoutMs}ms`,
+              ),
+            );
+          }
+        }, this.policy.limits.commandTimeoutMs);
+        timeout.unref?.();
+
         child.stdout?.on("data", (data) => {
           const text = data.toString();
           stdout += text;
@@ -324,6 +348,7 @@ export class LocalSandbox implements Sandbox {
         });
 
         child.on("error", (err) => {
+          clearTimeout(timeout);
           // Evitar la cadena "spawn" en el mensaje de error para no ser confundido con "CLI ausente"
           if (err.message.includes("spawn")) {
             return reject(
@@ -336,6 +361,7 @@ export class LocalSandbox implements Sandbox {
         });
 
         child.on("exit", (code) => {
+          clearTimeout(timeout);
           this.commandsRun++;
           resolve({
             exitCode: code ?? 1,
@@ -346,22 +372,6 @@ export class LocalSandbox implements Sandbox {
               stderr.length > this.policy.limits.maxCommandOutputChars,
           });
         });
-
-        // Timeout: matar el grupo de procesos
-        setTimeout(() => {
-          if (child.exitCode === null) {
-            try {
-              process.kill(-child.pid!, "SIGKILL");
-            } catch {
-              // Ya terminó
-            }
-            reject(
-              new Error(
-                `[sandbox] comando superó el plazo: ${this.policy.limits.commandTimeoutMs}ms`,
-              ),
-            );
-          }
-        }, this.policy.limits.commandTimeoutMs);
       } catch (error) {
         reject(error);
       }

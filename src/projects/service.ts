@@ -449,27 +449,61 @@ async function runChecksInDir(
   return results;
 }
 
+/**
+ * Reencola una tarea a partir de su nueva definición del planner, conservando
+ * los datos de ejecución que no vienen en el plan (chat, agente y adjuntos) y
+ * descartando intentos, resultado y errores previos.
+ */
+function requeueFromGenerated(existing: Task, generated: Task): Task {
+  const next: Task = {
+    id: generated.id,
+    title: generated.title,
+    description: generated.description,
+    status: "todo",
+    type: generated.type,
+    complexity: generated.complexity,
+  };
+
+  if (generated.dependsOn !== undefined) next.dependsOn = generated.dependsOn;
+  if (generated.acceptanceCriteria !== undefined) {
+    next.acceptanceCriteria = generated.acceptanceCriteria;
+  }
+  if (existing.chatId !== undefined) next.chatId = existing.chatId;
+  if (existing.agent !== undefined) next.agent = existing.agent;
+  if (existing.attachmentIds !== undefined) {
+    next.attachmentIds = existing.attachmentIds;
+  }
+
+  return next;
+}
+
+/**
+ * Combina el plan regenerado con el estado actual. Las tareas `done` nunca se
+ * reescriben: el trabajo ya está hecho. Para el resto:
+ * - si el planner vuelve a definir una tarea (mismo id), se usa su versión
+ *   nueva y se reencola, aunque estuviera `blocked` o `ready`;
+ * - si no la menciona, se conserva tal cual y se reencola.
+ * Las tareas nuevas del planner se añaden.
+ */
 export function mergeReplan(existing: Task[], plan: GeneratedPlan): Task[] {
   const done = existing.filter((task) => task.status === "done");
   const doneIds = new Set(done.map((task) => task.id));
   const generatedTasks = planToTasks(plan);
-  const generatedIds = new Set(generatedTasks.map((task) => task.id));
+  const generatedById = new Map(generatedTasks.map((task) => [task.id, task]));
 
-  // Las tareas fallidas que el planner vuelve a definir se reemplazan por la
-  // versión nueva (reformulada tras el fallo); el resto de no-done se conserva
-  // y se reencola. Sin esto un replan reencolaba el mismo criterio irresoluble.
-  const reset = existing
-    .filter(
-      (task) =>
-        task.status !== "done" &&
-        !(task.status === "failed" && generatedIds.has(task.id)),
-    )
-    .map((task) => ({ ...task, status: "todo" as const }));
-  const resetIds = new Set(reset.map((task) => task.id));
-  const generated = generatedTasks.filter(
-    (task) => !doneIds.has(task.id) && !resetIds.has(task.id),
+  const kept = existing
+    .filter((task) => task.status !== "done")
+    .map((task) => {
+      const generated = generatedById.get(task.id);
+      return generated
+        ? requeueFromGenerated(task, generated)
+        : { ...task, status: "todo" as const };
+    });
+  const keptIds = new Set(kept.map((task) => task.id));
+  const added = generatedTasks.filter(
+    (task) => !doneIds.has(task.id) && !keptIds.has(task.id),
   );
-  const merged = [...done, ...reset, ...generated];
+  const merged = [...done, ...kept, ...added];
 
   validatePlan(merged);
   return merged;
@@ -1055,7 +1089,14 @@ export async function runProject(
           reason: decision.reason,
         });
         continue;
-      } catch {
+      } catch (error) {
+        // Un replan que no se puede aplicar (plan inválido, merge con
+        // dependencias rotas…) no debe perderse en silencio: se deja
+        // constancia y se corta la ejecución en lugar de reencolar lo mismo.
+        await emit(storage, pid, "supervisor.replan_failed", undefined, {
+          reason: decision.reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
         break;
       }
     }

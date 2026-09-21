@@ -4,7 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useAppInfo, useProjects } from "../../lib/hooks";
+import { useAllChats, useAppInfo, useProjects } from "../../lib/hooks";
+import type { ChatSummary, ProjectSummary } from "../../lib/types";
 import { clsx } from "../../lib/cx";
 import { PROJECT_STATUS } from "../../lib/status";
 import { DOT_CLASSES } from "../ui/Badge";
@@ -40,11 +41,28 @@ const SEARCH_ICON = (
   </svg>
 );
 
-function ProjectChatGroups({ pathname }: { pathname: string }) {
-  const { projects } = useProjects();
+const CHAT_RAIL_LIMIT = 12;
 
+const CHAT_ICON = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <path
+      d="M2.5 4.5A2.5 2.5 0 0 1 5 2h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 11 10H7l-3.2 2.8V10A2.5 2.5 0 0 1 2.5 7.5z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+function ProjectRail({
+  pathname,
+  projects,
+}: {
+  pathname: string;
+  projects: ProjectSummary[];
+}) {
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <nav aria-label="Proyectos" className="flex flex-col items-center gap-1.5">
       {projects.map((project) => {
         const isActive = pathname === `/projects/${project.id}`;
         const dotColor = DOT_CLASSES[PROJECT_STATUS[project.status].color];
@@ -68,6 +86,49 @@ function ProjectChatGroups({ pathname }: { pathname: string }) {
           </Tooltip>
         );
       })}
+    </nav>
+  );
+}
+
+function ChatRail({ chats }: { chats: ChatSummary[] }) {
+  const recentChats = chats.slice(0, CHAT_RAIL_LIMIT);
+
+  return (
+    <nav aria-label="Chats" className="flex flex-col items-center gap-1.5">
+      {recentChats.map((chat) => (
+        <Tooltip key={chat.id} label={chat.title}>
+          <Link
+            href={`/projects/${chat.projectId}?chat=${chat.id}`}
+            aria-label={chat.title}
+            className="focus-ring flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink-2 hover:border-ink hover:text-ink"
+          >
+            {CHAT_ICON}
+          </Link>
+        </Tooltip>
+      ))}
+    </nav>
+  );
+}
+
+function RailLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="w-16 select-none px-1 text-center text-[9px] font-semibold uppercase leading-none tracking-[0.08em] text-ink-4">
+      {children}
+    </span>
+  );
+}
+
+function ProjectChatGroups({ pathname }: { pathname: string }) {
+  const { projects } = useProjects();
+  const { chats } = useAllChats();
+
+  return (
+    <div className="flex w-full flex-col items-center gap-1.5">
+      <RailLabel>Proyectos</RailLabel>
+      <ProjectRail pathname={pathname} projects={projects} />
+      <div role="separator" className="my-1 h-px w-6 bg-line-strong" />
+      <RailLabel>Chats</RailLabel>
+      <ChatRail chats={chats} />
     </div>
   );
 }

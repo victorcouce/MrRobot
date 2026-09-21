@@ -300,6 +300,68 @@ test("mergeReplan conserva una tarea fallida que el planner no redefine", () => 
   assert.equal(task6?.status, "todo");
 });
 
+test("mergeReplan aplica la redefinición de una tarea bloqueada", () => {
+  const existing: Task[] = [
+    {
+      id: "TASK-001",
+      title: "esqueleto complejo",
+      description: "viejo",
+      status: "done",
+      type: "coding",
+      complexity: "high",
+    },
+    {
+      id: "TASK-002",
+      title: "lógica compleja",
+      description: "viejo",
+      status: "blocked",
+      type: "coding",
+      complexity: "high",
+      dependsOn: ["TASK-001"],
+      blockedReason: "esperando a TASK-001",
+      chatId: "chat-1",
+      attempts: [
+        {
+          agent: { provider: "claude" },
+          attempt: 1,
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          status: "failed",
+        },
+      ],
+      acceptanceCriteria: ["manual"],
+    },
+  ];
+
+  const merged = mergeReplan(existing, {
+    summary: "replan",
+    tasks: [
+      {
+        id: "TASK-002",
+        title: "calendario mensual simplificado",
+        description: "JavaScript puro, sin dependencias",
+        type: "coding",
+        complexity: "low",
+        dependsOn: ["TASK-001"],
+        acceptanceCriteria: ["node --test pasa"],
+        attachments: [],
+      },
+    ],
+  });
+
+  const task2 = merged.find((task) => task.id === "TASK-002");
+  assert.equal(task2?.title, "calendario mensual simplificado");
+  assert.equal(task2?.complexity, "low");
+  assert.deepEqual(task2?.acceptanceCriteria, ["node --test pasa"]);
+  assert.equal(task2?.status, "todo");
+  assert.equal(task2?.blockedReason, undefined);
+  assert.equal(task2?.attempts, undefined);
+  // Los datos de ejecución que no vienen en el plan se conservan.
+  assert.equal(task2?.chatId, "chat-1");
+  // La tarea completada no se reescribe.
+  assert.equal(merged.find((task) => task.id === "TASK-001")?.title, "esqueleto complejo");
+});
+
 test("integra las dependencias transitivas en orden topológico", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
