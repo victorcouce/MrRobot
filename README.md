@@ -312,7 +312,7 @@ Disponible en tareas `coding` cuando hay configuración de harness:
 - **Sandbox local**: Las operaciones están confinadas en el worktree (`cwd`), con:
   - **Contención de rutas**: rechaza `../`, symlinks que escapan, `.git`
   - **Allowlist de comandos**: `npm`, `node`, `git` y utilidades de shell (`ls`, `cat`, `grep`, `find`, `sed`, `mkdir`, `cp`, `mv`…) + reglas de argv; en `git` se permite cualquier subcomando salvo las operaciones de red y de configuración (`push`, `fetch`, `pull`, `clone`, `remote add|set-url|remove|rename`, `config`, `credential`, `filter-branch`)
-  - **Límites de recursos**: máx. 24 iteraciones, 60 tool calls, 300s timeout, 4 MiB escritura total
+  - **Límites de recursos**: máx. 40 iteraciones, 100 tool calls, 300s timeout, 4 MiB escritura total
   - **Credenciales filtradas**: `HOME` apunta a un directorio temporal para evitar que npm lea `~/.npmrc` con tokens
 - **Pre-calentamiento**: antes de llamar al harness, `npm ci` se ejecuta en el worktree para que `node_modules` esté disponible (reutiliza lo que el agente ya instaló)
 - **Commit automático**: al terminar, los cambios se commitean
@@ -327,8 +327,8 @@ En `OrchestratorConfig` (proyecto o global):
 harness?: {
   enabled?: boolean;
   bounds?: {
-    maxIterations?: number;     // defecto: 24
-    maxToolCalls?: number;      // defecto: 60
+    maxIterations?: number;     // defecto: 40
+    maxToolCalls?: number;      // defecto: 100
     timeoutMs?: number;         // defecto: 300000 (5 min)
     maxInvalidToolCalls?: number; // defecto: 3
     maxNoToolReplies?: number;  // defecto: 2

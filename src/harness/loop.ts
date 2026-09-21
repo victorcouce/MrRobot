@@ -21,8 +21,8 @@ import { SandboxViolationError } from "../sandbox/types.js";
 import * as toolHandlers from "./tool-handlers.js";
 
 const DEFAULT_BOUNDS: HarnessBounds = {
-  maxIterations: 24,
-  maxToolCalls: 60,
+  maxIterations: 40,
+  maxToolCalls: 100,
   timeoutMs: 300_000, // 5 min
   maxToolOutputChars: 4_000,
   maxHistoryChars: 60_000,
