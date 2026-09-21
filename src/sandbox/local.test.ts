@@ -20,20 +20,33 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test("permite comandos git de solo lectura que usan los agentes", async () => {
+test("permite usar git dentro del sandbox", async () => {
   const remote = await sandbox.exec("git", ["remote", "-v"]);
   assert.equal(typeof remote.exitCode, "number");
 
   await sandbox.exec("git", ["ls-files"]);
   await sandbox.exec("git", ["rev-parse", "--is-inside-work-tree"]);
   await sandbox.exec("git", ["branch", "--show-current"]);
+  await sandbox.exec("git", ["checkout", "-b", "feature"]);
+  await sandbox.exec("git", ["stash", "list"]);
 });
 
-test("rechaza comandos fuera de la allowlist", async () => {
+test("veta las operaciones de red y de configuración de git", async () => {
+  await assert.rejects(
+    () => sandbox.exec("git", ["push", "origin", "main"]),
+    (error: unknown) => error instanceof SandboxViolationError,
+  );
   await assert.rejects(
     () => sandbox.exec("git", ["remote", "add", "origin", "https://x"]),
     (error: unknown) => error instanceof SandboxViolationError,
   );
+  await assert.rejects(
+    () => sandbox.exec("git", ["config", "--global", "user.email", "x@y"]),
+    (error: unknown) => error instanceof SandboxViolationError,
+  );
+});
+
+test("rechaza comandos fuera de la allowlist", async () => {
   await assert.rejects(
     () => sandbox.exec("rm", ["-rf", "."]),
     (error: unknown) => error instanceof SandboxViolationError,

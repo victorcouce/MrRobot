@@ -311,7 +311,7 @@ Disponible en tareas `coding` cuando hay configuración de harness:
 - **Bucle de tool-calling**: DeepSeek llama a herramientas (`read_file`, `write_file`, `run_command`, etc.) y recibe resultados, iterando hasta terminar
 - **Sandbox local**: Las operaciones están confinadas en el worktree (`cwd`), con:
   - **Contención de rutas**: rechaza `../`, symlinks que escapan, `.git`
-  - **Allowlist de comandos**: solo `npm`, `node`, `git` + reglas de argv específicas (ej. `npm run test`, `git commit`)
+  - **Allowlist de comandos**: `npm`, `node` y `git` + reglas de argv (ej. `npm run test`); en `git` se permite cualquier subcomando salvo las operaciones de red y de configuración (`push`, `fetch`, `pull`, `clone`, `remote add|set-url|remove|rename`, `config`, `credential`, `filter-branch`)
   - **Límites de recursos**: máx. 24 iteraciones, 60 tool calls, 300s timeout, 4 MiB escritura total
   - **Credenciales filtradas**: `HOME` apunta a un directorio temporal para evitar que npm lea `~/.npmrc` con tokens
 - **Pre-calentamiento**: antes de llamar al harness, `npm ci` se ejecuta en el worktree para que `node_modules` esté disponible (reutiliza lo que el agente ya instaló)

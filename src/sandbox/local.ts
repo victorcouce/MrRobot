@@ -48,21 +48,33 @@ export const DEFAULT_ARGV_RULES = [
   ["npm", "run", "dev"],
   ["npm", "test"],
   ["npm", "ci"],
-  // git
-  ["git", "status"],
-  ["git", "diff"],
-  ["git", "add"],
-  ["git", "commit"],
-  ["git", "log"],
-  ["git", "show"],
-  // git de solo lectura que usan los agentes para orientarse
-  ["git", "remote", "-v"],
-  ["git", "ls-files"],
-  ["git", "rev-parse"],
-  ["git", "branch", "--show-current"],
+  // git: cualquier subcomando (status, diff, log, checkout, branch, stash…).
+  // Las operaciones de red y de configuración se vetan en
+  // DEFAULT_DENIED_ARGV_RULES.
+  ["git"],
   // node
   ["node", "--version"],
   ["node", "-e"],
+];
+
+/**
+ * Prefijos vetados aunque el comando esté permitido. En `git` se bloquean las
+ * operaciones de red (push/fetch/pull/clone) y las que tocan credenciales o
+ * configuración: el agente trabaja en un worktree local y no debe publicar ni
+ * leer credenciales.
+ */
+export const DEFAULT_DENIED_ARGV_RULES = [
+  ["git", "push"],
+  ["git", "fetch"],
+  ["git", "pull"],
+  ["git", "clone"],
+  ["git", "remote", "add"],
+  ["git", "remote", "set-url"],
+  ["git", "remote", "remove"],
+  ["git", "remote", "rename"],
+  ["git", "config"],
+  ["git", "credential"],
+  ["git", "filter-branch"],
 ];
 
 /**
@@ -88,25 +100,40 @@ function scrubEnv(tempHome: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function isAllowedCommand(
+type CommandDecision = "allowed" | "denied" | "not-allowed";
+
+function matchesArgvRule(
+  argv: readonly string[],
+  rules: readonly (readonly string[])[],
+): boolean {
+  return rules.some((rule) => {
+    if (rule.length > argv.length) return false;
+    return rule.every((part, i) => argv[i] === part);
+  });
+}
+
+function decideCommand(
   command: string,
   args: readonly string[],
   allowedCommands: readonly string[],
   allowedArgvRules: readonly (readonly string[])[],
-): boolean {
+  deniedArgvRules: readonly (readonly string[])[],
+): CommandDecision {
   if (!allowedCommands.includes(command)) {
-    return false;
+    return "not-allowed";
   }
 
   if (allowedArgvRules.length === 0) {
-    return false; // Sin reglas de argv, solo comando permitido no sirve
+    return "not-allowed"; // Sin reglas de argv, solo comando permitido no sirve
   }
 
   const argv = [command, ...args];
-  return allowedArgvRules.some((rule) => {
-    if (rule.length > argv.length) return false;
-    return rule.every((part, i) => argv[i] === part);
-  });
+
+  if (matchesArgvRule(argv, deniedArgvRules)) {
+    return "denied";
+  }
+
+  return matchesArgvRule(argv, allowedArgvRules) ? "allowed" : "not-allowed";
 }
 
 export class LocalSandbox implements Sandbox {
@@ -285,17 +312,20 @@ export class LocalSandbox implements Sandbox {
       try {
         validateCommand(command);
 
-        if (
-          !isAllowedCommand(
-            command,
-            args,
-            this.policy.allowedCommands,
-            DEFAULT_ARGV_RULES,
-          )
-        ) {
+        const decision = decideCommand(
+          command,
+          args,
+          this.policy.allowedCommands,
+          DEFAULT_ARGV_RULES,
+          DEFAULT_DENIED_ARGV_RULES,
+        );
+
+        if (decision !== "allowed") {
           return reject(
             new SandboxViolationError(
-              `comando no permitido: "${command}" con args [${args.join(", ")}]`,
+              decision === "denied"
+                ? `comando vetado: "${command}" con args [${args.join(", ")}]`
+                : `comando no permitido: "${command}" con args [${args.join(", ")}]`,
             ),
           );
         }
