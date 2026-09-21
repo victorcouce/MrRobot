@@ -38,16 +38,38 @@ export const DEFAULT_ALLOWED_COMMANDS = [
   "npm",
   "node",
   "git",
+  // Utilidades de shell para inspeccionar y manejar archivos del worktree.
+  "ls",
+  "pwd",
+  "cat",
+  "head",
+  "tail",
+  "wc",
+  "grep",
+  "find",
+  "echo",
+  "which",
+  "sed",
+  "awk",
+  "sort",
+  "uniq",
+  "diff",
+  "stat",
+  "du",
+  "file",
+  "mkdir",
+  "touch",
+  "cp",
+  "mv",
 ] as const;
 
 export const DEFAULT_ARGV_RULES = [
   // npm
-  ["npm", "run", "typecheck"],
-  ["npm", "run", "build"],
-  ["npm", "run", "test"],
-  ["npm", "run", "dev"],
+  ["npm", "run"],
   ["npm", "test"],
   ["npm", "ci"],
+  ["npm", "install"],
+  ["npm", "ls"],
   // git: cualquier subcomando (status, diff, log, checkout, branch, stash…).
   // Las operaciones de red y de configuración se vetan en
   // DEFAULT_DENIED_ARGV_RULES.
@@ -55,6 +77,29 @@ export const DEFAULT_ARGV_RULES = [
   // node
   ["node", "--version"],
   ["node", "-e"],
+  // utilidades de shell: cualquier argumento
+  ["ls"],
+  ["pwd"],
+  ["cat"],
+  ["head"],
+  ["tail"],
+  ["wc"],
+  ["grep"],
+  ["find"],
+  ["echo"],
+  ["which"],
+  ["sed"],
+  ["awk"],
+  ["sort"],
+  ["uniq"],
+  ["diff"],
+  ["stat"],
+  ["du"],
+  ["file"],
+  ["mkdir"],
+  ["touch"],
+  ["cp"],
+  ["mv"],
 ];
 
 /**

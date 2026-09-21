@@ -113,6 +113,33 @@ export function recoverInterrupted(project: Project): Project {
   return { ...project, tasks, updatedAt: new Date() };
 }
 
+/**
+ * Reencola las tareas fallidas (`failed` → `todo`) limpiando error, motivo de
+ * bloqueo e intentos previos, para que un nuevo ciclo las vuelva a ejecutar.
+ * Sin esto, reanudar deja las tareas fallidas intactas (el scheduler las
+ * preserva) y el proyecto vuelve a bloquearse sin avanzar. Las tareas
+ * bloqueadas por una fallida se desbloquean solas al recalcularse el plan.
+ */
+export function requeueFailedTasks(project: Project): Project {
+  const tasks = project.tasks.map((task) => {
+    if (task.status !== "failed") return task;
+
+    const {
+      error: _error,
+      blockedReason: _blockedReason,
+      integrationError: _integrationError,
+      startedAt: _startedAt,
+      finishedAt: _finishedAt,
+      resultCommit: _resultCommit,
+      ...rest
+    } = task;
+
+    return { ...rest, status: "todo" as const };
+  });
+
+  return { ...project, tasks, updatedAt: new Date() };
+}
+
 export interface RecoveredProject {
   project: Project;
   previousStatus: "planning" | "running";
@@ -1286,11 +1313,13 @@ export async function resumeProject(
     throw new Error(`Proyecto ${projectId} no encontrado.`);
   }
 
-  const resumed = recoverInterrupted({
-    ...project,
-    status: "running",
-    updatedAt: new Date(),
-  });
+  const resumed = requeueFailedTasks(
+    recoverInterrupted({
+      ...project,
+      status: "running",
+      updatedAt: new Date(),
+    }),
+  );
 
   await deps.storage.saveProject(resumed);
   await emit(deps.storage, projectId, "project.resumed");

@@ -34,6 +34,8 @@ const DEFAULT_BOUNDS: HarnessBounds = {
 export interface HarnessLoopOptions {
   client: ChatClient;
   sandbox: Sandbox;
+  /** Tarea a implementar (se inyecta en el primer mensaje de usuario). */
+  prompt: string;
   bounds?: Partial<HarnessBounds>;
   signal?: AbortSignal;
   onOutput?: (line: string) => void;
@@ -100,12 +102,16 @@ export async function harnessLoop(
       content:
         "Eres un asistente que implementa tareas de desarrollo. " +
         "Usa las herramientas disponibles para leer, escribir y probar código. " +
+        "Trabajas en un worktree aislado: usa SIEMPRE rutas relativas a la raíz " +
+        "del proyecto (`.`) y nunca rutas absolutas ni salgas de ese directorio. " +
         "Cuando termines, llama a finish() con un resumen.",
     },
     {
       role: "user",
       content:
-        "Implementa la tarea. Cuando termines, llama a finish() para confirmar.",
+        "Implementa esta tarea:\n\n" +
+        options.prompt +
+        "\n\nCuando termines, llama a finish() para confirmar.",
     },
   ];
 

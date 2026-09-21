@@ -30,6 +30,7 @@ test("harness loop: ejecuta iteraciones y respeta límites", async () => {
       const result = await harnessLoop({
         client,
         sandbox,
+        prompt: "tarea de prueba",
       });
 
       // El harness agota iteraciones (finish no termina el loop, solo es otra herramienta)
@@ -81,6 +82,7 @@ test("harness loop: rechaza cuando excede maxToolCalls", async () => {
       await harnessLoop({
         client,
         sandbox,
+        prompt: "tarea de prueba",
         bounds: {
           maxIterations: 100,
           maxToolCalls: 1, // Solo 1 tool call permitido
@@ -133,6 +135,7 @@ test("harness loop: respeta maxIterations", async () => {
       const result = await harnessLoop({
         client,
         sandbox,
+        prompt: "tarea de prueba",
         bounds: {
           maxIterations: 2,
           maxToolCalls: 100,

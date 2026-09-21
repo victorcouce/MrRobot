@@ -175,6 +175,19 @@ export function ThreadHeader({
               </Button>
             </>
           )}
+          {(project.status === "blocked" || project.status === "failed") && (
+            <Button
+              variant="primary"
+              size="sm"
+              className="ml-1.5"
+              onClick={onResume}
+              loading={busy === "resume"}
+              title="Reencola las tareas fallidas y continúa."
+            >
+              <PlayIcon />
+              Reintentar
+            </Button>
+          )}
 
           {onDelete && (
             <button

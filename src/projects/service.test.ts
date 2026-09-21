@@ -10,6 +10,8 @@ import {
   mergeReplan,
   recoverInterrupted,
   recoverInterruptedProjects,
+  requeueFailedTasks,
+  resumeProject,
   runProject,
   shouldSkipReview,
   wantsDevSmoke,
@@ -464,6 +466,95 @@ test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   const finished = await runProject("proj-crash", deps);
   assert.equal(finished.status, "completed");
   assert.equal(finished.tasks[0]?.status, "done");
+});
+
+test("requeueFailedTasks limpia el error y reencola solo las fallidas", () => {
+  const project: Project = {
+    id: "p",
+    name: "p",
+    goal: "x",
+    status: "paused",
+    baseRef: "base0",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "fallida",
+        description: "x",
+        status: "failed",
+        type: "coding",
+        complexity: "low",
+        error: "[sandbox] comando no permitido: ls",
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      },
+      {
+        id: "TASK-002",
+        title: "bloqueada",
+        description: "x",
+        status: "blocked",
+        type: "coding",
+        complexity: "low",
+        dependsOn: ["TASK-001"],
+        blockedReason: "bloqueada por TASK-001 (failed)",
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const next = requeueFailedTasks(project);
+  const failed = next.tasks.find((task) => task.id === "TASK-001");
+  assert.equal(failed?.status, "todo");
+  assert.equal(failed?.error, undefined);
+  assert.equal(failed?.startedAt, undefined);
+  // Las bloqueadas se conservan: el scheduler las recalcula.
+  assert.equal(
+    next.tasks.find((task) => task.id === "TASK-002")?.status,
+    "blocked",
+  );
+});
+
+test("resume reencola las tareas fallidas y las vuelve a ejecutar", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const deps = baseDeps(storage, fakeWorkspace());
+
+  const project: Project = {
+    id: "proj-resume",
+    name: "resume",
+    goal: "x",
+    status: "paused",
+    baseRef: "base0",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "base",
+        description: "base",
+        status: "failed",
+        type: "coding",
+        complexity: "low",
+        error: "[sandbox] comando no permitido: ls",
+      },
+      {
+        id: "TASK-002",
+        title: "ui",
+        description: "ui",
+        status: "blocked",
+        type: "coding",
+        complexity: "low",
+        dependsOn: ["TASK-001"],
+        blockedReason: "bloqueada por TASK-001 (failed)",
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await storage.saveProject(project);
+
+  const finished = await resumeProject("proj-resume", deps);
+  assert.equal(finished.status, "completed");
+  assert.ok(finished.tasks.every((task) => task.status === "done"));
 });
 
 test("crash recovery: planning vuelve a draft y running a paused", async () => {

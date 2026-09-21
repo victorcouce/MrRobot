@@ -89,6 +89,7 @@ export async function runDeepSeekAgentic(
     const result = await harnessLoop({
       client: chatClient,
       sandbox,
+      prompt: options.prompt,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.onOutput ? { onOutput: options.onOutput } : {}),
       ...(options.harness?.bounds ? { bounds: options.harness.bounds } : {}),

@@ -610,9 +610,13 @@ export class Runtime {
   async resume(projectId: string) {
     const project = await this.mustGetProject(projectId);
 
-    if (project.status !== "paused" && project.status !== "blocked") {
+    if (
+      project.status !== "paused" &&
+      project.status !== "blocked" &&
+      project.status !== "failed"
+    ) {
       throw new Error(
-        `Solo se puede reanudar un proyecto pausado o bloqueado (estado actual: ${project.status}).`,
+        `Solo se puede reanudar un proyecto pausado, bloqueado o fallido (estado actual: ${project.status}).`,
       );
     }
 

@@ -31,6 +31,14 @@ test("permite usar git dentro del sandbox", async () => {
   await sandbox.exec("git", ["stash", "list"]);
 });
 
+test("permite utilidades de shell para inspeccionar el worktree", async () => {
+  await sandbox.exec("ls", ["-la"]);
+  await sandbox.exec("pwd");
+  await sandbox.exec("mkdir", ["-p", "src"]);
+  await sandbox.exec("grep", ["-r", "foo", "."]);
+  await sandbox.exec("npm", ["ls"]);
+});
+
 test("veta las operaciones de red y de configuración de git", async () => {
   await assert.rejects(
     () => sandbox.exec("git", ["push", "origin", "main"]),
