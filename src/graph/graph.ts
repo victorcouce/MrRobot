@@ -13,6 +13,7 @@ import {
   finalizeProjectRun,
   mergeReplan,
   runProjectRound,
+  tasksToPlan,
   type ProjectDeps,
 } from "../projects/service.js";
 import { superviseProject } from "../supervisor/supervisor.js";
@@ -66,6 +67,7 @@ export function buildProjectGraph(deps: ProjectDeps) {
 
     const config = deps.config ?? defaultConfig;
     const context: PlanContext = {
+      previousPlan: tasksToPlan(project.tasks),
       completedTaskIds: project.tasks
         .filter((task) => task.status === "done")
         .map((task) => task.id),

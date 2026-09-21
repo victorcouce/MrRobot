@@ -64,7 +64,9 @@ export function validatePath(
     throw new SandboxViolationError(`ruta contiene \\0: ${candidate}`);
   }
 
-  const full = resolveWithSymlinkDetection(realRoot, candidate);
+  // Las rutas relativas se resuelven contra la raíz del worktree, no contra el
+  // cwd del proceso: si no, `styles.css` apuntaría al repo del orquestador.
+  const full = resolveWithSymlinkDetection(realRoot, resolve(realRoot, candidate));
 
   // Contención léxica
   if (full !== realRoot && !full.startsWith(realRoot + "/")) {

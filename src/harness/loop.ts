@@ -42,10 +42,37 @@ export interface HarnessLoopOptions {
 }
 
 /**
- * Simplifica el historial reemplazando los pares assistant/tool más antiguos
- * por un resumen, conservando el system, el user inicial y los dos últimos turnos.
+ * Índice donde empieza la ventana reciente de `count` mensajes, ajustado para
+ * no partir el emparejamiento `assistant(tool_calls)`/`tool`: si la ventana
+ * empezara en un mensaje `tool`, quedaría huérfano y la API responde 400
+ * ("Messages with role 'tool' must be a response to a preceding message with
+ * 'tool_calls'").
  */
-function pruneHistory(
+function recentTurnStart(history: HarnessMessage[], count: number): number {
+  let start = Math.max(0, history.length - count);
+
+  while (start < history.length && history[start]?.role === "tool") {
+    start++;
+  }
+
+  if (start >= history.length) {
+    // Todos los mensajes recientes eran `tool`: reanclar en el último
+    // assistant, que arrastra sus respuestas `tool`.
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i]?.role === "assistant") {
+        return i;
+      }
+    }
+  }
+
+  return start;
+}
+
+/**
+ * Simplifica el historial reemplazando los pares assistant/tool más antiguos
+ * por un resumen, conservando el system, el user inicial y los últimos turnos.
+ */
+export function pruneHistory(
   history: HarnessMessage[],
   maxChars: number,
 ): HarnessMessage[] {
@@ -58,30 +85,29 @@ function pruneHistory(
     return history;
   }
 
-  // Conservar: system, primer user, últimos dos turnos
-  const system = history.filter((m) => m.role === "system");
+  // Conservar: system, primer user, últimos turnos
+  const system = history.find((m) => m.role === "system");
   const firstUser = history.find((m) => m.role === "user");
-  const recentMessages = history.slice(-4);
+  const start = recentTurnStart(history, 4);
 
   const pruned: HarnessMessage[] = [];
-  if (system.length > 0 && system[0]) pruned.push(system[0]);
-  if (firstUser && !pruned.includes(firstUser)) pruned.push(firstUser);
+  if (system) pruned.push(system);
+  if (firstUser) pruned.push(firstUser);
 
-  // Agrupar assistant/tool antiguos en un resumen
-  const summaries: HarnessMessage[] = [];
-  for (let i = 1; i < history.length - 4; i++) {
-    const msg = history[i];
-    if (msg && (msg.role === "assistant" || msg.role === "tool") && summaries.length === 0) {
-      summaries.push({
-        role: "user",
-        content:
-          "[Resumen: modelo intentó operaciones anteriores, continúa desde aquí]",
-      });
-    }
+  const hadOlderTurns = history
+    .slice(0, start)
+    .some((msg) => msg.role === "assistant" || msg.role === "tool");
+
+  if (hadOlderTurns) {
+    pruned.push({
+      role: "user",
+      content:
+        "[Resumen: modelo intentó operaciones anteriores, continúa desde aquí]",
+    });
   }
 
-  pruned.push(...summaries);
-  pruned.push(...recentMessages);
+  // El primer user ya se conservó arriba; no duplicarlo.
+  pruned.push(...history.slice(start).filter((msg) => msg !== firstUser));
 
   return pruned;
 }

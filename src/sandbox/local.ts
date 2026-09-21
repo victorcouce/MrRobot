@@ -14,10 +14,13 @@ import {
   closeSync,
   writeSync,
   readSync,
+  existsSync,
+  realpathSync,
+  mkdirSync,
 } from "node:fs";
 import { execSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { resolve, sep, relative } from "node:path";
+import { resolve, sep, relative, dirname } from "node:path";
 import { EOL } from "node:os";
 
 import type {
@@ -190,7 +193,9 @@ export class LocalSandbox implements Sandbox {
   private tempHome: string;
 
   constructor(root: string, policy: SandboxPolicy) {
-    this.root = root;
+    // La raíz se normaliza a su realpath: si el worktree vive bajo un symlink
+    // (p. ej. /var → /private/var en macOS), la contención de rutas fallaría.
+    this.root = existsSync(root) ? realpathSync(root) : resolve(root);
     this.policy = policy;
     this.tempHome = mkdtempSync(resolve(tmpdir(), "sandbox-"));
   }
@@ -254,6 +259,11 @@ export class LocalSandbox implements Sandbox {
       }
 
       const full = validatePath(this.root, path, "write");
+
+      // Crear directorios intermedios: el agente escribe rutas como
+      // `src/app.js` y sin esto el open falla con ENOENT. `full` ya está
+      // validado (dentro de la raíz, sin symlinks que escapen).
+      mkdirSync(dirname(full), { recursive: true });
 
       // Usar O_NOFOLLOW en el último componente
       const flags = 0o200 | 0o100 | 0o1000 | 0o40000; // O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC

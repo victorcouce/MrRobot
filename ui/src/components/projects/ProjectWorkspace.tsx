@@ -223,7 +223,11 @@ export function ProjectWorkspace({
 
   if (!project) return null;
 
-  const isEditable = project.status === "ready";
+  const isEditable =
+    project.status === "ready" ||
+    project.status === "paused" ||
+    project.status === "blocked" ||
+    project.status === "failed";
   const planLevels = countLevels(project.tasks);
   // Un proyecto recién creado nace en `draft` sin tareas: el hilo acoge la
   // entrevista de afinado antes de planificar. Mientras dura (también durante

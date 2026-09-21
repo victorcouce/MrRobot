@@ -4,7 +4,15 @@ import type { Task, TaskComplexity, TaskType } from "../tasks/types.js";
 import type { Project } from "./types.js";
 import { emitProjectEvent, type ProjectDeps } from "./service.js";
 
-const EDITABLE_STATUSES = new Set(["draft", "ready"]);
+const EDITABLE_STATUSES = new Set([
+  "draft",
+  "ready",
+  // El plan también se puede corregir cuando no está ejecutándose: p. ej.
+  // añadir una dependencia a una tarea que arrancó en un worktree vacío.
+  "paused",
+  "blocked",
+  "failed",
+]);
 
 export interface NewTaskInput {
   id?: string;
@@ -30,7 +38,7 @@ export interface TaskPatch {
 function assertEditable(project: Project): void {
   if (!EDITABLE_STATUSES.has(project.status)) {
     throw new Error(
-      `El plan no es editable en estado ${project.status}. Solo se puede editar antes de ejecutar (draft o ready).`,
+      `El plan no es editable en estado ${project.status}. Solo se puede editar antes de ejecutar (draft o ready) o con la ejecución detenida (paused, blocked o failed).`,
     );
   }
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { harnessLoop } from "./loop.js";
+import { harnessLoop, pruneHistory } from "./loop.js";
+import type { HarnessMessage } from "./types.js";
 import { ScriptedChatClient } from "./mock-client.js";
 import { LocalSandbox, DEFAULT_SANDBOX_POLICY } from "../sandbox/local.js";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -162,4 +163,75 @@ test("harness loop: respeta maxIterations", async () => {
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
+});
+
+/**
+ * Un `tool` solo es válido si le precede un assistant con `tool_calls`; si no,
+ * la API responde 400. Replica la validación del proveedor.
+ */
+function hasOrphanTool(messages: HarnessMessage[]): boolean {
+  let assistantHadToolCalls = false;
+
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      assistantHadToolCalls = (message.toolCalls?.length ?? 0) > 0;
+    } else if (message.role === "tool") {
+      if (!assistantHadToolCalls) return true;
+    } else {
+      assistantHadToolCalls = false;
+    }
+  }
+
+  return false;
+}
+
+function longHistory(turns: number): HarnessMessage[] {
+  const history: HarnessMessage[] = [
+    { role: "system", content: "system" },
+    { role: "user", content: "tarea" },
+  ];
+
+  for (let i = 0; i < turns; i++) {
+    history.push({
+      role: "assistant",
+      toolCalls: [
+        { id: `c${i}a`, name: "read_file", argumentsRaw: "{}" },
+        { id: `c${i}b`, name: "read_file", argumentsRaw: "{}" },
+      ],
+    });
+    history.push({
+      role: "tool",
+      toolCallId: `c${i}a`,
+      name: "read_file",
+      content: "x".repeat(2000),
+    });
+    history.push({
+      role: "tool",
+      toolCallId: `c${i}b`,
+      name: "read_file",
+      content: "x".repeat(2000),
+    });
+  }
+
+  return history;
+}
+
+test("pruneHistory no deja mensajes tool huérfanos", () => {
+  const history = longHistory(8);
+
+  // La ventana ingenua slice(-4) empezaría en un `tool`.
+  assert.equal(history[history.length - 4]?.role, "tool");
+
+  const pruned = pruneHistory(history, 5000);
+
+  assert.equal(pruned[0]?.role, "system");
+  assert.equal(pruned[1]?.role, "user");
+  assert.equal(hasOrphanTool(pruned), false);
+  // Se conserva el primer user (la tarea) una sola vez.
+  assert.equal(pruned.filter((m) => m.role === "user" && m.content === "tarea").length, 1);
+});
+
+test("pruneHistory no toca el historial si cabe en el límite", () => {
+  const history = longHistory(1);
+  assert.deepEqual(pruneHistory(history, 1_000_000), history);
 });

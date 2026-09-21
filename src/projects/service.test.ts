@@ -364,6 +364,48 @@ test("mergeReplan aplica la redefinición de una tarea bloqueada", () => {
   assert.equal(merged.find((task) => task.id === "TASK-001")?.title, "esqueleto complejo");
 });
 
+test("mergeReplan no añade tareas que duplican el título de una existente", () => {
+  const existing: Task[] = [
+    {
+      id: "TASK-001",
+      title: "Estructura base",
+      description: "x",
+      status: "done",
+      type: "coding",
+      complexity: "low",
+    },
+  ];
+
+  const merged = mergeReplan(existing, {
+    summary: "replan",
+    tasks: [
+      {
+        id: "TASK-001A",
+        title: "estructura base",
+        description: "duplicado con otro id",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: [],
+        attachments: [],
+      },
+      {
+        id: "TASK-002",
+        title: "Otra cosa distinta",
+        description: "y",
+        type: "coding",
+        complexity: "low",
+        dependsOn: [],
+        acceptanceCriteria: [],
+        attachments: [],
+      },
+    ],
+  });
+
+  assert.equal(merged.some((task) => task.id === "TASK-001A"), false);
+  assert.equal(merged.some((task) => task.id === "TASK-002"), true);
+});
+
 test("integra las dependencias transitivas en orden topológico", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
@@ -433,6 +475,62 @@ test("integra las dependencias transitivas en orden topológico", async () => {
   assert.deepEqual(integrations.get("TASK-003"), ["TASK-001", "TASK-002"]);
 });
 
+test("una tarea sin dependencias parte del trabajo ya completado", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const integrations = new Map<string, string[]>();
+  const workspace: WorkspaceManager = {
+    ...fakeWorkspace(),
+    integrateDependencies: async (taskId, dependencyCommits, baseRef) => {
+      integrations.set(
+        taskId,
+        dependencyCommits.map((entry) => entry.taskId),
+      );
+      return { ok: true, ref: baseRef, branchName: `integration/${taskId}` };
+    },
+  };
+
+  const deps = baseDeps(storage, workspace);
+
+  const project: Project = {
+    id: "proj-orphan",
+    name: "orphan",
+    goal: "x",
+    status: "paused",
+    baseRef: "base0",
+    tasks: [
+      {
+        id: "TASK-001",
+        title: "base",
+        description: "base",
+        status: "done",
+        type: "coding",
+        complexity: "low",
+        resultCommit: "commit-1",
+      },
+      {
+        id: "TASK-005A",
+        title: "diagnóstico",
+        description: "diagnóstico",
+        status: "todo",
+        type: "coding",
+        complexity: "low",
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  await storage.saveProject(project);
+
+  const finished = await resumeProject("proj-orphan", deps);
+
+  assert.equal(finished.status, "completed");
+  // Sin esto la tarea corría en un worktree vacío.
+  assert.deepEqual(integrations.get("TASK-005A"), ["TASK-001"]);
+});
+
 test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
@@ -468,7 +566,7 @@ test("crash recovery: running abandonada se recupera y ejecuta", async () => {
   assert.equal(finished.tasks[0]?.status, "done");
 });
 
-test("requeueFailedTasks limpia el error y reencola solo las fallidas", () => {
+test("requeueFailedTasks reencola fallidas y bloqueadas por conflicto", () => {
   const project: Project = {
     id: "p",
     name: "p",
@@ -497,6 +595,20 @@ test("requeueFailedTasks limpia el error y reencola solo las fallidas", () => {
         dependsOn: ["TASK-001"],
         blockedReason: "bloqueada por TASK-001 (failed)",
       },
+      {
+        id: "TASK-003",
+        title: "conflicto",
+        description: "x",
+        status: "blocked",
+        type: "coding",
+        complexity: "low",
+        integrationError: {
+          type: "git_conflict",
+          dependencyTaskIds: ["TASK-001"],
+          files: ["package.json"],
+          message: "conflicto",
+        },
+      },
     ],
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -512,6 +624,10 @@ test("requeueFailedTasks limpia el error y reencola solo las fallidas", () => {
     next.tasks.find((task) => task.id === "TASK-002")?.status,
     "blocked",
   );
+  // Una bloqueada por conflicto de integración sí se reintenta.
+  const conflict = next.tasks.find((task) => task.id === "TASK-003");
+  assert.equal(conflict?.status, "todo");
+  assert.equal(conflict?.integrationError, undefined);
 });
 
 test("resume reencola las tareas fallidas y las vuelve a ejecutar", async () => {

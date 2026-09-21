@@ -114,15 +114,21 @@ export function recoverInterrupted(project: Project): Project {
 }
 
 /**
- * Reencola las tareas fallidas (`failed` → `todo`) limpiando error, motivo de
- * bloqueo e intentos previos, para que un nuevo ciclo las vuelva a ejecutar.
- * Sin esto, reanudar deja las tareas fallidas intactas (el scheduler las
- * preserva) y el proyecto vuelve a bloquearse sin avanzar. Las tareas
- * bloqueadas por una fallida se desbloquean solas al recalcularse el plan.
+ * Reencola las tareas reintentables limpiando error, motivo de bloqueo e
+ * intentos previos, para que un nuevo ciclo las vuelva a ejecutar:
+ * - `failed` (el scheduler las preserva y sin esto no se reintentan);
+ * - `blocked` con `integrationError` (conflicto de cherry-pick: al reintentar
+ *   se vuelve a integrar; antes quedaban bloqueadas para siempre).
+ * Las tareas bloqueadas por una fallida se desbloquean solas al recalcularse el
+ * plan.
  */
 export function requeueFailedTasks(project: Project): Project {
   const tasks = project.tasks.map((task) => {
-    if (task.status !== "failed") return task;
+    const retryable =
+      task.status === "failed" ||
+      (task.status === "blocked" && task.integrationError !== undefined);
+
+    if (!retryable) return task;
 
     const {
       error: _error,
@@ -505,6 +511,41 @@ function requeueFromGenerated(existing: Task, generated: Task): Task {
 }
 
 /**
+ * Normaliza un título para comparar tareas por alcance: minúsculas, sin
+ * acentos ni puntuación. No es semántico, pero caza duplicados literales.
+ */
+function normalizeTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Convierte las tareas actuales al formato de plan para dárselas al planner
+ * como `previousPlan`. Sin esto, al replanificar el planner parte de cero e
+ * inventa IDs nuevos (`TASK-001A`) para el mismo alcance, y el merge acaba con
+ * tareas duplicadas que chocan al integrar.
+ */
+export function tasksToPlan(tasks: Task[]): GeneratedPlan {
+  return {
+    summary: "plan actual",
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      type: task.type,
+      complexity: task.complexity,
+      dependsOn: task.dependsOn ?? [],
+      acceptanceCriteria: task.acceptanceCriteria ?? [],
+      attachments: [],
+    })),
+  };
+}
+
+/**
  * Combina el plan regenerado con el estado actual. Las tareas `done` nunca se
  * reescriben: el trabajo ya está hecho. Para el resto:
  * - si el planner vuelve a definir una tarea (mismo id), se usa su versión
@@ -527,8 +568,16 @@ export function mergeReplan(existing: Task[], plan: GeneratedPlan): Task[] {
         : { ...task, status: "todo" as const };
     });
   const keptIds = new Set(kept.map((task) => task.id));
+
+  // Cinturón de seguridad: aunque el planner no reutilice el ID, no se añade
+  // una tarea cuyo título coincide con una existente (evita duplicados como
+  // TASK-001/TASK-001A que luego chocan al integrar).
+  const existingTitles = new Set(existing.map((task) => normalizeTitle(task.title)));
   const added = generatedTasks.filter(
-    (task) => !doneIds.has(task.id) && !keptIds.has(task.id),
+    (task) =>
+      !doneIds.has(task.id) &&
+      !keptIds.has(task.id) &&
+      !existingTitles.has(normalizeTitle(task.title)),
   );
   const merged = [...done, ...kept, ...added];
 
@@ -577,6 +626,10 @@ async function loadChatContext(
  * commit de una tarea solo contiene su propio diff, así que integrar solo las
  * dependencias directas deja fuera a sus ancestros y el cherry-pick choca con
  * los archivos que esos ancestros crearon.
+ *
+ * Si la tarea no declara dependencias (p. ej. una tarea de diagnóstico añadida
+ * en un replan), se parte del trabajo ya completado del proyecto en vez de un
+ * worktree vacío.
  */
 function collectDependencyCommits(
   task: Task,
@@ -601,7 +654,15 @@ function collectDependencyCommits(
     }
   };
 
-  for (const id of task.dependsOn ?? []) {
+  const declared = task.dependsOn ?? [];
+  const roots =
+    declared.length > 0
+      ? declared
+      : [...taskState.values()]
+          .filter((candidate) => candidate.status === "done")
+          .map((candidate) => candidate.id);
+
+  for (const id of roots) {
     visit(id);
   }
 
@@ -1082,6 +1143,7 @@ export async function runProject(
 
     if (decision.action === "replan") {
       const context: PlanContext = {
+        previousPlan: tasksToPlan(project.tasks),
         completedTaskIds: project.tasks
           .filter((task) => task.status === "done")
           .map((task) => task.id),

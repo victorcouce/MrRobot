@@ -60,3 +60,30 @@ test("rechaza comandos fuera de la allowlist", async () => {
     (error: unknown) => error instanceof SandboxViolationError,
   );
 });
+
+test("resuelve rutas relativas contra la raíz del worktree", async () => {
+  await sandbox.write("styles.css", "body { color: red; }");
+  assert.equal(
+    (await sandbox.read("styles.css")).content,
+    "body { color: red; }",
+  );
+
+  await sandbox.exec("mkdir", ["-p", "src"]);
+  await sandbox.write("src/app.js", "console.log(1);");
+  assert.equal((await sandbox.read("src/app.js")).content, "console.log(1);");
+
+  // Los directorios intermedios se crean solos.
+  await sandbox.write("lib/util.js", "export {};");
+  assert.equal((await sandbox.read("lib/util.js")).content, "export {};");
+});
+
+test("rechaza rutas que escapan de la raíz", async () => {
+  await assert.rejects(
+    () => sandbox.read("../outside.txt"),
+    (error: unknown) => error instanceof SandboxViolationError,
+  );
+  await assert.rejects(
+    () => sandbox.read("/etc/hosts"),
+    (error: unknown) => error instanceof SandboxViolationError,
+  );
+});

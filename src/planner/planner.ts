@@ -151,6 +151,7 @@ function buildPrompt(
       "",
       "PLAN ACTUAL",
       JSON.stringify(context.previousPlan, null, 2),
+      "Conserva el plan actual y modifícalo lo mínimo. Reutiliza los IDs existentes para las tareas que mantengas o redefinas; no crees tareas nuevas que dupliquen el alcance de una existente ni variantes con sufijos (TASK-001A). Si una tarea ya está hecha, no la repitas.",
     );
   }
 
@@ -165,6 +166,7 @@ function buildPrompt(
     parts.push(
       "",
       `TAREAS YA COMPLETADAS (no las repitas): ${context.completedTaskIds.join(", ")}`,
+      "Si añades una tarea que necesita el trabajo ya hecho (diagnóstico, verificación o corrección sobre lo existente), declara dependsOn con los IDs de las tareas completadas correspondientes. Una tarea sin dependencias arranca en un worktree vacío (sin el código previo).",
     );
   }
 
