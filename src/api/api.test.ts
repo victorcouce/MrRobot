@@ -820,7 +820,7 @@ test("api server: los agentes del proyecto y los adjuntos llegan al cliente", as
   await runtime.shutdown();
 });
 
-test("api server: rechaza una selección de agentes sin ninguno que escriba archivos", async () => {
+test("api server: acepta una selección de solo DeepSeek (escribe con el harness)", async () => {
   const runtime = await Runtime.create({ mock: true });
   const server = buildApiServer(runtime);
 
@@ -843,9 +843,13 @@ test("api server: rechaza una selección de agentes sin ninguno que escriba arch
     }),
   });
 
-  assert.equal(response.status, 400);
-  const body = (await response.json()) as { error?: string };
-  assert.match(body.error ?? "", /escriba archivos/);
+  assert.equal(response.status, 201);
+  const body = (await response.json()) as {
+    defaultAllowedAgents?: unknown;
+  };
+  assert.deepEqual(body.defaultAllowedAgents, [
+    { provider: "deepseek", model: "deepseek-flash" },
+  ]);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();
@@ -902,6 +906,7 @@ test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", asy
 
   assert.deepEqual(chain, [
     { provider: "claude", model: "haiku" },
+    { provider: "deepseek", model: "deepseek-flash" },
     { provider: "claude", model: "sonnet" },
     { provider: "codex" },
   ]);

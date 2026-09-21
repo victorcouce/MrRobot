@@ -180,7 +180,7 @@ test("runTask: un reintento exitoso limpia el error anterior", async () => {
   assert.equal(result.blockedReason, undefined);
 });
 
-test("runTask: una tarea de código no usa agentes que solo devuelven texto", async () => {
+test("runTask: la tarea de código arranca por el primer agente que escribe", async () => {
   const executed: string[] = [];
 
   const result = await runTask(task({ type: "coding", complexity: "low" }), {

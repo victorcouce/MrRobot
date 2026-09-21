@@ -215,7 +215,7 @@ export function createMockDeps(
         throw new Error("mock: el agente falló (escenario fail)");
       }
 
-      if (scenario === "replan" && workerCalls <= 3) {
+      if (scenario === "replan" && workerCalls <= 4) {
         throw new Error("mock: fallo inicial para forzar replan");
       }
 

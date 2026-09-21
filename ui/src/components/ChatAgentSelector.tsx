@@ -86,7 +86,7 @@ export function ChatAgentSelector({
       // Nunca dejar la lista vacía: el backend la interpreta como "sin filtro".
       if (current.length <= 1) return;
       const next = current.filter((agent) => !sameAgent(agent, spec));
-      // Siempre debe quedar un agente que escriba archivos (Codex o Claude).
+      // Siempre debe quedar un agente que escriba archivos (Codex, Claude o DeepSeek).
       if (!hasFileWritingAgent(next)) return;
       onSelect(next);
     } else {
@@ -147,7 +147,7 @@ export function ChatAgentSelector({
                 key={option.choice}
                 title={
                   locksFileWriter
-                    ? "Debe quedar al menos un agente que escriba archivos (Codex o Claude)."
+                    ? "Debe quedar al menos un agente que escriba archivos (Codex, Claude o DeepSeek)."
                     : undefined
                 }
                 className={`grid h-[38px] grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg px-2 text-[13px] ${
@@ -182,8 +182,8 @@ export function ChatAgentSelector({
           <div className="mt-1.5 border-t border-line-soft px-1.5 pb-0.5 pt-2.5 text-xs leading-[1.45] text-ink-3">
             {fileWriterCount === 0 ? (
               <span className="text-danger-text">
-                Añade Codex o Claude: sin un agente que escriba archivos, las
-                tareas de código no podrán completarse.
+                Añade Codex, Claude o DeepSeek: sin un agente que escriba
+                archivos, las tareas de código no podrán completarse.
               </span>
             ) : (
               <>

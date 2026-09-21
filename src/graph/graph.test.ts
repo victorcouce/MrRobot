@@ -145,7 +145,7 @@ test("langgraph: supervisor replan → planner → completed", async () => {
     },
     workerExecute: async () => {
       workerCalls += 1;
-      if (workerCalls <= 3) {
+      if (workerCalls <= 4) {
         throw new Error("boom");
       }
       return "ok";

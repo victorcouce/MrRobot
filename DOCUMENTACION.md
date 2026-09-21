@@ -632,10 +632,11 @@ Detalles:
   cambios, se conserva el commit anterior.
 - Si `AbortSignal` está abortado → `failed` con `Ejecución cancelada por el usuario.`
 - Una tarea de tipo `coding` que no produce ningún commit (primer intento, sin
-  ciclo de fix) se considera fallida: un proveedor que solo devuelve texto
-  (DeepSeek) no escribe en el worktree y sin este guard el proyecto se marcaría
-  `completed` sin haber creado ningún fichero. La cadena de fallback pasa
-  entonces a un agente capaz de editar (Codex/Claude) o la tarea falla.
+  ciclo de fix) se considera fallida: un agente que no puede escribir en el
+  worktree (DeepSeek sin harness, o un CLI sin permiso) no crea ficheros y sin
+  este guard el proyecto se marcaría `completed` sin haber creado nada. La
+  cadena de fallback pasa entonces al siguiente agente capaz de editar (Claude,
+  DeepSeek con harness o Codex) o la tarea falla.
 
 ---
 

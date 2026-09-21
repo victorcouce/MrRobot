@@ -367,7 +367,7 @@ export default function SettingsPage() {
                             disabled={locksFileWriter}
                             title={
                               locksFileWriter
-                                ? "Debe quedar al menos un agente que escriba archivos (Codex o Claude)."
+                                ? "Debe quedar al menos un agente que escriba archivos (Codex, Claude o DeepSeek)."
                                 : undefined
                             }
                             onChange={(event) => {
@@ -393,9 +393,9 @@ export default function SettingsPage() {
                       role="status"
                       className="py-3 text-xs text-danger-text"
                     >
-                      Añade Codex o Claude a los marcados por defecto: sin un
-                      agente que escriba archivos, las tareas de código no podrán
-                      completarse.
+                      Añade Codex, Claude o DeepSeek a los marcados por defecto:
+                      sin un agente que escriba archivos, las tareas de código no
+                      podrán completarse.
                     </p>
                   )}
 

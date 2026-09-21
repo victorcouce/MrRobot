@@ -199,7 +199,7 @@ export default function HomePage() {
             />
             {missingFileWriter && (
               <span className="text-danger-text">
-                Añade Codex o Claude para poder crear archivos.
+                Añade al menos un agente que escriba archivos (Codex, Claude o DeepSeek).
               </span>
             )}
           </div>

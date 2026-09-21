@@ -184,7 +184,7 @@ test("chat: borrar el chat elimina sus tareas", async () => {
   assert.equal((await listChats(draft.id, deps)).length, 0);
 });
 
-test("chat: no permite dejar la lista de agentes sin uno que escriba archivos", async () => {
+test("chat: acepta solo DeepSeek (escribe con el harness)", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
 
@@ -192,15 +192,16 @@ test("chat: no permite dejar la lista de agentes sin uno que escriba archivos", 
   const draft = await createProjectDraft({ goal: "objetivo" }, deps);
   const chat = await createChat(draft.id, { title: "agentes" }, deps);
 
-  await assert.rejects(
-    updateChatAllowedAgents(
-      draft.id,
-      chat.id,
-      [{ provider: "deepseek", model: "deepseek-flash" }],
-      deps,
-    ),
-    /escriba archivos/,
+  const updated = await updateChatAllowedAgents(
+    draft.id,
+    chat.id,
+    [{ provider: "deepseek", model: "deepseek-flash" }],
+    deps,
   );
+
+  assert.deepEqual(updated.allowedAgents, [
+    { provider: "deepseek", model: "deepseek-flash" },
+  ]);
 });
 
 test("chat: incluye la conversación previa en el prompt del planner", async () => {

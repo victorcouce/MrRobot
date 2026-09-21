@@ -35,38 +35,19 @@ export function isAgentAllowed(
 }
 
 /**
- * Codex y Claude escriben en el worktree con sus CLIs. DeepSeek escribe con
- * el harness in-process cuando `harnessEnabled` es true. Una lista de
- * permitidos sin ninguno de los tres no puede completar tareas de código.
+ * Codex y Claude escriben en el worktree con sus CLIs. DeepSeek escribe con el
+ * harness agéntico in-process (bucle de herramientas), que las tareas de código
+ * activan con `mode: "agentic"`. Los tres completan tareas de código.
  */
-const CLI_FILE_WRITING_PROVIDERS = new Set<AgentProvider>(["codex", "claude"]);
-const HARNESS_FILE_WRITING_PROVIDERS = new Set<AgentProvider>(["deepseek"]);
+const FILE_WRITING_PROVIDERS: ReadonlySet<AgentProvider> = new Set([
+  "codex",
+  "claude",
+  "deepseek",
+]);
 
-/**
- * Versión con opciones para consultar si DeepSeek puede escribir con harness.
- * Internamente usada, no como predicado de .filter() / .some().
- */
-function canWriteFilesWithOptions(
-  agent: AgentSpec,
-  opts: { harnessEnabled?: boolean } = {},
-): boolean {
-  if (CLI_FILE_WRITING_PROVIDERS.has(agent.provider)) return true;
-  return (opts.harnessEnabled ?? true) &&
-    HARNESS_FILE_WRITING_PROVIDERS.has(agent.provider);
-}
-
-/**
- * Versión simple para usar como predicado en .filter() / .some().
- * Solo cuenta CLI writers; para harness use `canWriteFilesWithOptions()`.
- */
 export function canWriteFiles(agent: AgentSpec): boolean {
-  return CLI_FILE_WRITING_PROVIDERS.has(agent.provider);
+  return FILE_WRITING_PROVIDERS.has(agent.provider);
 }
-
-/**
- * Exporta la versión con opciones para uso interno en runner.
- */
-export const canWriteFilesImpl = canWriteFilesWithOptions;
 
 export function hasFileWritingAgent(agents: AgentSpec[]): boolean {
   return agents.some(canWriteFiles);
@@ -74,7 +55,7 @@ export function hasFileWritingAgent(agents: AgentSpec[]): boolean {
 
 export const MISSING_FILE_WRITING_AGENT =
   "La selección de agentes debe ser válida: incluye al menos uno que escriba " +
-  "archivos (Codex o Claude). DeepSeek solo devuelve texto y no completa tareas de código.";
+  "archivos (Codex, Claude o DeepSeek).";
 
 export function assertFileWritingAgent(agents: AgentSpec[]): void {
   if (agents.length > 0 && !hasFileWritingAgent(agents)) {

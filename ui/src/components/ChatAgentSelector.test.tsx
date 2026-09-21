@@ -124,7 +124,7 @@ describe("ChatAgentSelector", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("no permite quitar el último agente que escribe archivos", async () => {
+  it("permite quitar un escritor mientras quede otro (DeepSeek escribe con el harness)", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     const connected: AgentAvailability[] = [
@@ -144,7 +144,8 @@ describe("ChatAgentSelector", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Agentes de este chat/ }));
-    expect(screen.getByRole("checkbox", { name: /codex/ })).toBeDisabled();
+    // DeepSeek también escribe (harness), así que Codex no queda bloqueado.
+    expect(screen.getByRole("checkbox", { name: /codex/ })).not.toBeDisabled();
     expect(
       screen.getByRole("checkbox", { name: /deepseek-flash/ }),
     ).not.toBeDisabled();

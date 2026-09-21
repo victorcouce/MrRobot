@@ -213,7 +213,7 @@ test("Caso 5: el fallback parte de un workspace limpio", async () => {
     });
 
     assert.equal(result.status, "done");
-    assert.equal(result.executedBy?.provider, "claude");
+    assert.equal(result.executedBy?.provider, "deepseek");
     assert.ok(result.resultCommit);
     assert.equal(result.attempts?.length, 2);
     assert.notEqual(

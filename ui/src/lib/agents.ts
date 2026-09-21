@@ -71,12 +71,13 @@ export function sameAgent(a: AgentSpec, b: AgentSpec): boolean {
 }
 
 /**
- * Solo Codex y Claude escriben en el worktree. DeepSeek solo devuelve texto, así
- * que una selección sin ninguno de los dos no puede completar tareas de código.
+ * Codex y Claude escriben en el worktree con sus CLIs y DeepSeek con el harness
+ * agéntico in-process, así que los tres completan tareas de código.
  */
 const FILE_WRITING_PROVIDERS: ReadonlySet<AgentProvider> = new Set([
   "codex",
   "claude",
+  "deepseek",
 ]);
 
 export function canWriteFiles(agent: AgentSpec): boolean {

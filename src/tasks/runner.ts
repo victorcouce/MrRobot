@@ -192,10 +192,9 @@ async function runTaskOnce(
   const fullChain = getFallbackChain(task, options.allowedAgents ?? []);
 
   // Las tareas de código solo las pueden completar agentes que escriben en el
-  // worktree. Si hay al menos uno disponible, se descartan los que solo
-  // devuelven texto (DeepSeek) para no gastar una llamada ni ensuciar el
-  // resultado. Si la restricción del chat solo deja agentes de texto, se
-  // conserva la cadena y el guard de "sin cambios" dará el error explicativo.
+  // worktree: Codex y Claude con su CLI y DeepSeek con el harness agéntico. Si
+  // la restricción del chat dejara solo agentes que no escriben, se conserva la
+  // cadena y el guard de "sin cambios" dará el error explicativo.
   const baseChain =
     task.type === "coding" && fullChain.some(canWriteFiles)
       ? fullChain.filter(canWriteFiles)
@@ -346,16 +345,16 @@ async function runTaskOnce(
         const committed = await workspaceManager.commit(workspace, commitMessage);
 
         // Una tarea de código sin cambios no ha hecho su trabajo, ni en el
-        // primer intento ni en los ciclos de fix. Ocurre, por ejemplo, con
-        // proveedores que solo devuelven texto (DeepSeek) y no escriben en el
-        // worktree. Sin esto, un ciclo de fix daría por buena la tarea con el
-        // commit del intento anterior y el reviewer compararía el informe del
-        // agente con un diff que no le corresponde.
+        // primer intento ni en los ciclos de fix. Ocurre, por ejemplo, cuando
+        // el agente no puede escribir en el worktree (DeepSeek sin harness, o
+        // un CLI sin permiso). Sin esto, un ciclo de fix daría por buena la
+        // tarea con el commit del intento anterior y el reviewer compararía el
+        // informe del agente con un diff que no le corresponde.
         if (running.type === "coding" && committed === undefined) {
           throw new Error(
             `${label} no creó ni modificó ningún archivo en el workspace. ` +
-              `Los proveedores que solo devuelven texto (DeepSeek) no escriben en disco; ` +
-              `usa Codex o Claude para tareas de código. Si era Codex o Claude, ` +
+              `Revisa que el agente pueda escribir en disco: Codex y Claude con su CLI ` +
+              `y DeepSeek con el harness agéntico habilitado. Si era Codex o Claude, ` +
               `el CLI no tenía permiso para escribir: revisa su configuración ` +
               `(en Claude, MRROBOT_CLAUDE_PERMISSION_MODE).`,
           );

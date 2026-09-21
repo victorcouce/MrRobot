@@ -612,7 +612,7 @@ test("los agentes marcados al crear el proyecto se aplican a las tareas del plan
   );
 });
 
-test("createProject: rechaza una selección de agentes sin ninguno que escriba archivos", async () => {
+test("createProject: acepta una selección de solo DeepSeek (escribe con el harness)", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
   const deps: ProjectDeps = {
@@ -620,18 +620,19 @@ test("createProject: rechaza una selección de agentes sin ninguno que escriba a
     plannerExecute: async () => JSON.stringify(planA),
   };
 
-  await assert.rejects(
-    createProject(
-      {
-        goal: "crear algo",
-        defaultAllowedAgents: [
-          { provider: "deepseek", model: "deepseek-flash" },
-        ],
-      },
-      deps,
-    ),
-    /escriba archivos/,
+  const project = await createProject(
+    {
+      goal: "crear algo",
+      defaultAllowedAgents: [
+        { provider: "deepseek", model: "deepseek-flash" },
+      ],
+    },
+    deps,
   );
+
+  assert.deepEqual(project.defaultAllowedAgents, [
+    { provider: "deepseek", model: "deepseek-flash" },
+  ]);
 });
 
 test("shouldSkipReview: solo en tareas low sin criterios con checks en verde", () => {
@@ -755,8 +756,8 @@ test("replanificación: el supervisor añade una tarea y el proyecto completa", 
     },
     workerExecute: async () => {
       workerCalls += 1;
-      // Falla toda la cadena de fallback del primer intento (3 candidatos).
-      if (workerCalls <= 3) {
+      // Falla toda la cadena de fallback del primer intento (4 candidatos).
+      if (workerCalls <= 4) {
         throw new Error("boom");
       }
       return "ok";
