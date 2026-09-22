@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Task } from "../tasks/types.js";
-import { reviewTask } from "./reviewer.js";
+import { MAX_REVIEW_DIFF_CHARS, reviewTask } from "./reviewer.js";
 
 function makeTask(): Task {
   return {
@@ -79,5 +79,49 @@ test("reviewer: respuesta inválida se trata como no aprobada", async () => {
   });
 
   assert.equal(review.approved, false);
+  assert.equal(review.unavailable, true);
   assert.ok(review.issues.length > 0);
+});
+
+test("reviewer: reintenta una vez si la respuesta no es JSON", async () => {
+  let calls = 0;
+  const review = await reviewTask(makeTask(), {}, {
+    execute: async () => {
+      calls++;
+      return calls === 1
+        ? "no soy json"
+        : JSON.stringify({ approved: true, summary: "ok", issues: [] });
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(review.approved, true);
+  assert.equal(review.unavailable, undefined);
+});
+
+test("reviewer: solo manda la salida de los checks que fallan y acota el diff", async () => {
+  let prompt = "";
+
+  await reviewTask(
+    makeTask(),
+    {
+      checks: [
+        { command: "npm run build", success: true, stdout: "RUIDO-DE-BUILD" },
+        { command: "npm test", success: false, stderr: "AssertionError x" },
+      ],
+      diff: "d".repeat(MAX_REVIEW_DIFF_CHARS + 500),
+    },
+    {
+      execute: async (value) => {
+        prompt = value;
+        return JSON.stringify({ approved: false, summary: "ko", issues: [] });
+      },
+    },
+  );
+
+  assert.match(prompt, /npm run build: OK/);
+  assert.doesNotMatch(prompt, /RUIDO-DE-BUILD/);
+  assert.match(prompt, /AssertionError x/);
+  assert.match(prompt, /500 caracteres omitidos/);
+  assert.ok(!prompt.includes("d".repeat(MAX_REVIEW_DIFF_CHARS + 1)));
 });

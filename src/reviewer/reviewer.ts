@@ -8,6 +8,7 @@ import type { CheckResult } from "../checks/types.js";
 import type { RunOptions } from "../providers/types.js";
 import { normalizeCriteria } from "../tasks/criteria.js";
 import type { Task, TaskComplexity } from "../tasks/types.js";
+import type { z } from "zod";
 import { reviewResultSchema } from "./schema.js";
 import type { ReviewResult } from "./types.js";
 
@@ -43,6 +44,19 @@ export interface ReviewerDeps {
   onAgentEvent?: OnAgentEvent | undefined;
 }
 
+// El reviewer trabaja en el worktree y puede abrir cualquier archivo: el diff y
+// la salida del agente solo orientan, y sin tope dominan el coste del prompt.
+export const MAX_REVIEW_DIFF_CHARS = 20_000;
+export const MAX_REVIEW_OUTPUT_CHARS = 3_000;
+
+function clip(value: string, max: number, keep: "head" | "tail"): string {
+  if (value.length <= max) return value;
+  const omitted = `[… ${value.length - max} caracteres omitidos …]`;
+  return keep === "head"
+    ? `${value.slice(0, max)}\n${omitted}`
+    : `${omitted}\n${value.slice(-max)}`;
+}
+
 function buildPrompt(task: Task, context: ReviewContext): string {
   const criteria = normalizeCriteria(
     context.acceptanceCriteria ?? task.acceptanceCriteria ?? [],
@@ -63,22 +77,29 @@ function buildPrompt(task: Task, context: ReviewContext): string {
   }
 
   if (context.output) {
-    parts.push("", "RESULTADO DEL AGENTE", context.output);
+    parts.push(
+      "",
+      "RESULTADO DEL AGENTE",
+      clip(context.output, MAX_REVIEW_OUTPUT_CHARS, "tail"),
+    );
   }
 
   if (context.checks?.length) {
     parts.push("", "CHECKS LOCALES");
     for (const check of context.checks) {
-      parts.push(
-        `${check.command}: ${check.success ? "OK" : "FALLO"}`,
-        check.stdout ?? "",
-        check.stderr ?? "",
-      );
+      if (check.success) {
+        parts.push(`${check.command}: OK`);
+        continue;
+      }
+
+      parts.push(`${check.command}: FALLO`);
+      if (check.stdout) parts.push(check.stdout);
+      if (check.stderr) parts.push(check.stderr);
     }
   }
 
   if (context.diff) {
-    parts.push("", "DIFF", context.diff);
+    parts.push("", "DIFF", clip(context.diff, MAX_REVIEW_DIFF_CHARS, "head"));
   }
 
   parts.push(
@@ -114,6 +135,25 @@ function extractJson(text: string): string {
   return candidate.slice(start, end + 1);
 }
 
+type ParsedReview =
+  | { success: true; data: z.infer<typeof reviewResultSchema> }
+  | { success: false; error: string };
+
+function parseReview(raw: string): ParsedReview {
+  let json: unknown;
+
+  try {
+    json = JSON.parse(extractJson(raw));
+  } catch (error) {
+    return { success: false, error: errorMessage(error) };
+  }
+
+  const parsed = reviewResultSchema.safeParse(json);
+  return parsed.success
+    ? { success: true, data: parsed.data }
+    : { success: false, error: parsed.error.message };
+}
+
 export async function reviewTask(
   task: Task,
   context: ReviewContext = {},
@@ -129,8 +169,8 @@ export async function reviewTask(
     ? (prompt: string, agent: AgentCandidate) => base(prompt, agent, { cwd })
     : base;
 
-  try {
-    const raw = await runRoleAgent(buildPrompt(task, context), "reviewer", {
+  const ask = (prompt: string): Promise<string> =>
+    runRoleAgent(prompt, "reviewer", {
       execute,
       ...(deps.allowedAgents ? { allowedAgents: deps.allowedAgents } : {}),
       ...(deps.agentHealth ? { agentHealth: deps.agentHealth } : {}),
@@ -141,13 +181,26 @@ export async function reviewTask(
       ...(deps.limitRetry ? { limitRetry: deps.limitRetry } : {}),
       ...(deps.onAgentEvent ? { onAgentEvent: deps.onAgentEvent } : {}),
     });
-    const json = JSON.parse(extractJson(raw)) as unknown;
-    const parsed = reviewResultSchema.safeParse(json);
+
+  try {
+    const prompt = buildPrompt(task, context);
+    let parsed = parseReview(await ask(prompt));
+
+    // Reintentar solo el review es mucho más barato que el ciclo de fix del
+    // worker que dispararía un rechazo por formato.
+    if (!parsed.success) {
+      parsed = parseReview(
+        await ask(
+          `${prompt}\n\nTu respuesta anterior no era JSON válido con esa forma. Responde SOLO con el JSON.`,
+        ),
+      );
+    }
 
     if (!parsed.success) {
       return {
         approved: false,
-        summary: `review no parseable: ${parsed.error.message}`,
+        unavailable: true,
+        summary: `review no parseable: ${parsed.error}`,
         issues: [
           { severity: "medium", description: "respuesta del reviewer inválida" },
         ],
@@ -168,6 +221,7 @@ export async function reviewTask(
   } catch (error) {
     return {
       approved: false,
+      unavailable: true,
       summary: `review falló: ${errorMessage(error)}`,
       issues: [
         { severity: "medium", description: "no se pudo obtener el review" },

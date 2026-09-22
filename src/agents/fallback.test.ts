@@ -507,3 +507,25 @@ test("onWorkspaceSuccess no se llama si la tarea falla", async () => {
   assert.equal(result.status, "failed");
   assert.equal(called, false);
 });
+
+test("runTask: no espera si el límite se repone después del tope de espera", async () => {
+  let calls = 0;
+  const execute = async (): Promise<string> => {
+    calls++;
+    throw new Error("429 rate limit, retry after 2h");
+  };
+
+  const started = Date.now();
+  const result = await runTask(
+    makeTask({ type: "coding", complexity: "high" }),
+    {
+      execute,
+      workspace: fakeWorkspace(),
+      limitRetry: { maxLimitRetries: 3, baseDelayMs: 60_000, maxDelayMs: 60_000 },
+    },
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(calls, 4);
+  assert.ok(Date.now() - started < 5_000);
+});

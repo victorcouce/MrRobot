@@ -10,4 +10,6 @@ export interface ReviewResult {
   summary: string;
   issues: ReviewIssue[];
   suggestedFixes?: string[];
+  /** El rechazo se debe al propio reviewer (sin respuesta válida), no a la tarea. */
+  unavailable?: boolean;
 }

@@ -169,7 +169,7 @@ Central en `src/config/index.ts` (`loadConfig`):
   limitRetry: {             // reintento de la cadena al agotar límites
     maxLimitRetries: 3,
     baseDelayMs: 30000,
-    maxDelayMs: 900000,
+    maxDelayMs: 900000,     // si el proveedor anuncia una reposición posterior, no se espera
   },
   checks: { commands: [] }, // [] => autodetecta scripts npm
   defaultAllowedAgents: [], // [] => sin restricción; el usuario los elige en el chat
@@ -321,7 +321,7 @@ Disponible en tareas `coding` cuando hay configuración de harness:
   - **Allowlist de comandos**: `npm`, `node`, `git` y utilidades de shell (`ls`, `cat`, `grep`, `find`, `sed`, `mkdir`, `cp`, `mv`…) + reglas de argv; en `git` se permite cualquier subcomando salvo las operaciones de red y de configuración (`push`, `fetch`, `pull`, `clone`, `remote add|set-url|remove|rename`, `config`, `credential`, `filter-branch`)
   - **Límites de recursos**: máx. 40 iteraciones, 100 tool calls, 300s timeout, 4 MiB escritura total
   - **Credenciales filtradas**: `HOME` apunta a un directorio temporal para evitar que npm lea `~/.npmrc` con tokens
-- **Pre-calentamiento**: antes de llamar al harness, `npm ci` se ejecuta en el worktree para que `node_modules` esté disponible (reutiliza lo que el agente ya instaló)
+- **Dependencias sembradas**: el worktree recibe `node_modules` del almacén de dependencias antes de arrancar el agente (ver *Almacén de dependencias*)
 - **Commit automático**: al terminar, los cambios se commitean
 
 El harness es **agnóstico del proveedor**: OpenAI/DeepSeek/Claude que soporten tool-calling pueden usarlo. Actualmente está activado para DeepSeek.
@@ -387,6 +387,10 @@ del propio agente antes de borrarlo**, reutilizando el `node_modules` que ya
 tiene (ver *Almacén de dependencias*). Después, un reviewer LLM valida contra los
 `acceptanceCriteria`. En tareas `low` sin
 criterios y con checks en verde se omite el review LLM (los checks son el gate).
+Si algún check falla tampoco se llama al reviewer: la tarea se rechaza y el
+feedback del ciclo de fix lleva el final de la salida del check. Si el propio
+reviewer no responde con un JSON válido (tras un reintento) o no hay reviewer
+disponible, la tarea falla sin consumir ciclos de fix del worker.
 Si rechaza, la tarea se reintenta con el feedback del review hasta
 `maxReviewFixCycles`; en cada reintento el agente **continúa desde su resultado
 anterior** (no rehace la tarea) y el árbol final se aplana en un único commit

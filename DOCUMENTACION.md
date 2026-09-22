@@ -713,7 +713,14 @@ tarea baja de ~6,7 s a ~0,5 s.
   tarea, restringido a los permitidos y con fallback (`runRoleAgent`).
 - `shouldSkipReview(task, checks)`: omite el review LLM solo si la tarea es
   `low`, no tiene `acceptanceCriteria` y hay checks que existen y pasan. Si no
-  hay checks, el review sigue siendo la única validación.
+  hay checks, el review sigue siendo la única validación. Con algún check
+  fallido tampoco hay review LLM: se rechaza directamente.
+- **Coste acotado**: de los checks que pasan solo se envía "OK"; el diff se
+  corta a `MAX_REVIEW_DIFF_CHARS` y la salida del agente a sus últimos
+  `MAX_REVIEW_OUTPUT_CHARS` (el reviewer puede abrir los archivos del worktree).
+- Una respuesta que no es JSON se reintenta una vez; si sigue sin serlo, o no
+  hay reviewer disponible, el resultado lleva `unavailable: true` y la tarea
+  falla sin gastar ciclos de fix.
 - **Contexto**: `diff` (del commit), `output` (del agente), `checks` (resultados
   locales), `acceptanceCriteria` (de la tarea) y `repoRoot` (para reanclar
   criterios con rutas absolutas dentro del repo a relativas).

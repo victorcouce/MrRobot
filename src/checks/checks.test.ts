@@ -138,3 +138,26 @@ test("runProjectChecks mantiene build antes que test y corre el resto en paralel
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("runProjectChecks conserva el final de una salida larga (donde está el error)", async () => {
+  const dir = await tempDir();
+
+  try {
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        scripts: {
+          test: `node -e "console.error('x'.repeat(10000) + 'ERROR-FINAL'); process.exit(1)"`,
+        },
+      }),
+    );
+
+    const [result] = await runProjectChecks(dir, ["test"]);
+
+    assert.equal(result?.success, false);
+    assert.match(result?.stderr ?? "", /ERROR-FINAL$/);
+    assert.ok((result?.stderr ?? "").length < 5000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

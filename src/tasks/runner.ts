@@ -12,6 +12,7 @@ import { runAgent } from "../agents/router.js";
 import {
   isLimitReason,
   limitRetryDelayMs,
+  parseRetryAfterMs,
   resolveLimitRetry,
   sleep,
   type LimitRetryPolicy,
@@ -159,6 +160,17 @@ export async function runTask(
       !outcome.allLimited ||
       cycle >= limitRetry.maxLimitRetries
     ) {
+      return outcome.task;
+    }
+
+    // Si el proveedor anuncia una reposición posterior al tope de espera, los
+    // reintentos solo ocuparían el hueco de concurrencia para fallar igual.
+    const retryAfter = parseRetryAfterMs(outcome.limitError);
+
+    if (retryAfter !== undefined && retryAfter > limitRetry.maxDelayMs) {
+      console.log(
+        `⏳ todos los agentes al límite hasta dentro de ${Math.round(retryAfter / 60_000)} min; no se espera.`,
+      );
       return outcome.task;
     }
 

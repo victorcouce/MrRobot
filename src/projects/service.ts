@@ -355,7 +355,7 @@ export async function generatePlan(
 }
 
 function buildFixFeedback(review: ReviewResult, checks: CheckResult[]): string {
-  const lines = ["El reviewer rechazó la tarea. Corrige estos problemas:"];
+  const lines = ["La tarea no pasó la validación. Corrige estos problemas:"];
 
   for (const issue of review.issues) {
     lines.push(`- [${issue.severity}] ${issue.description}`);
@@ -369,10 +369,45 @@ function buildFixFeedback(review: ReviewResult, checks: CheckResult[]): string {
   }
 
   for (const check of checks.filter((entry) => !entry.success)) {
-    lines.push(`- El check "${check.command}" falló.`);
+    lines.push(`- El check "${check.command}" falló:`);
+    const detail = [check.stderr, check.stdout].filter(Boolean).join("\n");
+    if (detail) lines.push(clipTail(detail, FIX_FEEDBACK_CHECK_CHARS));
   }
 
   return lines.join("\n");
+}
+
+// Con el error del check en el feedback, el worker no gasta iteraciones en
+// volver a ejecutarlo solo para descubrir qué falló.
+const FIX_FEEDBACK_CHECK_CHARS = 1_500;
+
+function clipTail(value: string, max: number): string {
+  return value.length > max ? `…${value.slice(-max)}` : value;
+}
+
+const SKIPPED_REVIEW: ReviewResult = {
+  approved: true,
+  summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
+  issues: [],
+};
+
+/**
+ * Un check fallido rechaza la tarea pase lo que pase: el review LLM no cambiaría
+ * la decisión y el feedback ya lleva el error del check.
+ */
+const FAILED_CHECKS_REVIEW: ReviewResult = {
+  approved: false,
+  summary: "checks locales fallidos (sin review LLM)",
+  issues: [],
+};
+
+function reviewWithoutLlm(
+  task: Task,
+  checks: CheckResult[],
+): ReviewResult | undefined {
+  if (checks.some((check) => !check.success)) return FAILED_CHECKS_REVIEW;
+  if (shouldSkipReview(task, checks)) return SKIPPED_REVIEW;
+  return undefined;
 }
 
 /**
@@ -972,17 +1007,9 @@ function makeTaskExecutor(
           }
 
           checks = await runChecksInDir(ws.path, config, task);
-
-          if (shouldSkipReview(task, checks)) {
-            review = {
-              approved: true,
-              summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
-              issues: [],
-            };
-            return;
-          }
-
-          review = await runReview(task, ws.path, info, checks);
+          review =
+            reviewWithoutLlm(task, checks) ??
+            (await runReview(task, ws.path, info, checks));
         },
         ...(outputBuffer
           ? { onOutput: (chunk: string) => outputBuffer.push(chunk) }
@@ -1006,13 +1033,9 @@ function makeTaskExecutor(
       // worktree vivo). Solo falta cuando no hubo cambios: no hay worktree que
       // inspeccionar y se revisa el texto del agente.
       if (!review) {
-        review = shouldSkipReview(result, checks)
-          ? {
-              approved: true,
-              summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
-              issues: [],
-            }
-          : await runReview(result, undefined, undefined, checks);
+        review =
+          reviewWithoutLlm(result, checks) ??
+          (await runReview(result, undefined, undefined, checks));
       }
 
       await storage.saveReview({
@@ -1041,6 +1064,23 @@ function makeTaskExecutor(
         summary: review.summary,
         issues: review.issues,
       });
+
+      // Sin un review válido, rehacer la tarea no arregla nada: el worker
+      // repetiría todo su trabajo para toparse con el mismo reviewer caído.
+      if (review.unavailable) {
+        const failed: Task = {
+          ...result,
+          status: "failed",
+          error: review.summary,
+          finishedAt: new Date(),
+        };
+
+        taskState.set(failed.id, failed);
+        await emit(storage, pid, "task.failed", failed.id, {
+          error: failed.error,
+        });
+        return failed;
+      }
 
       lastResult = result;
       feedback = buildFixFeedback(review, checks);

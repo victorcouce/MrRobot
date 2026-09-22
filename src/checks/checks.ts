@@ -225,8 +225,9 @@ export async function runDevSmokeCheck(
   });
 }
 
+// npm, tsc y los runners de tests escriben el error y el resumen al final.
 function truncate(value: string): string {
-  return value.length > MAX_OUTPUT ? `${value.slice(0, MAX_OUTPUT)}…` : value;
+  return value.length > MAX_OUTPUT ? `…${value.slice(-MAX_OUTPUT)}` : value;
 }
 
 export async function detectCheckScripts(dir: string): Promise<string[]> {

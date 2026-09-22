@@ -949,6 +949,34 @@ test("review→fix: el segundo ciclo parte del commit del primero", async () => 
   assert.deepEqual(bases, ["base0", "commit-1"]);
 });
 
+test("review caído: la tarea falla sin rehacer el trabajo del worker", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  let workerCalls = 0;
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace: fakeWorkspace(),
+    plannerExecute: async () => JSON.stringify(singleTaskPlan),
+    workerExecute: async () => {
+      workerCalls += 1;
+      return "ok";
+    },
+    reviewerExecute: async () => "no soy json",
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "fail", reason: "reviewer caído" }),
+  };
+
+  const project = await createProject({ goal: "x" }, deps);
+  const finished = await runProject(project.id, deps);
+  const task = finished.tasks.find((entry) => entry.id === "TASK-001");
+
+  assert.equal(workerCalls, 1);
+  assert.equal(task?.status, "failed");
+  assert.match(task?.error ?? "", /review no parseable/);
+});
+
 test("replanificación: el supervisor añade una tarea y el proyecto completa", async () => {
   const storage = new InMemoryStorage();
   await storage.init();
