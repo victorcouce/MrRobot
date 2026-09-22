@@ -44,9 +44,10 @@ export interface ReviewerDeps {
   onAgentEvent?: OnAgentEvent | undefined;
 }
 
-// El reviewer trabaja en el worktree y puede abrir cualquier archivo: el diff y
-// la salida del agente solo orientan, y sin tope dominan el coste del prompt.
-export const MAX_REVIEW_DIFF_CHARS = 20_000;
+// El reviewer no tiene herramientas (ver `reviewTask`): decide con lo que va en
+// el prompt, así que el diff es su fuente principal. Aun así se acota: un diff
+// enorme dominaría el coste sin mejorar el veredicto.
+export const MAX_REVIEW_DIFF_CHARS = 40_000;
 export const MAX_REVIEW_OUTPUT_CHARS = 3_000;
 
 function clip(value: string, max: number, keep: "head" | "tail"): string {
@@ -69,7 +70,7 @@ function buildPrompt(task: Task, context: ReviewContext): string {
     `TAREA: ${task.id} - ${task.title}`,
     task.description,
     "",
-    "El DIFF describe el commit de la tarea y el directorio de trabajo actual contiene ese resultado; evalúa los criterios ahí. Las rutas de los criterios son relativas a la raíz del repositorio.",
+    "No tienes herramientas: evalúa los criterios solo con el DIFF del commit de la tarea, los CHECKS LOCALES y el RESULTADO DEL AGENTE de abajo. Las rutas de los criterios son relativas a la raíz del repositorio. Lo que no se pueda comprobar con esa información no es motivo de rechazo, salvo que el diff lo contradiga.",
   ];
 
   if (criteria.length > 0) {
@@ -102,24 +103,41 @@ function buildPrompt(task: Task, context: ReviewContext): string {
     parts.push("", "DIFF", clip(context.diff, MAX_REVIEW_DIFF_CHARS, "head"));
   }
 
-  parts.push(
-    "",
-    "Responde EXCLUSIVAMENTE con JSON válido con esta forma:",
-    JSON.stringify(
-      {
-        approved: true,
-        summary: "valoración breve",
-        issues: [{ severity: "medium", description: "problema detectado" }],
-        suggestedFixes: ["corrección sugerida"],
-      },
-      null,
-      2,
-    ),
-    "",
-    "approved debe ser false si algún criterio no se cumple o algún check falla.",
-  );
+  parts.push("", JSON_INSTRUCTIONS);
 
   return parts.join("\n");
+}
+
+const JSON_INSTRUCTIONS = [
+  "Responde EXCLUSIVAMENTE con JSON válido con esta forma:",
+  JSON.stringify(
+    {
+      approved: true,
+      summary: "valoración breve",
+      issues: [{ severity: "medium", description: "problema detectado" }],
+      suggestedFixes: ["corrección sugerida"],
+    },
+    null,
+    2,
+  ),
+  "",
+  "approved debe ser false si algún criterio no se cumple o algún check falla.",
+].join("\n");
+
+/**
+ * Si la respuesta no era JSON válido, se pide solo reformatearla: repetir el
+ * prompt entero volvía a pagar la revisión completa (el 22-09, 1,1M tokens de
+ * Sonnet por cada vuelta).
+ */
+function buildReformatPrompt(raw: string): string {
+  return [
+    "Convierte esta valoración de un reviewer al formato pedido, sin cambiar su veredicto ni añadir nada.",
+    "",
+    "VALORACIÓN",
+    clip(raw, 4_000, "tail"),
+    "",
+    JSON_INSTRUCTIONS,
+  ].join("\n");
 }
 
 function extractJson(text: string): string {
@@ -162,12 +180,13 @@ export async function reviewTask(
   const base =
     deps.execute ?? ((prompt, agent, options) => runAgent(prompt, agent, options));
 
-  // El reviewer inspecciona el resultado en el worktree de la tarea: se fuerza
-  // el cwd por encima del que traiga el ejecutor (que apunta al repo principal).
+  // Sin herramientas: con ellas, el CLI de Claude recorría el worktree en cada
+  // revisión (el 22-09, de 2 a 3 min y ~1,1M tokens de entrada por review)
+  // aunque el diff y los checks ya estaban en el prompt. El cwd se mantiene en
+  // el worktree de la tarea por si algún proveedor lo usa.
   const cwd = deps.cwd;
-  const execute = cwd
-    ? (prompt: string, agent: AgentCandidate) => base(prompt, agent, { cwd })
-    : base;
+  const execute = (prompt: string, agent: AgentCandidate) =>
+    base(prompt, agent, { ...(cwd ? { cwd } : {}), tools: "none" });
 
   const ask = (prompt: string): Promise<string> =>
     runRoleAgent(prompt, "reviewer", {
@@ -184,16 +203,13 @@ export async function reviewTask(
 
   try {
     const prompt = buildPrompt(task, context);
-    let parsed = parseReview(await ask(prompt));
+    const raw = await ask(prompt);
+    let parsed = parseReview(raw);
 
-    // Reintentar solo el review es mucho más barato que el ciclo de fix del
-    // worker que dispararía un rechazo por formato.
+    // Reformatear es mucho más barato que el ciclo de fix del worker que
+    // dispararía un rechazo por formato, y que repetir la revisión.
     if (!parsed.success) {
-      parsed = parseReview(
-        await ask(
-          `${prompt}\n\nTu respuesta anterior no era JSON válido con esa forma. Responde SOLO con el JSON.`,
-        ),
-      );
+      parsed = parseReview(await ask(buildReformatPrompt(raw)));
     }
 
     if (!parsed.success) {

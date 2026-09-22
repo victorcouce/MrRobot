@@ -41,18 +41,21 @@ test("reviewer: FAIL con issues", async () => {
   assert.deepEqual(review.suggestedFixes, ["arreglar imports"]);
 });
 
-test("reviewer: fuerza el cwd del worktree en el ejecutor", async () => {
+test("reviewer: corre sin herramientas en el cwd del worktree", async () => {
   let seenCwd: string | undefined;
+  let seenTools: string | undefined;
 
   await reviewTask(makeTask(), { checks: [] }, {
     cwd: "/repo/.worktrees/TASK-001-attempt-1",
     execute: async (_prompt, _agent, options) => {
       seenCwd = options?.cwd;
+      seenTools = options?.tools;
       return JSON.stringify({ approved: true, summary: "ok", issues: [] });
     },
   });
 
   assert.equal(seenCwd, "/repo/.worktrees/TASK-001-attempt-1");
+  assert.equal(seenTools, "none");
 });
 
 test("reviewer: reancla criterios absolutos del repo en el prompt", async () => {
@@ -83,18 +86,21 @@ test("reviewer: respuesta inválida se trata como no aprobada", async () => {
   assert.ok(review.issues.length > 0);
 });
 
-test("reviewer: reintenta una vez si la respuesta no es JSON", async () => {
-  let calls = 0;
-  const review = await reviewTask(makeTask(), {}, {
-    execute: async () => {
-      calls++;
-      return calls === 1
-        ? "no soy json"
+test("reviewer: si la respuesta no es JSON, solo pide reformatearla", async () => {
+  const prompts: string[] = [];
+  const review = await reviewTask(makeTask(), { diff: "DIFF-GRANDE" }, {
+    execute: async (prompt) => {
+      prompts.push(prompt);
+      return prompts.length === 1
+        ? "Todo correcto, apruebo la tarea."
         : JSON.stringify({ approved: true, summary: "ok", issues: [] });
     },
   });
 
-  assert.equal(calls, 2);
+  assert.equal(prompts.length, 2);
+  // El segundo prompt lleva la valoración anterior, no el diff otra vez.
+  assert.match(prompts[1] ?? "", /Todo correcto, apruebo la tarea\./);
+  assert.doesNotMatch(prompts[1] ?? "", /DIFF-GRANDE/);
   assert.equal(review.approved, true);
   assert.equal(review.unavailable, undefined);
 });

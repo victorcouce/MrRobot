@@ -68,3 +68,12 @@ test("un modo inválido cae en el valor por defecto", () => {
     assert.equal(claudePermissionMode(undefined), "acceptEdits");
   });
 });
+
+test("sin herramientas se pasa --tools vacío", () => {
+  withEnv(undefined, () => {
+    const args = claudeArgs("revisa", "haiku", { sandbox: "read-only", tools: "none" });
+    const index = args.indexOf("--tools");
+    assert.ok(index > 0);
+    assert.equal(args[index + 1], "");
+  });
+});

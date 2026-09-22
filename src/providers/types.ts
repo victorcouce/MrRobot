@@ -23,6 +23,12 @@ export interface RunOptions {
    */
   mode?: "text" | "agentic";
   harness?: HarnessConfig;
+  /**
+   * "none": una sola respuesta sin herramientas (el reviewer decide con lo que
+   * trae el prompt). Claude lo traduce a `--tools ""`; DeepSeek en modo texto
+   * ya no usa herramientas; Codex no tiene equivalente.
+   */
+  tools?: "none";
   agent?: AgentSpec;
   prompt?: string;
 }

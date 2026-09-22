@@ -79,6 +79,10 @@ export function claudeArgs(
     args.push("--model", model);
   }
 
+  if (options.tools === "none") {
+    args.push("--tools", "");
+  }
+
   // Con alguien escuchando la salida en vivo (el worker de una tarea), se
   // pide el stream estructurado para narrar qué hace el agente —qué
   // herramienta usa y sobre qué fichero— en vez de mostrar solo la respuesta
