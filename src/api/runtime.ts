@@ -18,6 +18,7 @@ import {
 } from "../agents/selector.js";
 import { getFallbackChain } from "../agents/fallback.js";
 import { AgentHealth } from "../agents/health.js";
+import { computeMetrics, type MetricsSummary } from "./metrics.js";
 import { runAgent } from "../agents/router.js";
 import type { AgentCandidate } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/index.js";
@@ -443,8 +444,24 @@ export class Runtime {
    * (`planning`/`running`) tras un reinicio del servidor. Se llama al arrancar,
    * antes de aceptar peticiones.
    */
-  async recoverInterruptedProjects(): Promise<ProjectSummary[]> {
+  async recoverInterruptedProjects(
+    options: { autoResume?: boolean } = {},
+  ): Promise<ProjectSummary[]> {
     const recovered = await recoverInterruptedProjectsInService(this.baseDeps());
+
+    // Un reinicio no debe dejar el proyecto parado esperando un clic: los que
+    // estaban `running` se reanudan solos.
+    if (options.autoResume) {
+      for (const entry of recovered) {
+        if (entry.previousStatus !== "running") continue;
+        try {
+          await this.resume(entry.project.id);
+        } catch {
+          // Si no se puede reanudar, queda en pausa para hacerlo a mano.
+        }
+      }
+    }
+
     return recovered.map((entry) => serializeSummary(entry.project));
   }
 
@@ -934,6 +951,15 @@ export class Runtime {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit)
       .map(serializeEvent);
+  }
+
+  async metrics(): Promise<MetricsSummary> {
+    const projects = await this.storage.listProjects();
+    const eventsByProject = await Promise.all(
+      projects.map((project) => this.storage.listEvents(project.id)),
+    );
+
+    return computeMetrics(eventsByProject);
   }
 
   subscribe(listener: (event: ProjectEvent) => void): () => void {

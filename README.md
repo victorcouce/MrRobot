@@ -425,6 +425,10 @@ fuente de verdad y el SSE refresca el hilo en vivo.
 `project.deleted`, `chat.created`, `chat.message`, `chat.deleted`,
 `agent.started`, `agent.completed`, `agent.failed`.
 
+Al arrancar, los proyectos que quedaron `running` por un reinicio se recuperan y
+se **reanudan solos** (desactivable con `MRROBOT_AUTO_RESUME=0`); los que estaban
+`planning` vuelven a `draft`.
+
 `task.output` (salida del agente en vivo) es efímero: va por SSE pero **no** se
 persiste en el event log.
 
@@ -484,11 +488,13 @@ DELETE /api/projects/:id/chats/:chatId borra el chat y sus tareas
 POST   /api/projects/:id/chats/:chatId/messages envía un mensaje (planner → tareas)
 GET    /api/chats                      chats de todos los proyectos (sidebar)
 GET    /api/activity                   actividad global reciente
+GET    /api/metrics                    métricas agregadas (tiempo y éxito por agente)
 ```
 
 Los route handlers no contienen lógica de dominio: delegan en
 `projects/service.ts` y `projects/plan-editor.ts`. La edición del plan valida
-el DAG (IDs, dependencias, ciclos) y se limita a los estados `draft`/`ready`.
+el DAG (IDs, dependencias, ciclos) y se permite en `draft`/`ready` y con la
+ejecución detenida (`paused`/`blocked`/`failed`).
 
 ## Tiempo real (SSE)
 

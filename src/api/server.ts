@@ -274,6 +274,12 @@ async function dispatch(
     return;
   }
 
+  // /api/metrics
+  if (req.method === "GET" && segments[1] === "metrics") {
+    sendJson(res, 200, await runtime.metrics());
+    return;
+  }
+
   // /api/chats
   if (req.method === "GET" && segments[1] === "chats") {
     sendJson(res, 200, await runtime.listAllChats());
@@ -627,11 +633,14 @@ export async function startServer(options: StartOptions = {}) {
   const server = buildApiServer(runtime, streams);
 
   // Antes de aceptar peticiones: los estados transitorios de una ejecución
-  // anterior no deben quedar colgados como si siguieran en marcha.
-  const recovered = await runtime.recoverInterruptedProjects();
+  // anterior no deben quedar colgados como si siguieran en marcha. Los que
+  // estaban `running` se reanudan solos (MRROBOT_AUTO_RESUME=0 lo desactiva).
+  const autoResume = process.env.MRROBOT_AUTO_RESUME !== "0";
+  const recovered = await runtime.recoverInterruptedProjects({ autoResume });
   if (recovered.length > 0) {
     console.log(
-      `Recuperados ${recovered.length} proyecto(s) interrumpido(s).`,
+      `Recuperados ${recovered.length} proyecto(s) interrumpido(s)` +
+        (autoResume ? "; reanudando los que estaban en marcha." : "."),
     );
   }
 

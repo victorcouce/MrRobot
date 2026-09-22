@@ -18,6 +18,14 @@ export interface GeneratedPlan {
   tasks: GeneratedTask[];
 }
 
+/** Foto del repositorio para que el planner no invente rutas ni comandos. */
+export interface RepoContext {
+  /** Scripts de npm disponibles (test, build, typecheck…). */
+  scripts?: string[];
+  /** Ficheros y directorios del repo (rutas relativas, profundidad 2). */
+  files?: string[];
+}
+
 export interface PlanContext {
   previousPlan?: GeneratedPlan;
   completedTaskIds?: string[];
@@ -27,4 +35,6 @@ export interface PlanContext {
   conversation?: Array<{ role: string; content: string }>;
   /** Adjuntos del chat, disponibles para que las tareas los referencien. */
   attachments?: Attachment[];
+  /** Estructura real del repositorio. */
+  repo?: RepoContext;
 }

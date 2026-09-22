@@ -86,26 +86,26 @@ test("el primer candidato coincide con selectAgent en todas las combinaciones", 
   }
 });
 
-test("coding low -> haiku, deepseek, sonnet, codex", () => {
+test("coding low -> haiku, codex, sonnet, deepseek", () => {
   assert.deepEqual(
     getFallbackChain(makeTask({ type: "coding", complexity: "low" })),
     [
       { provider: "claude", model: "haiku" },
-      { provider: "deepseek", model: "deepseek-flash" },
-      { provider: "claude", model: "sonnet" },
       { provider: "codex" },
+      { provider: "claude", model: "sonnet" },
+      { provider: "deepseek", model: "deepseek-flash" },
     ],
   );
 });
 
-test("coding high -> haiku, deepseek, sonnet, codex", () => {
+test("coding high -> haiku, codex, sonnet, deepseek", () => {
   assert.deepEqual(
     getFallbackChain(makeTask({ type: "coding", complexity: "high" })),
     [
       { provider: "claude", model: "haiku" },
-      { provider: "deepseek", model: "deepseek-flash" },
-      { provider: "claude", model: "sonnet" },
       { provider: "codex" },
+      { provider: "claude", model: "sonnet" },
+      { provider: "deepseek", model: "deepseek-flash" },
     ],
   );
 });
@@ -148,8 +148,8 @@ test("no hay candidatos duplicados en la cadena", () => {
   assert.deepEqual(chain, [
     { provider: "claude", model: "sonnet" },
     { provider: "claude", model: "haiku" },
-    { provider: "deepseek", model: "deepseek-flash" },
     { provider: "codex" },
+    { provider: "deepseek", model: "deepseek-flash" },
   ]);
 });
 
@@ -162,11 +162,11 @@ test("los agentes permitidos del chat filtran la cadena", () => {
     ],
   );
 
-  // Conserva el orden automático (sonnet antes que codex en coding high) y
-  // descarta haiku, que el chat no permite.
+  // Conserva el orden automático (codex antes que sonnet en coding) y descarta
+  // haiku, que el chat no permite.
   assert.deepEqual(chain, [
-    { provider: "claude", model: "sonnet" },
     { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
   ]);
 });
 
@@ -232,6 +232,11 @@ test("isRetryableError clasifica errores temporales como reintentables", () => {
   assert.equal(isRetryableError(new Error("ETIMEDOUT")), true);
   assert.equal(isRetryableError(new Error("Service Unavailable")), true);
   assert.equal(isRetryableError(new Error("socket hang up")), true);
+  // Una violación de sandbox se reintenta una vez (el modelo puede corregir).
+  assert.equal(
+    isRetryableError(new Error('[sandbox] comando no permitido: "ls"')),
+    true,
+  );
 });
 
 test("isRetryableError clasifica errores permanentes como no reintentables", () => {
@@ -266,7 +271,7 @@ test("Caso 1: Haiku success -> 1 intento, DONE, executedBy Haiku", async () => {
   assert.equal(calls.length, 1);
 });
 
-test("Caso 2: haiku sin cuota, se pasa a deepseek -> 2 intentos", async () => {
+test("Caso 2: haiku sin cuota, se pasa a codex -> 2 intentos", async () => {
   const execute = async (
     _prompt: string,
     agent: AgentCandidate,
@@ -283,10 +288,7 @@ test("Caso 2: haiku sin cuota, se pasa a deepseek -> 2 intentos", async () => {
   );
 
   assert.equal(result.status, "done");
-  assert.deepEqual(result.executedBy, {
-    provider: "deepseek",
-    model: "deepseek-flash",
-  });
+  assert.deepEqual(result.executedBy, { provider: "codex" });
   assert.equal(result.attempts?.length, 2);
   assert.deepEqual(
     result.attempts?.map((attempt) => attempt.status),
@@ -296,7 +298,7 @@ test("Caso 2: haiku sin cuota, se pasa a deepseek -> 2 intentos", async () => {
     result.attempts?.map((attempt) => attempt.agent),
     [
       { provider: "claude", model: "haiku" },
-      { provider: "deepseek", model: "deepseek-flash" },
+      { provider: "codex" },
     ],
   );
 });
@@ -329,13 +331,10 @@ test("un agente agotado por límite pasa al final en la siguiente tarea", async 
   );
 
   assert.equal(first.status, "done");
-  assert.deepEqual(first.executedBy, {
-    provider: "deepseek",
-    model: "deepseek-flash",
-  });
+  assert.deepEqual(first.executedBy, { provider: "codex" });
   assert.deepEqual(firstCalls, [
     { provider: "claude", model: "haiku" },
-    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "codex" },
   ]);
 
   // La siguiente tarea ya no vuelve a empezar por el agente agotado.
@@ -353,13 +352,8 @@ test("un agente agotado por límite pasa al final en la siguiente tarea", async 
   );
 
   assert.equal(second.status, "done");
-  assert.deepEqual(second.executedBy, {
-    provider: "deepseek",
-    model: "deepseek-flash",
-  });
-  assert.deepEqual(secondCalls, [
-    { provider: "deepseek", model: "deepseek-flash" },
-  ]);
+  assert.deepEqual(second.executedBy, { provider: "codex" });
+  assert.deepEqual(secondCalls, [{ provider: "codex" }]);
 });
 
 test("sin memoria de agentes el orden de la cadena no cambia", async () => {
@@ -384,7 +378,7 @@ test("sin memoria de agentes el orden de la cadena no cambia", async () => {
 
   assert.deepEqual(calls, [
     { provider: "claude", model: "haiku" },
-    { provider: "deepseek", model: "deepseek-flash" },
+    { provider: "codex" },
   ]);
 });
 
@@ -411,7 +405,7 @@ test("runTask: si todos caen por límite, espera y reintenta la cadena", async (
   );
 
   assert.equal(result.status, "done");
-  // Cadena high = [haiku, deepseek, sonnet, codex]: recorrido completo + reintento.
+  // Cadena high = [haiku, codex, sonnet, deepseek]: recorrido completo + reintento.
   assert.equal(used.length, 5);
   assert.equal(result.attempts?.length, 5);
 });
@@ -453,10 +447,7 @@ test("Caso 4: error no reintentable pasa al fallback sin repetir", async () => {
   );
 
   assert.equal(result.status, "done");
-  assert.deepEqual(result.executedBy, {
-    provider: "deepseek",
-    model: "deepseek-flash",
-  });
+  assert.deepEqual(result.executedBy, { provider: "codex" });
   assert.equal(result.attempts?.length, 2);
   assert.deepEqual(
     result.attempts?.map((attempt) => attempt.status),

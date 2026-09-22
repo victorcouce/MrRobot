@@ -906,9 +906,9 @@ test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", asy
 
   assert.deepEqual(chain, [
     { provider: "claude", model: "haiku" },
-    { provider: "deepseek", model: "deepseek-flash" },
-    { provider: "claude", model: "sonnet" },
     { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
+    { provider: "deepseek", model: "deepseek-flash" },
   ]);
 
   const restricted = await (
@@ -924,8 +924,8 @@ test("api server: POST /api/agents/fallback-chain refleja getFallbackChain", asy
   ).json();
 
   assert.deepEqual(restricted, [
-    { provider: "claude", model: "sonnet" },
     { provider: "codex" },
+    { provider: "claude", model: "sonnet" },
   ]);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -9,6 +9,7 @@ import type {
   FolderCheck,
   GrillMessage,
   GrillResponse,
+  MetricsSummary,
   Project,
   ProjectEvent,
   ProjectPreview,
@@ -291,6 +292,8 @@ export const api = {
 
   activity: (limit = 100) =>
     request<ProjectEvent[]>(`/api/activity?limit=${limit}`),
+
+  metrics: () => request<MetricsSummary>("/api/metrics"),
 
   agentMatrix: () => request<AgentMatrixRow[]>("/api/agents/matrix"),
 

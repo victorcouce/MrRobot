@@ -237,5 +237,5 @@ test("runTask: en un ciclo de fix, un agente que no cambia nada pasa al siguient
 
   assert.equal(result.status, "done");
   assert.equal(result.resultCommit, "squashed");
-  assert.deepEqual(executed, ["claude", "codex"]);
+  assert.deepEqual(executed, ["codex", "claude"]);
 });

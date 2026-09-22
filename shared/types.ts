@@ -217,6 +217,29 @@ export interface ProjectEvent {
   createdAt: string;
 }
 
+/** Métricas agregadas de los intentos de agente (para el panel de actividad). */
+export interface AgentMetric {
+  scope: string;
+  agent: string;
+  attempts: number;
+  ok: number;
+  failed: number;
+  totalMs: number;
+}
+
+export interface FailureMetric {
+  reason: string;
+  count: number;
+}
+
+export interface MetricsSummary {
+  projects: number;
+  agentRuns: AgentMetric[];
+  tasks: { attempts: number; completed: number; failed: number };
+  replans: number;
+  topFailures: FailureMetric[];
+}
+
 export type ReviewSeverity = "low" | "medium" | "high" | "critical";
 
 export interface ReviewIssue {

@@ -37,15 +37,53 @@ const RETRY_AFTER_PATTERN =
   /retry[-\s]?after[\s:=]*(\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|sec(?:onds?)?|m|min(?:utes?)?|h|hours?)?/i;
 
 /**
- * Extrae el `Retry-After` del mensaje de error si el proveedor lo incluye.
- * Acepta `retry after 30`, `retry-after: 30`, `retry after 2m`, etc. Sin unidad
- * se interpreta en segundos (convención HTTP).
+ * Los proveedores de suscripción (p. ej. Claude) no mandan `Retry-After`: dicen
+ * cuándo se repone el límite ("resets 3:20pm"). Se interpreta como hora local.
  */
-export function parseRetryAfterMs(error: unknown): number | undefined {
-  const match = RETRY_AFTER_PATTERN.exec(errorMessage(error));
+const RESET_AT_PATTERN = /resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i;
+
+export function parseResetAtMs(message: string, now: number): number | undefined {
+  const match = RESET_AT_PATTERN.exec(message);
 
   if (!match) {
     return undefined;
+  }
+
+  let hours = Number(match[1]);
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const meridiem = match[3]?.toLowerCase();
+
+  if (!Number.isFinite(hours) || hours > 23 || minutes > 59) {
+    return undefined;
+  }
+
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+
+  const target = new Date(now);
+  target.setHours(hours, minutes, 0, 0);
+
+  let delta = target.getTime() - now;
+
+  if (delta <= 0) {
+    delta += 24 * 60 * 60 * 1000;
+  }
+
+  return delta;
+}
+
+/**
+ * Extrae el `Retry-After` del mensaje de error si el proveedor lo incluye.
+ * Acepta `retry after 30`, `retry-after: 30`, `retry after 2m`, etc. Sin unidad
+ * se interpreta en segundos (convención HTTP). Si no hay `Retry-After`, prueba
+ * con un "resets HH:MM".
+ */
+export function parseRetryAfterMs(error: unknown): number | undefined {
+  const message = errorMessage(error);
+  const match = RETRY_AFTER_PATTERN.exec(message);
+
+  if (!match) {
+    return parseResetAtMs(message, Date.now());
   }
 
   const value = Number(match[1]);

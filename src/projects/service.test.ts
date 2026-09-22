@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CheckResult } from "../checks/types.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import type { Task } from "../tasks/types.js";
@@ -7,6 +10,7 @@ import type { WorkspaceManager } from "../workspace/types.js";
 import {
   buildProjectResult,
   createProject,
+  gatherRepoContext,
   mergeReplan,
   recoverInterrupted,
   recoverInterruptedProjects,
@@ -1033,4 +1037,33 @@ test("un plan bloqueado deja en disco lo que sí se completó", async () => {
   assert.ok(progressCommits.length > 0);
   assert.deepEqual(progressCommits[0], ["TASK-001"]);
   assert.ok(synced.includes("progress-commit"));
+});
+
+test("gatherRepoContext reúne scripts y estructura real del repo", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "repo-ctx-"));
+
+  try {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "node --test", build: "tsc" } }),
+    );
+    writeFileSync(join(dir, "README.md"), "");
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "index.js"), "");
+    mkdirSync(join(dir, "node_modules"));
+
+    const context = await gatherRepoContext(dir);
+
+    assert.deepEqual(context.scripts, ["build", "test"]);
+    assert.ok(context.files?.includes("src/"));
+    assert.ok(context.files?.includes("src/index.js"));
+    assert.ok(context.files?.includes("README.md"));
+    // Los directorios ignorados no aparecen.
+    assert.equal(
+      context.files?.some((file) => file.startsWith("node_modules")),
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

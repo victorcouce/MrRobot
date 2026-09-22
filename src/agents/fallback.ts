@@ -42,7 +42,9 @@ function autoChain(task: Task): AgentCandidate[] {
       return [CLAUDE_OPUS, CODEX, CLAUDE_SONNET];
     case "coding":
     case "testing":
-      return [CLAUDE_HAIKU, DEEPSEEK_FLASH, CLAUDE_SONNET, CODEX];
+      // Los datos de ejecución muestran a Codex y Claude muy por encima de
+      // DeepSeek en tareas de código; DeepSeek queda como último recurso.
+      return [CLAUDE_HAIKU, CODEX, CLAUDE_SONNET, DEEPSEEK_FLASH];
     case "review":
       return reviewChain(task.complexity);
     case "research":
@@ -121,8 +123,9 @@ export function errorMessage(error: unknown): string {
 }
 
 const NON_RETRYABLE_PATTERNS = [
+  // Un presupuesto de harness agotado es determinista: reintentar el mismo
+  // agente con el mismo límite no aporta.
   "[harness]",
-  "[sandbox]",
   "api key",
   "apikey",
   "unauthorized",
@@ -140,6 +143,9 @@ const NON_RETRYABLE_PATTERNS = [
 ];
 
 const RETRYABLE_PATTERNS = [
+  // Una violación de sandbox suele ser el modelo usando una herramienta o ruta
+  // no permitida; un reintento con contexto limpio puede corregirlo.
+  "[sandbox]",
   "timeout",
   "timed out",
   "etimedout",

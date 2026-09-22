@@ -185,6 +185,26 @@ function buildPrompt(
     parts.push("", `INSTRUCCIONES: ${context.instructions}`);
   }
 
+  if (context.repo) {
+    if (context.repo.scripts?.length) {
+      parts.push(
+        "",
+        `SCRIPTS DISPONIBLES (package.json): ${context.repo.scripts
+          .map((script) => `npm run ${script}`)
+          .join(", ")}`,
+      );
+    }
+
+    if (context.repo.files?.length) {
+      parts.push("", "ESTRUCTURA DEL REPOSITORIO:", context.repo.files.join("\n"));
+    }
+
+    parts.push(
+      "",
+      "Usa rutas y comandos REALES del repositorio de arriba: no inventes directorios (p. ej. `tests/` si solo existe `test/`) ni flags de otros runners (p. ej. `--runInBand`, que es de Jest).",
+    );
+  }
+
   if (context.attachments?.length) {
     parts.push(...renderAttachments(context.attachments));
     parts.push(

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useActivity, useProjects } from "@/lib/hooks";
+import { useActivity, useMetrics, useProjects } from "@/lib/hooks";
 import { describeEvent } from "@/lib/events";
 import { clockTime, relativeTime } from "@/lib/format";
 import { LoadingState } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { MetricsPanel } from "@/components/MetricsPanel";
 import type { ProjectEvent } from "@/lib/types";
 
 type EventCategory = "all" | "tasks" | "reviews" | "git" | "system";
@@ -21,6 +22,7 @@ const CATEGORY_LABELS: Record<EventCategory, string> = {
 
 export default function ActivityPage() {
   const { events, loading } = useActivity();
+  const { metrics } = useMetrics();
   const { projects } = useProjects();
   const [category, setCategory] = useState<EventCategory>("all");
   const [search, setSearch] = useState("");
@@ -73,6 +75,8 @@ export default function ActivityPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden px-7 py-6">
+        <MetricsPanel metrics={metrics} />
+
         {/* Toolbar */}
         <div className="mb-6 space-y-4">
           <div className="flex flex-wrap items-center gap-3">

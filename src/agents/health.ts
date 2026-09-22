@@ -24,7 +24,9 @@ export interface AgentHealthOptions {
 }
 
 export const DEFAULT_LIMIT_COOLDOWN_MS = 5 * 60_000;
-export const MAX_LIMIT_COOLDOWN_MS = 60 * 60_000;
+// Un límite de sesión puede tardar horas en reponerse; el "resets HH:MM" del
+// proveedor se respeta hasta este tope.
+export const MAX_LIMIT_COOLDOWN_MS = 6 * 60 * 60_000;
 
 export class AgentHealth {
   private readonly limited = new Map<string, number>();

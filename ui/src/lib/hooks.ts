@@ -13,6 +13,7 @@ import type {
   AppInfo,
   ChatMessage,
   ChatSummary,
+  MetricsSummary,
   Project,
   ProjectEvent,
   ProjectSummary,
@@ -194,6 +195,26 @@ export function useActivity(intervalMs = 5000) {
   }, [refresh, intervalMs]);
 
   return { events, error, loading, refresh };
+}
+
+export function useMetrics(intervalMs = 15000) {
+  const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setMetrics(await api.metrics());
+    } catch {
+      // El panel de métricas es informativo: si falla, se mantiene lo último.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const interval = setInterval(() => void refresh(), intervalMs);
+    return () => clearInterval(interval);
+  }, [refresh, intervalMs]);
+
+  return { metrics, refresh };
 }
 
 export interface ProjectState {

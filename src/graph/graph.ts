@@ -11,6 +11,7 @@ import { planProject } from "../planner/planner.js";
 import type { PlanContext } from "../planner/types.js";
 import {
   finalizeProjectRun,
+  gatherRepoContext,
   mergeReplan,
   runProjectRound,
   tasksToPlan,
@@ -79,6 +80,11 @@ export function buildProjectGraph(deps: ProjectDeps) {
 
     if (decision.instructions !== undefined) {
       context.instructions = decision.instructions;
+    }
+
+    const repoRoot = await deps.workspace?.getRepoRoot().catch(() => undefined);
+    if (repoRoot) {
+      context.repo = await gatherRepoContext(repoRoot);
     }
 
     try {

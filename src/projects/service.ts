@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { pickAttachments } from "../agents/attachments.js";
 import { AgentHealth } from "../agents/health.js";
 import { assertFileWritingAgent } from "../agents/selector.js";
@@ -13,7 +15,7 @@ import type { CheckResult } from "../checks/types.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
 import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
-import type { GeneratedPlan, PlanContext } from "../planner/types.js";
+import type { GeneratedPlan, PlanContext, RepoContext } from "../planner/types.js";
 import { PREVIEW_SCRIPTS } from "../preview/preview.js";
 import { reviewTask } from "../reviewer/reviewer.js";
 import type { ReviewContext } from "../reviewer/reviewer.js";
@@ -521,6 +523,69 @@ function normalizeTitle(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+const REPO_IGNORED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".worktrees",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+]);
+
+/**
+ * Lista ficheros y directorios del repo (profundidad 2) para que el planner
+ * conozca la estructura real. Acotado para no volcar árboles enormes.
+ */
+async function listRepoFiles(
+  root: string,
+  maxEntries = 80,
+): Promise<string[]> {
+  const out: string[] = [];
+
+  const walk = async (dir: string, prefix: string, depth: number): Promise<void> => {
+    if (out.length >= maxEntries || depth > 2) return;
+
+    let entries;
+    try {
+      entries = await readdir(join(root, dir), { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (out.length >= maxEntries) break;
+      if (entry.name.startsWith(".") || REPO_IGNORED_DIRS.has(entry.name)) {
+        continue;
+      }
+
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+      if (entry.isDirectory()) {
+        out.push(`${rel}/`);
+        await walk(join(dir, entry.name), rel, depth + 1);
+      } else {
+        out.push(rel);
+      }
+    }
+  };
+
+  await walk(".", "", 1);
+  return out;
+}
+
+/** Reúne scripts de npm y estructura del repo para el contexto del planner. */
+export async function gatherRepoContext(root: string): Promise<RepoContext> {
+  const scripts = await detectCheckScripts(root);
+  const files = await listRepoFiles(root);
+  const context: RepoContext = {};
+
+  if (scripts.length > 0) context.scripts = scripts;
+  if (files.length > 0) context.files = files;
+
+  return context;
 }
 
 /**
@@ -1155,6 +1220,11 @@ export async function runProject(
 
       if (decision.instructions !== undefined) {
         context.instructions = decision.instructions;
+      }
+
+      const repoRoot = await workspace.getRepoRoot().catch(() => undefined);
+      if (repoRoot) {
+        context.repo = await gatherRepoContext(repoRoot);
       }
 
       try {

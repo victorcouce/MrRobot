@@ -4,6 +4,7 @@ import {
   DEFAULT_LIMIT_RETRY,
   isLimitReason,
   limitRetryDelayMs,
+  parseResetAtMs,
   parseRetryAfterMs,
   resolveLimitRetry,
 } from "./limit-retry.js";
@@ -29,6 +30,23 @@ test("parseRetryAfterMs interpreta ms, minutos y horas", () => {
 
 test("parseRetryAfterMs devuelve undefined sin retry after", () => {
   assert.equal(parseRetryAfterMs(new Error("429 too many requests")), undefined);
+});
+
+test("parseResetAtMs entiende 'resets HH:MM' en hora local", () => {
+  // 10:00 de un día cualquiera.
+  const now = new Date(2026, 0, 5, 10, 0, 0).getTime();
+
+  // Reset a las 15:20 → 5h20m.
+  assert.equal(
+    parseResetAtMs("You've hit your session limit · resets 3:20pm", now),
+    (5 * 60 + 20) * 60_000,
+  );
+
+  // Si la hora ya pasó hoy, se asume el día siguiente.
+  assert.equal(
+    parseResetAtMs("resets 09:00", now),
+    23 * 60 * 60_000,
+  );
 });
 
 test("limitRetryDelayMs prioriza el retry after", () => {
