@@ -663,6 +663,26 @@ export async function gatherRepoContext(root: string): Promise<RepoContext> {
 }
 
 /**
+ * Mapa del worktree para el prompt del worker: scripts de npm y estructura
+ * (profundidad 2, acotada), para que no tenga que explorarlo antes de empezar.
+ */
+export async function renderWorkspaceMap(dir: string): Promise<string | undefined> {
+  const context = await gatherRepoContext(dir);
+  const parts: string[] = [];
+
+  if (context.scripts?.length) {
+    parts.push(`Scripts de npm: ${context.scripts.join(", ")}`);
+  }
+  if (context.files?.length) {
+    parts.push(`Archivos:\n${context.files.join("\n")}`);
+  }
+
+  return parts.length > 0
+    ? `ESTADO ACTUAL DEL WORKSPACE (no hace falta volver a listarlo)\n${parts.join("\n")}`
+    : undefined;
+}
+
+/**
  * Convierte las tareas actuales al formato de plan para dárselas al planner
  * como `previousPlan`. Sin esto, al replanificar el planner parte de cero e
  * inventa IDs nuevos (`TASK-001A`) para el mismo alcance, y el merge acaba con
@@ -1025,6 +1045,7 @@ function makeTaskExecutor(
           ? { startRef: lastResult.resultCommit }
           : {}),
         extraPrompt: feedback,
+        describeWorkspace: renderWorkspaceMap,
         workspace,
         execute: deps.workerExecute,
         maxRetriesPerAgent: config.maxRetriesPerAgent,

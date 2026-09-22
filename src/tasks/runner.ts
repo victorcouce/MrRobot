@@ -48,6 +48,12 @@ export interface RunTaskOptions {
    */
   startRef?: string | undefined;
   extraPrompt?: string | undefined;
+  /**
+   * Describe el worktree recién creado (archivos, scripts) para el prompt: el
+   * agente arranca sabiendo qué hay en vez de gastar sus primeras llamadas en
+   * listar y leer (de media 11-23 antes de la primera escritura el 21-09).
+   */
+  describeWorkspace?: ((dir: string) => Promise<string | undefined>) | undefined;
   maxRetriesPerAgent?: number | undefined;
   /** Reintento de la cadena completa cuando todos caen por límite. */
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
@@ -358,6 +364,10 @@ async function runTaskOnce(
         console.log(`Dependencias:\nreutilizadas del almacén`);
       }
 
+      const workspaceMap = await options
+        .describeWorkspace?.(workspace.path)
+        .catch(() => undefined);
+
       console.log(`Agente:\n${label}`);
       console.log(`Intento ${attempt + 1}`);
 
@@ -372,8 +382,12 @@ async function runTaskOnce(
       let attemptUsage: TokenUsage | undefined;
 
       try {
+        const attemptPrompt = withPreviousFailures(
+          workspaceMap ? `${prompt}\n\n${workspaceMap}` : prompt,
+          [...previousAttempts, ...attempts],
+        );
         const metered = await withUsageMeter(() =>
-          execute(withPreviousFailures(prompt, [...previousAttempts, ...attempts]), candidate, {
+          execute(attemptPrompt, candidate, {
             cwd: workspace.path,
             ...(options.signal ? { signal: options.signal } : {}),
             ...(options.onOutput ? { onOutput: options.onOutput } : {}),

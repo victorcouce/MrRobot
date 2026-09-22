@@ -289,3 +289,24 @@ test("runTask: al reanudar, el prompt resume los fallos de ejecuciones previas",
 
   assert.match(prompts[0] ?? "", /sin crear ni modificar archivos/);
 });
+
+test("runTask: el prompt incluye el mapa del worktree si se describe", async () => {
+  const prompts: string[] = [];
+  const described: string[] = [];
+
+  await runTask(task({ type: "coding" }), {
+    execute: async (prompt) => {
+      prompts.push(prompt);
+      return "ok";
+    },
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [DEEPSEEK],
+    describeWorkspace: async (dir) => {
+      described.push(dir);
+      return "ESTADO ACTUAL DEL WORKSPACE\nArchivos:\nindex.html";
+    },
+  });
+
+  assert.deepEqual(described, ["/fake/repo/.worktrees/TASK-001-1"]);
+  assert.match(prompts[0] ?? "", /ESTADO ACTUAL DEL WORKSPACE\nArchivos:\nindex.html/);
+});

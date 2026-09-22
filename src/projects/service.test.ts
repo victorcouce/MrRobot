@@ -14,6 +14,7 @@ import {
   mergeReplan,
   recoverInterrupted,
   recoverInterruptedProjects,
+  renderWorkspaceMap,
   repeatedFailures,
   requeueFailedTasks,
   resumeProject,
@@ -1132,4 +1133,22 @@ test("repeatedFailures detecta la misma causa en rondas consecutivas", () => {
     repeatedFailures([failed("TASK-005A", '[sandbox] comando no permitido: "pwd"')], previous),
     [],
   );
+});
+
+test("renderWorkspaceMap lista scripts y archivos sin node_modules", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wsmap-"));
+  try {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "app.js"), "");
+    mkdirSync(join(dir, "node_modules"));
+
+    const map = await renderWorkspaceMap(dir);
+
+    assert.match(map ?? "", /Scripts de npm: test/);
+    assert.match(map ?? "", /src\/app\.js/);
+    assert.doesNotMatch(map ?? "", /node_modules/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
