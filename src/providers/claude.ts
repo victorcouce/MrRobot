@@ -68,7 +68,11 @@ export function claudeArgs(
   model?: ClaudeModel,
   options: RunOptions = {},
 ): string[] {
-  const args = ["-p", prompt];
+  // Sin los MCP ni las skills de la configuración global del usuario: ningún
+  // rol los usa y sus definiciones viajan en cada llamada. Medido el 22-09:
+  // ~117k tokens de entrada por llamada con los MCP globales frente a ~6,7k
+  // con --strict-mcp-config (sin herramientas).
+  const args = ["-p", prompt, "--strict-mcp-config", "--disable-slash-commands"];
   const permissionMode = claudePermissionMode(options.sandbox);
 
   if (permissionMode) {

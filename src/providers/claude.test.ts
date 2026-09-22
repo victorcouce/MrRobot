@@ -35,6 +35,8 @@ test("el worker puede escribir en su worktree", () => {
     assert.deepEqual(args, [
       "-p",
       "haz X",
+      "--strict-mcp-config",
+      "--disable-slash-commands",
       "--permission-mode",
       "acceptEdits",
       "--model",
@@ -51,6 +53,8 @@ test("los roles de solo lectura no piden permisos de escritura", () => {
     assert.deepEqual(claudeArgs("revisa", undefined, { sandbox: "read-only" }), [
       "-p",
       "revisa",
+      "--strict-mcp-config",
+      "--disable-slash-commands",
       "--output-format",
       "json",
     ]);
