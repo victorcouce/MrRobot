@@ -8,7 +8,7 @@ import {
   isRetryableError,
   MAX_RETRIES_PER_AGENT,
 } from "../agents/fallback.js";
-import type { AgentHealth } from "../agents/health.js";
+import { type AgentHealth, skipAccountLimited } from "../agents/health.js";
 import { runAgent } from "../agents/router.js";
 import {
   type TokenUsage,
@@ -298,6 +298,11 @@ async function runTaskOnce(
   let limitError: unknown;
 
   for (const [index, candidate] of chain.entries()) {
+    if (skipAccountLimited(candidate, chain, options.agentHealth)) {
+      console.log(`\n${describeAgent(candidate)}: cuenta sin cuota, se salta.`);
+      continue;
+    }
+
     if (options.signal?.aborted) {
       return {
         task: failTask(running, attempts, "Ejecución cancelada por el usuario."),

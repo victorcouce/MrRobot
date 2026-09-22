@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   AgentHealth,
+  skipAccountLimited,
   DEFAULT_LIMIT_COOLDOWN_MS,
   MAX_LIMIT_COOLDOWN_MS,
 } from "./health.js";
@@ -33,7 +34,7 @@ test("order relega al final los agentes en cuarentena", () => {
 test("order conserva el orden relativo de los disponibles", () => {
   const health = new AgentHealth({ now: () => 1_000 });
 
-  health.markLimited(SONNET, new Error("usage limit"));
+  health.markLimited(SONNET, new Error("429 rate limit"));
 
   assert.deepEqual(health.order([HAIKU, SONNET, CODEX]), [
     HAIKU,
@@ -132,4 +133,36 @@ test("reset limpia todas las cuarentenas", () => {
 test("los valores por defecto de cuarentena son coherentes", () => {
   assert.ok(DEFAULT_LIMIT_COOLDOWN_MS > 0);
   assert.ok(MAX_LIMIT_COOLDOWN_MS >= DEFAULT_LIMIT_COOLDOWN_MS);
+});
+
+test("un límite de uso pone en cuarentena toda la cuenta del proveedor", () => {
+  const health = new AgentHealth({ now: () => 1_000 });
+
+  health.markLimited(
+    HAIKU,
+    new Error("You've hit your session limit · resets 3:20pm (Europe/Madrid)"),
+  );
+
+  assert.equal(health.isLimited(SONNET), true);
+  assert.equal(health.isAccountLimited(SONNET), true);
+  assert.equal(health.isLimited(CODEX), false);
+  assert.deepEqual(health.order([HAIKU, SONNET, CODEX]), [CODEX, HAIKU, SONNET]);
+
+  // Con otra cuenta disponible, se salta; si todas están agotadas, no.
+  assert.equal(skipAccountLimited(SONNET, [HAIKU, SONNET, CODEX], health), true);
+  assert.equal(skipAccountLimited(SONNET, [HAIKU, SONNET], health), false);
+
+  // Un éxito de cualquier modelo de la cuenta levanta la cuarentena.
+  health.recordSuccess(SONNET);
+  assert.equal(health.isLimited(HAIKU), false);
+});
+
+test("un rate limit sigue siendo por modelo", () => {
+  const health = new AgentHealth({ now: () => 1_000 });
+
+  health.markLimited(HAIKU, new Error("429 rate limit"));
+
+  assert.equal(health.isLimited(HAIKU), true);
+  assert.equal(health.isLimited(SONNET), false);
+  assert.equal(health.isAccountLimited(HAIKU), false);
 });

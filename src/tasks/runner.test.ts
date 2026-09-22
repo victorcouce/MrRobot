@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AgentHealth } from "../agents/health.js";
 import { CLAUDE_SONNET, CODEX } from "../agents/selector.js";
 import type { AgentSpec } from "../agents/types.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
@@ -309,4 +310,26 @@ test("runTask: el prompt incluye el mapa del worktree si se describe", async () 
 
   assert.deepEqual(described, ["/fake/repo/.worktrees/TASK-001-1"]);
   assert.match(prompts[0] ?? "", /ESTADO ACTUAL DEL WORKSPACE\nArchivos:\nindex.html/);
+});
+
+test("runTask: tras un límite de sesión de Claude no se prueba otro modelo de Claude", async () => {
+  const executed: string[] = [];
+  const haiku: AgentSpec = { provider: "claude", model: "haiku" };
+
+  const result = await runTask(task({ type: "coding" }), {
+    execute: async (_prompt, agent) => {
+      executed.push(agent.provider === "claude" ? `claude/${agent.model}` : agent.provider);
+      if (agent.provider === "claude") {
+        throw new Error("[claude] You've hit your session limit · resets 3:20pm (Europe/Madrid)");
+      }
+      return "ok";
+    },
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [haiku, CLAUDE_SONNET, CODEX],
+    agentHealth: new AgentHealth(),
+    maxRetriesPerAgent: 0,
+  });
+
+  assert.equal(result.status, "done");
+  assert.deepEqual(executed, ["claude/haiku", "codex"]);
 });

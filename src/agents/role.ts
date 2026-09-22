@@ -6,7 +6,6 @@ import {
   isRetryableError,
   MAX_RETRIES_PER_AGENT,
 } from "./fallback.js";
-import type { AgentHealth } from "./health.js";
 import {
   isLimitReason,
   limitRetryDelayMs,
@@ -16,6 +15,7 @@ import {
 } from "./limit-retry.js";
 import { runAgent } from "./router.js";
 import { describeAgent } from "./selector.js";
+import { type AgentHealth, skipAccountLimited } from "./health.js";
 import { type TokenUsage, usageOrUndefined, withUsageMeter } from "./usage.js";
 import type { AgentCandidate, OnAgentEvent } from "./types.js";
 
@@ -113,6 +113,11 @@ export async function runRoleAgent(
     for (const [chainIndex, candidate] of chain.entries()) {
       if (options.signal?.aborted) {
         throw new Error("Ejecución cancelada por el usuario.");
+      }
+
+      if (skipAccountLimited(candidate, chain, options.agentHealth)) {
+        console.log(`${describeAgent(candidate)}: cuenta sin cuota, se salta.`);
+        continue;
       }
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
