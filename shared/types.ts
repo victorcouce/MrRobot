@@ -225,6 +225,10 @@ export interface AgentMetric {
   ok: number;
   failed: number;
   totalMs: number;
+  /** Tokens de entrada (incluida la parte cacheada) y de salida. */
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
 }
 
 export interface FailureMetric {

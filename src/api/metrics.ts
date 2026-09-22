@@ -8,6 +8,10 @@ export interface AgentMetric {
   ok: number;
   failed: number;
   totalMs: number;
+  /** Tokens de entrada (incluida la parte cacheada) y de salida. */
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
 }
 
 export interface FailureMetric {
@@ -54,6 +58,7 @@ interface AgentPayload {
   agent?: string;
   durationMs?: number;
   error?: string;
+  usage?: { input?: number; cachedInput?: number; output?: number };
 }
 
 function payloadOf(event: ProjectEvent): AgentPayload {
@@ -113,7 +118,17 @@ export function computeMetrics(
       const key = `${scope}|${agent}`;
       const metric =
         runs.get(key) ??
-        ({ scope, agent, attempts: 0, ok: 0, failed: 0, totalMs: 0 } as AgentMetric);
+        ({
+          scope,
+          agent,
+          attempts: 0,
+          ok: 0,
+          failed: 0,
+          totalMs: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+        } as AgentMetric);
 
       if (event.type === "agent.started") metric.attempts++;
       if (event.type === "agent.completed") {
@@ -123,6 +138,11 @@ export function computeMetrics(
       if (event.type === "agent.failed") {
         metric.failed++;
         metric.totalMs += payload.durationMs ?? 0;
+      }
+      if (payload.usage) {
+        metric.inputTokens += payload.usage.input ?? 0;
+        metric.cachedInputTokens += payload.usage.cachedInput ?? 0;
+        metric.outputTokens += payload.usage.output ?? 0;
       }
 
       runs.set(key, metric);

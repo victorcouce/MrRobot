@@ -12,6 +12,7 @@ import {
   runProjectChecks,
 } from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
+import { formatDuration } from "../../shared/log-format.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
 import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
@@ -519,6 +520,19 @@ async function runChecksInDir(
   return results;
 }
 
+/** `npm install ✓ 3.2s · npm run test ✗ 1.1s`, para el log de fases. */
+function summarizeChecks(checks: CheckResult[]): string {
+  if (checks.length === 0) return "sin checks";
+
+  return checks
+    .map((check) => {
+      const time =
+        check.durationMs !== undefined ? ` ${formatDuration(check.durationMs)}` : "";
+      return `${check.command} ${check.success ? "✓" : "✗"}${time}`;
+    })
+    .join(" · ");
+}
+
 /**
  * Reencola una tarea a partir de su nueva definición del planner, conservando
  * los datos de ejecución que no vienen en el plan (chat, agente y adjuntos) y
@@ -1006,7 +1020,12 @@ function makeTaskExecutor(
             return;
           }
 
+          const checksStartedAt = Date.now();
           checks = await runChecksInDir(ws.path, config, task);
+          await emit(storage, pid, "checks.completed", task.id, {
+            durationMs: Date.now() - checksStartedAt,
+            summary: summarizeChecks(checks),
+          });
           review =
             reviewWithoutLlm(task, checks) ??
             (await runReview(task, ws.path, info, checks));

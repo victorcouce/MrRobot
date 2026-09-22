@@ -105,6 +105,7 @@ export async function runInstallCheck(
   // barata: npm encuentra el árbol ya resuelto en vez de bajarlo entero.
   await primeDependencies(dir);
 
+  const startedAt = Date.now();
   const result = await new Promise<CheckResult>((resolve) => {
     execFile(
       manager,
@@ -119,6 +120,7 @@ export async function runInstallCheck(
         const outcome: CheckResult = {
           command: `${manager} install`,
           success: !error,
+          durationMs: Date.now() - startedAt,
         };
 
         if (stdout.trim()) outcome.stdout = truncate(stdout.trim());
@@ -263,10 +265,12 @@ function runScript(
 }
 
 async function runCheck(dir: string, script: string): Promise<CheckResult> {
+  const startedAt = Date.now();
   const { success, stdout, stderr } = await runScript(dir, script);
   const result: CheckResult = {
     command: `npm run ${script}`,
     success,
+    durationMs: Date.now() - startedAt,
   };
 
   if (stdout.trim()) result.stdout = truncate(stdout.trim());

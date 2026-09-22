@@ -16,6 +16,7 @@ import {
 } from "./limit-retry.js";
 import { runAgent } from "./router.js";
 import { describeAgent } from "./selector.js";
+import { type TokenUsage, usageOrUndefined, withUsageMeter } from "./usage.js";
 import type { AgentCandidate, OnAgentEvent } from "./types.js";
 
 /**
@@ -125,8 +126,13 @@ export async function runRoleAgent(
           chainLength: chain.length,
         });
 
+        let attemptUsage: TokenUsage | undefined;
+
         try {
-          const output = await execute(prompt, candidate);
+          const metered = await withUsageMeter(() => execute(prompt, candidate));
+          attemptUsage = usageOrUndefined(metered.usage);
+          if ("error" in metered) throw metered.error;
+          const output = metered.result;
           options.agentHealth?.recordSuccess(candidate);
           options.onAgent?.(candidate);
           await options.onAgentEvent?.({
@@ -136,6 +142,7 @@ export async function runRoleAgent(
             chainIndex,
             chainLength: chain.length,
             durationMs: Date.now() - startedAt,
+            ...(attemptUsage ? { usage: attemptUsage } : {}),
           });
           return output;
         } catch (error) {
@@ -152,6 +159,7 @@ export async function runRoleAgent(
             durationMs: Date.now() - startedAt,
             error: lastError,
             ...(availability.available ? {} : { reason: availability.reason }),
+            ...(attemptUsage ? { usage: attemptUsage } : {}),
           });
 
           // Proveedor agotado o inaccesible: no insistir, pasar al siguiente.

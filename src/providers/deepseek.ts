@@ -5,6 +5,7 @@ import { OpenAIChatClient } from "./agentic.js";
 import { harnessLoop } from "../harness/index.js";
 import { LocalSandbox, DEFAULT_SANDBOX_POLICY } from "../sandbox/index.js";
 import { ensureDependencies } from "../checks/checks.js";
+import { recordUsage, usageFromOpenAI } from "../agents/usage.js";
 
 export type DeepSeekModel = "deepseek-flash" | "deepseek-v4-pro";
 
@@ -45,6 +46,9 @@ export async function runDeepSeek(
       messages: [{ role: "user", content: prompt }],
     });
 
+    const usage = usageFromOpenAI(response.usage);
+    if (usage) recordUsage(usage);
+
     const content = response.choices[0]?.message?.content;
 
     if (!content) {
@@ -77,7 +81,11 @@ export async function runDeepSeekAgentic(
       : "deepseek-flash";
 
   const client = getClient(apiKey);
-  const chatClient = new OpenAIChatClient(client, `deepseek / ${model}`);
+  const chatClient = new OpenAIChatClient(
+    client,
+    `deepseek / ${model}`,
+    model,
+  );
 
   const sandbox = new LocalSandbox(options.cwd, DEFAULT_SANDBOX_POLICY);
 

@@ -10,6 +10,11 @@ import {
 import type { AgentHealth } from "../agents/health.js";
 import { runAgent } from "../agents/router.js";
 import {
+  type TokenUsage,
+  usageOrUndefined,
+  withUsageMeter,
+} from "../agents/usage.js";
+import {
   isLimitReason,
   limitRetryDelayMs,
   parseRetryAfterMs,
@@ -355,14 +360,21 @@ async function runTaskOnce(
         chainLength: chain.length,
       });
 
+      let attemptUsage: TokenUsage | undefined;
+
       try {
-        const output = await execute(prompt, candidate, {
-          cwd: workspace.path,
-          ...(options.signal ? { signal: options.signal } : {}),
-          ...(options.onOutput ? { onOutput: options.onOutput } : {}),
-          ...(options.mode ? { mode: options.mode } : {}),
-          ...(options.harness ? { harness: options.harness } : {}),
-        });
+        const metered = await withUsageMeter(() =>
+          execute(prompt, candidate, {
+            cwd: workspace.path,
+            ...(options.signal ? { signal: options.signal } : {}),
+            ...(options.onOutput ? { onOutput: options.onOutput } : {}),
+            ...(options.mode ? { mode: options.mode } : {}),
+            ...(options.harness ? { harness: options.harness } : {}),
+          }),
+        );
+        attemptUsage = usageOrUndefined(metered.usage);
+        if ("error" in metered) throw metered.error;
+        const output = metered.result;
 
         const commitMessage = `agent(${running.id}): ${running.title}`;
         const committed = await workspaceManager.commit(workspace, commitMessage);
@@ -440,6 +452,7 @@ async function runTaskOnce(
           chainIndex: index,
           chainLength: chain.length,
           durationMs: Date.now() - startedAt.getTime(),
+          ...(attemptUsage ? { usage: attemptUsage } : {}),
         });
 
         console.log(`\n✓ tarea completada`);
@@ -500,6 +513,7 @@ async function runTaskOnce(
           durationMs: Date.now() - startedAt.getTime(),
           error: message,
           ...(availability.available ? {} : { reason: availability.reason }),
+          ...(attemptUsage ? { usage: attemptUsage } : {}),
         });
 
         if (!availability.available) {

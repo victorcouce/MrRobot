@@ -18,6 +18,7 @@ interface StreamMessage {
   type: string;
   message?: { content?: ContentBlock[] };
   result?: string;
+  usage?: unknown;
 }
 
 function truncate(text: string, max: number): string {
@@ -107,4 +108,23 @@ export function extractStreamJsonResult(raw: string): string | undefined {
   }
 
   return result;
+}
+
+/** Extrae el `usage` del mensaje `result` (stream NDJSON o `--output-format json`). */
+export function extractStreamJsonUsage(raw: string): unknown {
+  let usage: unknown;
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+
+    try {
+      const parsed = JSON.parse(trimmed) as StreamMessage;
+      if (parsed.type === "result" && parsed.usage) usage = parsed.usage;
+    } catch {
+      // Línea no-JSON: se ignora.
+    }
+  }
+
+  return usage;
 }

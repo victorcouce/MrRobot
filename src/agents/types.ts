@@ -1,4 +1,5 @@
 import type { DeepSeekModel } from "../providers/deepseek.js";
+import type { TokenUsage } from "./usage.js";
 
 export type ClaudeModel = "sonnet" | "opus" | "haiku";
 
@@ -32,6 +33,8 @@ export interface AgentEventInfo {
   error?: string;
   /** Solo en "failed" por indisponibilidad (cuota, rate limit, auth, CLI ausente). */
   reason?: string;
+  /** Tokens del intento, si el proveedor los reporta (ver `agents/usage.ts`). */
+  usage?: TokenUsage;
 }
 
 export type OnAgentEvent = (info: AgentEventInfo) => void | Promise<void>;

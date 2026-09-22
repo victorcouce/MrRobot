@@ -5,6 +5,7 @@
 
 import type OpenAI from "openai";
 import type { ChatClient, ChatRequest, ChatReply } from "../harness/types.js";
+import { recordUsage, usageFromOpenAI } from "../agents/usage.js";
 
 /**
  * Convierte una respuesta de OpenAI al formato del harness.
@@ -47,8 +48,9 @@ export function openaiToHarnessReply(
 /**
  * Convierte un ChatRequest del harness al formato de OpenAI.
  */
-function harnessToOpenaiRequest(
+export function harnessToOpenaiRequest(
   req: ChatRequest,
+  model: string,
 ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
     req.messages.map((msg) => {
@@ -89,7 +91,7 @@ function harnessToOpenaiRequest(
     });
 
   return {
-    model: "deepseek-chat",
+    model,
     messages,
     tools: req.tools?.map((tool) => ({
       type: "function" as const,
@@ -112,14 +114,18 @@ export class OpenAIChatClient implements ChatClient {
   constructor(
     private client: OpenAI,
     label: string,
+    private model: string,
   ) {
     this.label = label;
   }
 
   async complete(req: ChatRequest): Promise<ChatReply> {
-    const openaiReq = harnessToOpenaiRequest(req);
+    const openaiReq = harnessToOpenaiRequest(req, this.model);
 
     const response = await this.client.chat.completions.create(openaiReq);
+
+    const usage = usageFromOpenAI(response.usage);
+    if (usage) recordUsage(usage);
 
     return openaiToHarnessReply(response);
   }

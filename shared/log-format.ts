@@ -57,6 +57,13 @@ export function formatLogLine(event: LoggableEvent): string {
       parts.push(`(${formatDuration(payload.durationMs)})`);
     }
 
+    const usage = payload.usage as Record<string, unknown> | undefined;
+    if (usage && typeof usage.input === "number") {
+      const cached = typeof usage.cachedInput === "number" ? usage.cachedInput : 0;
+      const output = typeof usage.output === "number" ? usage.output : 0;
+      parts.push(`tokens=${usage.input}in/${cached}cache/${output}out`);
+    }
+
     if (typeof payload.reason === "string") parts.push(`motivo=${payload.reason}`);
     if (typeof payload.error === "string") parts.push(`error="${payload.error}"`);
     if (typeof payload.summary === "string") parts.push(payload.summary);

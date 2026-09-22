@@ -1,5 +1,10 @@
 import type { ClaudeModel } from "../agents/types.js";
-import { createStreamJsonRelay, extractStreamJsonResult } from "./claude-stream.js";
+import {
+  createStreamJsonRelay,
+  extractStreamJsonResult,
+  extractStreamJsonUsage,
+} from "./claude-stream.js";
+import { recordUsage, usageFromClaude } from "../agents/usage.js";
 import { execCli } from "./exec.js";
 import type { RunOptions } from "./types.js";
 
@@ -78,9 +83,12 @@ export function claudeArgs(
   // pide el stream estructurado para narrar qué hace el agente —qué
   // herramienta usa y sobre qué fichero— en vez de mostrar solo la respuesta
   // final cuando termina. Sin eso (planner/reviewer/supervisor: una sola
-  // respuesta JSON) no hace falta.
+  // respuesta JSON) basta con `json`: un único objeto `result` que, como el
+  // stream, trae el uso de tokens.
   if (options.onOutput) {
     args.push("--output-format", "stream-json", "--verbose");
+  } else {
+    args.push("--output-format", "json");
   }
 
   return args;
@@ -93,14 +101,15 @@ export async function runClaude(
 ): Promise<string> {
   const args = claudeArgs(prompt, model, options);
 
-  if (!options.onOutput) {
-    return execCli("claude", "claude", args, options);
-  }
+  const raw = options.onOutput
+    ? await execCli("claude", "claude", args, {
+        ...options,
+        onOutput: createStreamJsonRelay(options.onOutput),
+      })
+    : await execCli("claude", "claude", args, options);
 
-  const raw = await execCli("claude", "claude", args, {
-    ...options,
-    onOutput: createStreamJsonRelay(options.onOutput),
-  });
+  const usage = usageFromClaude(extractStreamJsonUsage(raw));
+  if (usage) recordUsage(usage);
 
   return extractStreamJsonResult(raw) ?? raw;
 }

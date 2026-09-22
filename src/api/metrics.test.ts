@@ -89,3 +89,26 @@ test("computeMetrics con varios proyectos suma todo", () => {
   assert.equal(metrics.projects, 2);
   assert.deepEqual(metrics.tasks, { attempts: 0, completed: 2, failed: 1 });
 });
+
+test("computeMetrics suma tokens de intentos completados y fallidos", () => {
+  const metrics = computeMetrics([
+    [
+      event("agent.completed", {
+        scope: "worker",
+        agent: "deepseek / flash",
+        usage: { input: 1000, cachedInput: 800, output: 50, calls: 3 },
+      }),
+      event("agent.failed", {
+        scope: "worker",
+        agent: "deepseek / flash",
+        error: "[harness] agotadas 40 iteraciones",
+        usage: { input: 5000, cachedInput: 1000, output: 200, calls: 40 },
+      }),
+    ],
+  ]);
+
+  const flash = metrics.agentRuns.find((r) => r.agent === "deepseek / flash");
+  assert.equal(flash?.inputTokens, 6000);
+  assert.equal(flash?.cachedInputTokens, 1800);
+  assert.equal(flash?.outputTokens, 250);
+});

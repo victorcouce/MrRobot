@@ -37,6 +37,7 @@ export function createAgentEventEmitter(
     if (info.durationMs !== undefined) payload.durationMs = info.durationMs;
     if (info.error !== undefined) payload.error = info.error;
     if (info.reason !== undefined) payload.reason = info.reason;
+    if (info.usage !== undefined) payload.usage = info.usage;
 
     const event: ProjectEvent = {
       id: randomUUID(),

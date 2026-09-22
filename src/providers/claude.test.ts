@@ -39,6 +39,8 @@ test("el worker puede escribir en su worktree", () => {
       "acceptEdits",
       "--model",
       "sonnet",
+      "--output-format",
+      "json",
     ]);
   });
 });
@@ -49,6 +51,8 @@ test("los roles de solo lectura no piden permisos de escritura", () => {
     assert.deepEqual(claudeArgs("revisa", undefined, { sandbox: "read-only" }), [
       "-p",
       "revisa",
+      "--output-format",
+      "json",
     ]);
   });
 });
