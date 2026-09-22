@@ -1,6 +1,7 @@
 import { relative } from "node:path";
 import { renderAttachments } from "../agents/attachments.js";
 import { classifyAvailability } from "../agents/availability.js";
+import { renderPreviousFailures } from "../agents/failure.js";
 import {
   errorMessage,
   getFallbackChain,
@@ -119,6 +120,11 @@ ${task.description}${criteriaBlock}${attachmentsBlock}
 Completa exclusivamente esta tarea.
 
 Devuelve un resultado claro y directamente utilizable.`;
+}
+
+function withPreviousFailures(prompt: string, attempts: TaskAttempt[]): string {
+  const block = renderPreviousFailures(attempts);
+  return block ? `${prompt}\n\n${block}` : prompt;
 }
 
 function failTask(
@@ -278,6 +284,9 @@ async function runTaskOnce(
   }
 
   const attempts = carry.attempts;
+  // Intentos de ejecuciones anteriores de la tarea (reanudación): `carry`
+  // empieza vacío en cada `runTask`.
+  const previousAttempts = carry.attempts.length === 0 ? (task.attempts ?? []) : [];
   let lastError: string | undefined;
   let allLimited = chain.length > 0;
   let limitError: unknown;
@@ -364,7 +373,7 @@ async function runTaskOnce(
 
       try {
         const metered = await withUsageMeter(() =>
-          execute(prompt, candidate, {
+          execute(withPreviousFailures(prompt, [...previousAttempts, ...attempts]), candidate, {
             cwd: workspace.path,
             ...(options.signal ? { signal: options.signal } : {}),
             ...(options.onOutput ? { onOutput: options.onOutput } : {}),

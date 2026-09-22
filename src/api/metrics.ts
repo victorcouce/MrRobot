@@ -1,3 +1,4 @@
+import { classifyFailure } from "../agents/failure.js";
 import type { ProjectEvent } from "../storage/types.js";
 
 /** Métricas agregadas de los intentos de agente (espejo de `shared/types.ts`). */
@@ -25,32 +26,6 @@ export interface MetricsSummary {
   tasks: { attempts: number; completed: number; failed: number };
   replans: number;
   topFailures: FailureMetric[];
-}
-
-/**
- * Clasifica el error de un intento de agente en una categoría legible para el
- * panel de actividad. Es heurístico: solo agrupa por el patrón más relevante.
- */
-function classifyFailure(message: string): string {
-  const m = message.toLowerCase();
-
-  if (m.includes("agotadas") && m.includes("iteraciones")) {
-    return "harness: iteraciones";
-  }
-  if (m.includes("máximo de llamadas")) return "harness: tool calls";
-  if (m.includes("role 'tool'")) return "API: tool huérfano (400)";
-  if (m.includes("symlink")) return "sandbox: symlink";
-  if (m.includes("ruta fuera de la raíz")) return "sandbox: ruta fuera";
-  if (m.includes("no permitido")) return "sandbox: comando no permitido";
-  if (m.includes("vetado")) return "sandbox: comando vetado";
-  if (m.includes(".git")) return "sandbox: .git";
-  if (m.includes("no creó ni modificó")) return "agente sin cambios";
-  if (m.includes("rate limit") || m.includes("session limit") || m.includes("429")) {
-    return "rate limit";
-  }
-  if (m.includes("no disponible")) return "agente no disponible";
-
-  return "otros";
 }
 
 interface AgentPayload {

@@ -239,3 +239,53 @@ test("runTask: en un ciclo de fix, un agente que no cambia nada pasa al siguient
   assert.equal(result.resultCommit, "squashed");
   assert.deepEqual(executed, ["codex", "claude"]);
 });
+
+test("runTask: el siguiente candidato recibe el fallo del anterior en el prompt", async () => {
+  const prompts: string[] = [];
+
+  const result = await runTask(task({ type: "coding" }), {
+    execute: async (prompt) => {
+      prompts.push(prompt);
+      if (prompts.length === 1) throw new Error("[harness] agotadas 40 iteraciones");
+      return "ok";
+    },
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [DEEPSEEK, { provider: "deepseek", model: "deepseek-v4-pro" }],
+    maxRetriesPerAgent: 0,
+  });
+
+  assert.equal(result.status, "done");
+  assert.doesNotMatch(prompts[0] ?? "", /INTENTOS ANTERIORES/);
+  assert.match(prompts[1] ?? "", /INTENTOS ANTERIORES FALLIDOS/);
+  assert.match(prompts[1] ?? "", /agotó su presupuesto/);
+});
+
+test("runTask: al reanudar, el prompt resume los fallos de ejecuciones previas", async () => {
+  const prompts: string[] = [];
+
+  await runTask(
+    task({
+      type: "coding",
+      attempts: [
+        {
+          agent: DEEPSEEK,
+          attempt: 1,
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          status: "failed",
+          error: "deepseek / deepseek-flash no creó ni modificó ningún archivo en el workspace.",
+        },
+      ],
+    }),
+    {
+      execute: async (prompt) => {
+        prompts.push(prompt);
+        return "ok";
+      },
+      workspace: fakeWorkspace("abc123"),
+      allowedAgents: [DEEPSEEK],
+    },
+  );
+
+  assert.match(prompts[0] ?? "", /sin crear ni modificar archivos/);
+});
