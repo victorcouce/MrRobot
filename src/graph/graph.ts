@@ -78,6 +78,8 @@ export function buildProjectGraph(deps: ProjectDeps) {
       supervisorReason: decision.reason,
     };
 
+    if (project.config?.fastMode) context.fastMode = true;
+
     if (decision.instructions !== undefined) {
       context.instructions = decision.instructions;
     }

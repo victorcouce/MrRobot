@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CheckResult } from "../checks/types.js";
+import { defaultConfig } from "../config/index.js";
 import { InMemoryStorage } from "../storage/memory.js";
 import type { Task } from "../tasks/types.js";
 import type { WorkspaceManager } from "../workspace/types.js";
@@ -1151,4 +1152,43 @@ test("renderWorkspaceMap lista scripts y archivos sin node_modules", async () =>
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("modo rápido: el planner lo sabe y la tarea no pasa por checks ni reviewer", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  let plannerPrompt = "";
+  let reviewCalls = 0;
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace: fakeWorkspace(),
+    plannerExecute: async (prompt) => {
+      plannerPrompt = prompt;
+      return JSON.stringify({
+        ...singleTaskPlan,
+        tasks: [{ ...singleTaskPlan.tasks[0], acceptanceCriteria: ["existe index.html"] }],
+      });
+    },
+    workerExecute: async () => "ok",
+    reviewerExecute: async () => {
+      reviewCalls += 1;
+      return JSON.stringify({ approved: false, summary: "no", issues: [] });
+    },
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject(
+    { goal: "x", config: { ...defaultConfig, fastMode: true } },
+    deps,
+  );
+  const finished = await runProject(project.id, deps);
+
+  assert.match(plannerPrompt, /MODO RÁPIDO/);
+  assert.equal(reviewCalls, 0);
+  assert.equal(finished.status, "completed");
+  const events = await storage.listEvents(project.id);
+  assert.equal(events.some((event) => event.type === "checks.completed"), false);
 });

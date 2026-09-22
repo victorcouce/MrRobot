@@ -33,4 +33,10 @@ export interface OrchestratorConfig {
    * (enabled: true, bounds y sandbox defaults).
    */
   harness?: HarnessConfig;
+
+  /**
+   * Modo rápido: el planner no crea tareas de tests y las tareas no pasan por
+   * checks ni reviewer (se dan por buenas si el agente escribe cambios).
+   */
+  fastMode?: boolean;
 }

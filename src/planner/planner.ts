@@ -146,6 +146,14 @@ function buildPrompt(
     goal,
   ];
 
+  if (context.fastMode) {
+    parts.push(
+      "",
+      "MODO RÁPIDO",
+      "El usuario prioriza la velocidad: no habrá tests ni reviewer. Planifica el mínimo de tareas posible (idealmente una o dos) y no crees tareas de tipo testing ni tareas para escribir o configurar tests. Los criterios de aceptación deben ser comprobables a simple vista (archivos que existen, funcionalidad presente), nunca \"los tests pasan\".",
+    );
+  }
+
   if (context.previousPlan) {
     parts.push(
       "",

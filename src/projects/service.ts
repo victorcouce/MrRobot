@@ -219,7 +219,7 @@ export async function createProject(
   const baseRef = await workspace.resolveBaseRef();
   const plan = await planProject(
     input.goal,
-    {},
+    input.config?.fastMode ? { fastMode: true } : {},
     {
       execute: deps.plannerExecute,
       ...(input.defaultAllowedAgents?.length
@@ -243,6 +243,7 @@ export async function createProject(
     updatedAt: now,
   };
 
+  if (input.config) project.config = input.config;
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
   if (input.defaultAllowedAgents?.length) {
@@ -330,7 +331,10 @@ export async function generatePlan(
   }
 
   const onPlannerAgentEvent = createAgentEventEmitter(storage, projectId, "planner");
-  const plan = await planProject(project.goal, context, {
+  const planContext = project.config?.fastMode
+    ? { ...context, fastMode: true }
+    : context;
+  const plan = await planProject(project.goal, planContext, {
     execute: deps.plannerExecute,
     ...(project.defaultAllowedAgents?.length
       ? { allowedAgents: project.defaultAllowedAgents }
@@ -390,6 +394,13 @@ function clipTail(value: string, max: number): string {
 const SKIPPED_REVIEW: ReviewResult = {
   approved: true,
   summary: "checks locales OK (tarea low sin criterios: sin review LLM)",
+  issues: [],
+};
+
+/** Modo rápido: sin checks ni reviewer, el resultado del agente se da por bueno. */
+const FAST_MODE_REVIEW: ReviewResult = {
+  approved: true,
+  summary: "modo rápido: sin checks ni review",
   issues: [],
 };
 
@@ -1068,6 +1079,12 @@ function makeTaskExecutor(
             return;
           }
 
+          if (config.fastMode) {
+            checks = [];
+            review = FAST_MODE_REVIEW;
+            return;
+          }
+
           const checksStartedAt = Date.now();
           checks = await runChecksInDir(ws.path, config, task);
           await emit(storage, pid, "checks.completed", task.id, {
@@ -1100,9 +1117,10 @@ function makeTaskExecutor(
       // worktree vivo). Solo falta cuando no hubo cambios: no hay worktree que
       // inspeccionar y se revisa el texto del agente.
       if (!review) {
-        review =
-          reviewWithoutLlm(result, checks) ??
-          (await runReview(result, undefined, undefined, checks));
+        review = config.fastMode
+          ? FAST_MODE_REVIEW
+          : (reviewWithoutLlm(result, checks) ??
+            (await runReview(result, undefined, undefined, checks)));
       }
 
       await storage.saveReview({
@@ -1379,6 +1397,8 @@ export async function runProject(
           .map((task) => task.id),
         supervisorReason: decision.reason,
       };
+
+      if (config.fastMode) context.fastMode = true;
 
       if (decision.instructions !== undefined) {
         context.instructions = decision.instructions;

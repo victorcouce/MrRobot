@@ -529,6 +529,13 @@ export function parseConfigOverrides(
     }
   }
 
+  if (body["fastMode"] !== undefined) {
+    if (typeof body["fastMode"] !== "boolean") {
+      throw new Error('El campo "fastMode" debe ser booleano.');
+    }
+    overrides.fastMode = body["fastMode"];
+  }
+
   if (body["defaultAllowedAgents"] !== undefined) {
     overrides.defaultAllowedAgents = parseAllowedAgents(
       body["defaultAllowedAgents"],

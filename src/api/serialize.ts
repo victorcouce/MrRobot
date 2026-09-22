@@ -253,6 +253,7 @@ export function serializeProject(project: DomainProject): Project {
         serializeAgent,
       ),
     };
+    if (project.config.fastMode) serialized.config.fastMode = true;
   }
 
   const result = serializeResult(project, startedAt, finishedAt);

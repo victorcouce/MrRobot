@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseAttachments, parseGrillInput } from "./parse.js";
+import { parseAttachments, parseConfigOverrides, parseGrillInput } from "./parse.js";
 
 // "aGVsbG8=" = base64("hello"), 5 bytes reales.
 const HELLO_B64 = "aGVsbG8=";
@@ -87,4 +87,9 @@ test("parseGrillInput rechaza un agente permitido no concreto", () => {
       }),
     /agente concreto/,
   );
+});
+
+test("parseConfigOverrides acepta fastMode booleano y rechaza otros tipos", () => {
+  assert.deepEqual(parseConfigOverrides({ fastMode: true }), { fastMode: true });
+  assert.throws(() => parseConfigOverrides({ fastMode: "sí" }), /fastMode/);
 });

@@ -374,6 +374,8 @@ export async function sendChatMessage(
     instructions: trimmed,
   };
 
+  if (project.config?.fastMode) context.fastMode = true;
+
   if (chatAttachments.length > 0) {
     context.attachments = chatAttachments;
   }

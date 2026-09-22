@@ -37,4 +37,6 @@ export interface PlanContext {
   attachments?: Attachment[];
   /** Estructura real del repositorio. */
   repo?: RepoContext;
+  /** Modo rápido: plan mínimo, sin tareas de tests ni criterios que los exijan. */
+  fastMode?: boolean;
 }

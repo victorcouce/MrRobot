@@ -297,6 +297,8 @@ export interface ConfigInfo {
   checks: { commands: string[] };
   /** Agentes marcados por defecto al crear un proyecto. */
   defaultAllowedAgents: AgentSpec[];
+  /** Modo rápido: sin tareas de tests, checks ni reviewer. */
+  fastMode?: boolean;
 }
 
 export interface FolderCheck {
