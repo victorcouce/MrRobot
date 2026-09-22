@@ -13,6 +13,7 @@ import {
 } from "../checks/checks.js";
 import type { CheckResult } from "../checks/types.js";
 import { formatDuration } from "../../shared/log-format.js";
+import { classifyFailure } from "../agents/failure.js";
 import { defaultConfig, type OrchestratorConfig } from "../config/index.js";
 import { createAgentEventEmitter } from "../logging/agent-events.js";
 import { planProject } from "../planner/planner.js";
@@ -518,6 +519,30 @@ async function runChecksInDir(
   }
 
   return results;
+}
+
+/**
+ * Tareas que han fallado por la misma causa que en una ronda anterior. Registra
+ * en `previous` la causa de los fallos de esta ronda.
+ */
+export function repeatedFailures(
+  tasks: Task[],
+  previous: Map<string, string>,
+): { id: string; kind: string }[] {
+  const repeated: { id: string; kind: string }[] = [];
+
+  for (const task of tasks) {
+    if (task.status !== "failed" || !task.error) continue;
+
+    const kind = classifyFailure(task.error);
+    // Los límites de uso no dependen de la tarea: los gestiona limit-retry.
+    if (kind === "rate limit" || kind === "agente no disponible") continue;
+
+    if (previous.get(task.id) === kind) repeated.push({ id: task.id, kind });
+    previous.set(task.id, kind);
+  }
+
+  return repeated;
 }
 
 /** `npm install ✓ 3.2s · npm run test ✗ 1.1s`, para el log de fases. */
@@ -1220,6 +1245,9 @@ export async function runProject(
   await emit(storage, project.id, "project.started");
 
   const pid = project.id;
+  // Causa del último fallo de cada tarea en las rondas anteriores, para el
+  // cortafuegos de fallos repetidos.
+  const previousFailures = new Map<string, string>();
 
   for (let round = 0; round < MAX_SUPERVISOR_ROUNDS; round++) {
     const roundResult = await runProjectRound(projectId, deps, options);
@@ -1250,6 +1278,23 @@ export async function runProject(
       };
       await storage.saveProject(project);
       await emit(storage, pid, "project.cancelled");
+      return project;
+    }
+
+    // Cortafuegos: si una tarea vuelve a fallar por la misma causa que en la
+    // ronda anterior, otro replan + reintento suele repetir el fallo (el
+    // 21-09, TASK-005A encadenó 22 intentos y 8 replans agotando el harness).
+    // Se pausa para que decida el usuario en lugar de seguir gastando.
+    const repeated = repeatedFailures(project.tasks, previousFailures);
+
+    if (repeated.length > 0) {
+      project = { ...project, status: "paused", updatedAt: new Date() };
+      await storage.saveProject(project);
+      await emit(storage, pid, "project.paused", undefined, {
+        reason:
+          `fallo repetido por la misma causa: ` +
+          repeated.map(({ id, kind }) => `${id} (${kind})`).join(", "),
+      });
       return project;
     }
 

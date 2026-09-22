@@ -14,6 +14,7 @@ import {
   mergeReplan,
   recoverInterrupted,
   recoverInterruptedProjects,
+  repeatedFailures,
   requeueFailedTasks,
   resumeProject,
   runProject,
@@ -1094,4 +1095,41 @@ test("gatherRepoContext reúne scripts y estructura real del repo", async () => 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("repeatedFailures detecta la misma causa en rondas consecutivas", () => {
+  const previous = new Map<string, string>();
+  const failed = (id: string, error: string): Task => ({
+    id,
+    title: id,
+    description: "d",
+    status: "failed",
+    type: "coding",
+    complexity: "low",
+    error,
+  });
+
+  // Primera ronda: solo registra.
+  assert.deepEqual(
+    repeatedFailures(
+      [failed("TASK-005A", "[harness] agotadas 24 iteraciones"), failed("TASK-002", "429 rate limit")],
+      previous,
+    ),
+    [],
+  );
+
+  // Segunda ronda: misma causa en TASK-005A; el rate limit no cuenta.
+  assert.deepEqual(
+    repeatedFailures(
+      [failed("TASK-005A", "[harness] agotadas 40 iteraciones"), failed("TASK-002", "429 rate limit")],
+      previous,
+    ),
+    [{ id: "TASK-005A", kind: "harness: iteraciones" }],
+  );
+
+  // Una causa distinta no dispara el cortafuegos.
+  assert.deepEqual(
+    repeatedFailures([failed("TASK-005A", '[sandbox] comando no permitido: "pwd"')], previous),
+    [],
+  );
 });
