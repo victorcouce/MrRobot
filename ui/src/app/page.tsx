@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAppInfo } from "@/lib/hooks";
 import { RobotLottie } from "@/components/RobotLottie";
 import { ChatAgentSelector } from "@/components/ChatAgentSelector";
+import { FastModeToggle } from "@/components/FastModeToggle";
 import { clsx } from "@/lib/cx";
 import { autoProjectName } from "@/lib/format";
 import { hasFileWritingAgent } from "@/lib/agents";
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [pickingFolder, setPickingFolder] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
   const [selectedAgents, setSelectedAgents] = useState<AgentSpec[]>([]);
+  const [fastMode, setFastMode] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [folderError, setFolderError] = useState(false);
@@ -85,6 +87,7 @@ export default function HomePage() {
         ...(selectedAgents.length > 0
           ? { defaultAllowedAgents: selectedAgents }
           : {}),
+        ...(fastMode ? { config: { fastMode: true } } : {}),
       });
       router.push(`/projects/${project.id}`);
     } catch (err) {
@@ -197,6 +200,7 @@ export default function HomePage() {
               agentAvailability={info?.agents}
               onSelect={setSelectedAgents}
             />
+            <FastModeToggle enabled={fastMode} onChange={setFastMode} />
             {missingFileWriter && (
               <span className="text-danger-text">
                 Añade al menos un agente que escriba archivos (Codex, Claude o DeepSeek).

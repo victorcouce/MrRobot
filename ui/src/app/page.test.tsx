@@ -141,4 +141,32 @@ describe("Inicio", () => {
       });
     });
   });
+
+  it("con el modo rápido activo crea el proyecto con config.fastMode", async () => {
+    vi.mocked(api.pickFolder).mockResolvedValue({ path: "/proyectos/calc" });
+
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+      target: { value: "una calculadora" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Seleccionar carpeta/ }));
+    await screen.findByText("/proyectos/calc");
+
+    const toggle = screen.getByRole("switch", { name: "Modo rápido" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
+
+    await waitFor(() => {
+      expect(mocks.createProject).toHaveBeenCalledWith({
+        goal: "una calculadora",
+        name: "una-calculadora",
+        repoPath: "/proyectos/calc",
+        config: { fastMode: true },
+      });
+    });
+  });
 });
