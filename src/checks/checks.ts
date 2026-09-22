@@ -8,6 +8,11 @@ import {
   runCommand,
   type PackageJsonLike,
 } from "../preview/preview.js";
+import {
+  installEnv,
+  primeDependencies,
+  saveDependencies,
+} from "./deps-store.js";
 import type { CheckResult } from "./types.js";
 
 const MAX_OUTPUT = 4000;
@@ -32,6 +37,12 @@ async function exists(path: string): Promise<boolean> {
  * y el worktree nace limpio desde el commit de la tarea.
  */
 export async function ensureDependencies(dir: string): Promise<void> {
+  if (await exists(join(dir, "node_modules"))) {
+    return;
+  }
+
+  await primeDependencies(dir);
+
   if (await exists(join(dir, "node_modules"))) {
     return;
   }
@@ -90,24 +101,41 @@ export async function runInstallCheck(
 
   const manager = await detectPackageManager(dir, pkg);
 
-  return new Promise<CheckResult>((resolve) => {
+  // Sembrar antes de instalar convierte la instalación en una verificación
+  // barata: npm encuentra el árbol ya resuelto en vez de bajarlo entero.
+  await primeDependencies(dir);
+
+  const result = await new Promise<CheckResult>((resolve) => {
     execFile(
       manager,
       ["install"],
-      { cwd: dir, maxBuffer: MAX_BUFFER, encoding: "utf8" },
+      {
+        cwd: dir,
+        maxBuffer: MAX_BUFFER,
+        encoding: "utf8",
+        env: installEnv(),
+      },
       (error, stdout, stderr) => {
-        const result: CheckResult = {
+        const outcome: CheckResult = {
           command: `${manager} install`,
           success: !error,
         };
 
-        if (stdout.trim()) result.stdout = truncate(stdout.trim());
-        if (stderr.trim()) result.stderr = truncate(stderr.trim());
+        if (stdout.trim()) outcome.stdout = truncate(stdout.trim());
+        if (stderr.trim()) outcome.stderr = truncate(stderr.trim());
 
-        resolve(result);
+        resolve(outcome);
       },
     );
   });
+
+  if (result.success) {
+    // El primer worktree que instala paga el coste completo y deja el árbol en
+    // el almacén; los siguientes lo reciben ya hecho.
+    await saveDependencies(dir);
+  }
+
+  return result;
 }
 
 /**
