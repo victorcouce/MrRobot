@@ -105,7 +105,8 @@ function autoSelect(task: Task): AgentSelection {
     case "testing":
       return CLAUDE_HAIKU;
     case "review":
-      return isHigh(task.complexity) ? CLAUDE_OPUS : CLAUDE_SONNET;
+      if (isHigh(task.complexity)) return CLAUDE_OPUS;
+      return task.complexity === "low" ? CLAUDE_HAIKU : CLAUDE_SONNET;
     case "research":
       return selectResearch(task.complexity);
   }

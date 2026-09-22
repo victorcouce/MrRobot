@@ -161,3 +161,14 @@ test("runRoleAgent: un agente agotado pasa al final en la siguiente llamada", as
   assert.equal(again, "ok");
   assert.deepEqual(second, [CODEX]);
 });
+
+test("roleFallbackChain: reviewer low empieza por Haiku y medium por Sonnet", () => {
+  assert.deepEqual(roleFallbackChain("reviewer", [], "low")[0], {
+    provider: "claude",
+    model: "haiku",
+  });
+  assert.deepEqual(roleFallbackChain("reviewer", [], "medium")[0], {
+    provider: "claude",
+    model: "sonnet",
+  });
+});

@@ -16,9 +16,11 @@ function isHigh(complexity: TaskComplexity): boolean {
 }
 
 function reviewChain(complexity: TaskComplexity): AgentCandidate[] {
-  return isHigh(complexity)
-    ? [CLAUDE_OPUS, CODEX, CLAUDE_SONNET]
-    : [CLAUDE_SONNET, CODEX, DEEPSEEK_FLASH];
+  if (isHigh(complexity)) return [CLAUDE_OPUS, CODEX, CLAUDE_SONNET];
+  // En tareas sencillas, con el diff y los checks en el prompt, Haiku basta
+  // para contrastar criterios y cuesta una fracción de Sonnet.
+  if (complexity === "low") return [CLAUDE_HAIKU, CODEX, DEEPSEEK_FLASH];
+  return [CLAUDE_SONNET, CODEX, DEEPSEEK_FLASH];
 }
 
 function researchChain(complexity: TaskComplexity): AgentCandidate[] {
