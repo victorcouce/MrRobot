@@ -5,6 +5,7 @@
 
 import type {
   ChatClient,
+  ChatToolCall,
   HarnessMessage,
   HarnessBounds,
   HarnessIterationResult,
@@ -68,20 +69,146 @@ function recentTurnStart(history: HarnessMessage[], count: number): number {
   return start;
 }
 
+/** Caracteres de un mensaje, incluidos los argumentos de sus tool calls. */
+export function messageChars(msg: HarnessMessage): number {
+  let chars = typeof msg.content === "string" ? msg.content.length : 0;
+
+  if (msg.role === "assistant" && msg.toolCalls) {
+    for (const call of msg.toolCalls) {
+      chars += call.name.length + call.argumentsRaw.length;
+    }
+  }
+
+  return chars;
+}
+
+export function historyChars(history: HarnessMessage[]): number {
+  return history.reduce((sum, msg) => sum + messageChars(msg), 0);
+}
+
+/** Mensajes finales que la compactación nunca toca: el trabajo en curso. */
+const KEEP_RECENT_MESSAGES = 6;
+/** Por debajo de este tamaño no compensa compactar un mensaje. */
+const COMPACT_MIN_CHARS = 300;
 /**
- * Simplifica el historial reemplazando los pares assistant/tool más antiguos
- * por un resumen, conservando el system, el user inicial y los últimos turnos.
+ * Al compactar se baja hasta esta fracción de `maxHistoryChars`, no justo por
+ * debajo del límite: así el historial vuelve a crecer durante varias
+ * iteraciones sin cambiar su prefijo y la caché de prefijo del proveedor
+ * (DeepSeek) lo sigue aprovechando.
+ */
+const COMPACT_TARGET_RATIO = 0.5;
+
+function describeCall(call: ChatToolCall | undefined): string {
+  if (!call) return "herramienta";
+
+  try {
+    const args = JSON.parse(call.argumentsRaw) as Record<string, unknown>;
+
+    if (typeof args.command === "string") {
+      const extra = Array.isArray(args.args) ? args.args.map(String) : [];
+      return `${call.name} ${[args.command, ...extra].join(" ")}`.slice(0, 160);
+    }
+    if (typeof args.path === "string") return `${call.name} ${args.path}`;
+    if (typeof args.pattern === "string") return `${call.name} "${args.pattern}"`;
+  } catch {
+    // Argumentos malformados: basta con el nombre.
+  }
+
+  return call.name;
+}
+
+/**
+ * Compacta los argumentos largos de un tool call ya ejecutado (el `content` de
+ * un write_file, el find/replace de un edit_file) sin romper el JSON: el
+ * modelo sigue viendo qué archivo tocó, pero no el contenido entero.
+ */
+function compactArguments(call: ChatToolCall): ChatToolCall {
+  if (call.argumentsRaw.length <= COMPACT_MIN_CHARS) return call;
+
+  let args: Record<string, unknown>;
+  try {
+    args = JSON.parse(call.argumentsRaw) as Record<string, unknown>;
+  } catch {
+    return call;
+  }
+
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === "string" && value.length > COMPACT_MIN_CHARS) {
+      args[key] = `[${value.length} caracteres omitidos: ya aplicado]`;
+    }
+  }
+
+  const argumentsRaw = JSON.stringify(args);
+  return argumentsRaw.length < call.argumentsRaw.length
+    ? { ...call, argumentsRaw }
+    : call;
+}
+
+/**
+ * Compacta el historial en sitio cuando supera `maxChars`: sustituye las
+ * salidas antiguas de las herramientas por una línea que dice qué se hizo
+ * (`read_file src/app.js: 3200 caracteres omitidos`) y acorta los argumentos
+ * largos ya aplicados, de lo más antiguo a lo más reciente, hasta bajar a
+ * `COMPACT_TARGET_RATIO * maxChars`. A diferencia de recortar turnos, el
+ * modelo conserva el hilo completo (qué leyó, qué escribió, qué falló) y no
+ * vuelve a explorar desde cero; y al mutar el historial persistente el
+ * prefijo compactado se mantiene estable entre iteraciones.
+ *
+ * Devuelve los caracteres ahorrados (0 si no hizo nada).
+ */
+export function compactHistory(
+  history: HarnessMessage[],
+  maxChars: number,
+): number {
+  const before = historyChars(history);
+  if (before <= maxChars) return 0;
+
+  const target = maxChars * COMPACT_TARGET_RATIO;
+  const calls = new Map<string, ChatToolCall>();
+  for (const msg of history) {
+    if (msg.role === "assistant") {
+      for (const call of msg.toolCalls ?? []) calls.set(call.id, call);
+    }
+  }
+
+  let total = before;
+  const limit = history.length - KEEP_RECENT_MESSAGES;
+
+  for (let i = 0; i < limit && total > target; i++) {
+    const msg = history[i];
+    if (!msg) continue;
+
+    if (msg.role === "tool" && msg.content.length > COMPACT_MIN_CHARS) {
+      const content = JSON.stringify({
+        ok: !msg.content.startsWith('{"ok":false'),
+        compacted:
+          `${describeCall(calls.get(msg.toolCallId))}: salida de ` +
+          `${msg.content.length} caracteres omitida para ahorrar contexto; ` +
+          `repite la llamada solo si de verdad la necesitas`,
+      });
+      total -= msg.content.length - content.length;
+      history[i] = { ...msg, content };
+    } else if (msg.role === "assistant" && msg.toolCalls) {
+      const toolCalls = msg.toolCalls.map(compactArguments);
+      const compacted = { ...msg, toolCalls };
+      total -= messageChars(msg) - messageChars(compacted);
+      history[i] = compacted;
+    }
+  }
+
+  return before - total;
+}
+
+/**
+ * Último recurso si ni compactando cabe el historial (p. ej. los mensajes
+ * recientes ya son enormes): conserva el system, el user inicial y los
+ * últimos turnos, y resume el resto en una línea.
  */
 export function pruneHistory(
   history: HarnessMessage[],
   maxChars: number,
 ): HarnessMessage[] {
-  let totalChars = history.reduce((sum, msg) => {
-    const text = "content" in msg ? msg.content : JSON.stringify(msg);
-    return sum + (typeof text === "string" ? text.length : 0);
-  }, 0);
-
-  if (totalChars <= maxChars) {
+  if (historyChars(history) <= maxChars) {
     return history;
   }
 
@@ -155,7 +282,12 @@ export async function harnessLoop(
     iterations++;
     options.onOutput?.(`▸ iteración ${iterations}/${bounds.maxIterations}`);
 
-    // Podar historial si es necesario
+    // Compactar las salidas antiguas si el historial crece demasiado; solo
+    // si ni así cabe, se recortan turnos.
+    const saved = compactHistory(history, bounds.maxHistoryChars);
+    if (saved > 0) {
+      options.onOutput?.(`▸ historial compactado (−${saved} caracteres)`);
+    }
     const prunedHistory = pruneHistory(history, bounds.maxHistoryChars);
 
     try {

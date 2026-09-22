@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { harnessLoop, pruneHistory } from "./loop.js";
+import { compactHistory, harnessLoop, historyChars, pruneHistory } from "./loop.js";
 import type { HarnessMessage } from "./types.js";
 import { ScriptedChatClient } from "./mock-client.js";
 import { LocalSandbox, DEFAULT_SANDBOX_POLICY } from "../sandbox/local.js";
@@ -234,4 +234,67 @@ test("pruneHistory no deja mensajes tool huérfanos", () => {
 test("pruneHistory no toca el historial si cabe en el límite", () => {
   const history = longHistory(1);
   assert.deepEqual(pruneHistory(history, 1_000_000), history);
+});
+
+test("compactHistory resume las salidas antiguas y conserva el hilo y los recientes", () => {
+  const history = longHistory(8);
+  const recent = history.slice(-6).map((m) => ({ ...m }));
+  const limit = 20_000;
+
+  const saved = compactHistory(history, limit);
+
+  assert.ok(saved > 0);
+  assert.ok(historyChars(history) <= limit * 0.5 + 2000);
+  // Mismo número de mensajes y mismo emparejamiento: no se pierde ningún turno.
+  assert.equal(history.length, 2 + 8 * 3);
+  assert.equal(hasOrphanTool(history), false);
+  // Los 6 últimos mensajes quedan intactos.
+  assert.deepEqual(history.slice(-6), recent);
+  const first = history[3];
+  assert.ok(first?.role === "tool" && first.content.includes("omitida"));
+});
+
+test("compactHistory no toca un historial que cabe y deja el prefijo estable", () => {
+  const history = longHistory(8);
+  assert.equal(compactHistory(history, 1_000_000), 0);
+
+  compactHistory(history, 20_000);
+  const snapshot = JSON.stringify(history.slice(0, 10));
+  // Una iteración más de crecimiento que sigue por debajo del límite no
+  // vuelve a reescribir el prefijo (la caché del proveedor lo reaprovecha).
+  history.push({ role: "assistant", content: "sigo" });
+  assert.equal(compactHistory(history, 20_000), 0);
+  assert.equal(JSON.stringify(history.slice(0, 10)), snapshot);
+});
+
+test("compactHistory acorta el contenido de write_file sin romper el JSON", () => {
+  const big = "y".repeat(5000);
+  const history: HarnessMessage[] = [
+    { role: "system", content: "system" },
+    { role: "user", content: "tarea" },
+    {
+      role: "assistant",
+      content: "Escribo el archivo",
+      toolCalls: [
+        {
+          id: "w1",
+          name: "write_file",
+          argumentsRaw: JSON.stringify({ path: "src/app.js", content: big }),
+        },
+      ],
+    },
+    { role: "tool", toolCallId: "w1", name: "write_file", content: '{"ok":true}' },
+    ...longHistory(2).slice(2),
+  ];
+
+  // Antes se contaba solo `content` del assistant y no sus argumentos.
+  assert.ok(historyChars(history) > 5000);
+
+  compactHistory(history, 3000);
+
+  const assistant = history[2];
+  assert.ok(assistant?.role === "assistant");
+  const args = JSON.parse(assistant.toolCalls?.[0]?.argumentsRaw ?? "{}");
+  assert.equal(args.path, "src/app.js");
+  assert.match(args.content, /5000 caracteres omitidos/);
 });
