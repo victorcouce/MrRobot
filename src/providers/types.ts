@@ -29,6 +29,8 @@ export interface RunOptions {
    * ya no usa herramientas; Codex no tiene equivalente.
    */
   tools?: "none";
+  /** Ms sin salida del CLI tras los que se aborta (ver `exec.ts`). */
+  idleTimeoutMs?: number;
   agent?: AgentSpec;
   prompt?: string;
 }

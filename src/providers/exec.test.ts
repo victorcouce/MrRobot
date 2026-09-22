@@ -41,3 +41,25 @@ test("execCli respeta AbortSignal", async () => {
 
   await assert.rejects(promise, /cancelada/);
 });
+
+test("execCli aborta un CLI que se queda sin actividad", async () => {
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    execCli("codex", "sleep", ["30"], { idleTimeoutMs: 200 }),
+    /\[codex\] timeout: sin actividad/,
+  );
+
+  assert.ok(Date.now() - startedAt < 5_000);
+});
+
+test("execCli no aborta mientras el CLI siga emitiendo salida", async () => {
+  const output = await execCli(
+    "x",
+    "sh",
+    ["-c", "for i in 1 2 3 4; do echo $i; sleep 0.1; done"],
+    { idleTimeoutMs: 300 },
+  );
+
+  assert.equal(output, "1\n2\n3\n4");
+});
