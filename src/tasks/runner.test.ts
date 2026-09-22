@@ -333,3 +333,36 @@ test("runTask: tras un límite de sesión de Claude no se prueba otro modelo de 
   assert.equal(result.status, "done");
   assert.deepEqual(executed, ["claude/haiku", "codex"]);
 });
+
+test("runTask: demoteAgents manda al final al agente del intento rechazado", async () => {
+  const executed: string[] = [];
+  const haiku: AgentSpec = { provider: "claude", model: "haiku" };
+
+  await runTask(task({ type: "coding" }), {
+    execute: async (_prompt, agent) => {
+      executed.push(agent.provider);
+      return "ok";
+    },
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [haiku, CODEX],
+    demoteAgents: [haiku],
+  });
+
+  assert.deepEqual(executed, ["codex"]);
+});
+
+test("runTask: demoteAgents no vacía la cadena si solo queda ese agente", async () => {
+  const executed: string[] = [];
+
+  await runTask(task({ type: "coding" }), {
+    execute: async (_prompt, agent) => {
+      executed.push(agent.provider);
+      return "ok";
+    },
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [CODEX],
+    demoteAgents: [CODEX],
+  });
+
+  assert.deepEqual(executed, ["codex"]);
+});

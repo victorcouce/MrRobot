@@ -23,7 +23,7 @@ import {
   sleep,
   type LimitRetryPolicy,
 } from "../agents/limit-retry.js";
-import { canWriteFiles, describeAgent } from "../agents/selector.js";
+import { agentKey, canWriteFiles, describeAgent } from "../agents/selector.js";
 import type { AgentCandidate, Attachment, OnAgentEvent } from "../agents/types.js";
 import { primeDependencies } from "../checks/deps-store.js";
 import type { RunOptions } from "../providers/types.js";
@@ -55,6 +55,12 @@ export interface RunTaskOptions {
    */
   describeWorkspace?: ((dir: string) => Promise<string | undefined>) | undefined;
   maxRetriesPerAgent?: number | undefined;
+  /**
+   * Agentes que pasan al final de la cadena en esta ejecución: el ciclo de fix
+   * no empieza por el agente cuyo resultado acaba de fallar los checks (el
+   * 22-09, Haiku gastó 4m22s y 942k tokens en un fix que no cambió nada).
+   */
+  demoteAgents?: AgentCandidate[] | undefined;
   /** Reintento de la cadena completa cuando todos caen por límite. */
   limitRetry?: Partial<LimitRetryPolicy> | undefined;
   /** Agentes permitidos del chat. Vacío o ausente = sin restricción. */
@@ -126,6 +132,18 @@ ${task.description}${criteriaBlock}${attachmentsBlock}
 Completa exclusivamente esta tarea.
 
 Devuelve un resultado claro y directamente utilizable.`;
+}
+
+/** Mueve al final los agentes indicados, conservando el orden del resto. */
+function demote(
+  chain: AgentCandidate[],
+  demoted: AgentCandidate[],
+): AgentCandidate[] {
+  const keys = new Set(demoted.map(agentKey));
+  const kept = chain.filter((agent) => !keys.has(agentKey(agent)));
+  return kept.length === 0 || kept.length === chain.length
+    ? chain
+    : [...kept, ...chain.filter((agent) => keys.has(agentKey(agent)))];
 }
 
 function withPreviousFailures(prompt: string, attempts: TaskAttempt[]): string {
@@ -232,7 +250,10 @@ async function runTaskOnce(
 
   // Los agentes en cuarentena por límite se relegan al final: la siguiente
   // tarea sigue con el agente que funcionó en vez de repetir el que falló.
-  const chain = options.agentHealth?.order(baseChain) ?? baseChain;
+  const chain = demote(
+    options.agentHealth?.order(baseChain) ?? baseChain,
+    options.demoteAgents ?? [],
+  );
 
   const running: Task = {
     ...task,

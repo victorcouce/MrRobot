@@ -1027,6 +1027,7 @@ function makeTaskExecutor(
 
     let feedback: string | undefined;
     let lastResult: Task = task;
+    let demoteAgents: AgentCandidate[] = [];
 
     for (let cycle = 0; cycle <= config.maxReviewFixCycles; cycle++) {
       await emit(storage, pid, "task.started", task.id, { cycle });
@@ -1046,6 +1047,7 @@ function makeTaskExecutor(
           : {}),
         extraPrompt: feedback,
         describeWorkspace: renderWorkspaceMap,
+        ...(demoteAgents.length > 0 ? { demoteAgents } : {}),
         workspace,
         execute: deps.workerExecute,
         maxRetriesPerAgent: config.maxRetriesPerAgent,
@@ -1149,6 +1151,10 @@ function makeTaskExecutor(
 
       lastResult = result;
       feedback = buildFixFeedback(review, checks);
+      // Si fallaron los checks, el fix lo intenta primero otro agente: el que
+      // produjo el fallo suele repetirlo. Un rechazo del reviewer con checks
+      // en verde sí lo sigue corrigiendo el mismo, que tiene el contexto.
+      demoteAgents = !checksPass && result.executedBy ? [result.executedBy] : [];
     }
 
     const failed: Task = {
