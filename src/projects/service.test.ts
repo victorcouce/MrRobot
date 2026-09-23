@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { describeAgent } from "../agents/selector.js";
 import { test } from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -950,6 +951,47 @@ test("review→fix: el segundo ciclo parte del commit del primero", async () => 
 
   // El primer ciclo parte de la base; el segundo, del commit del primero.
   assert.deepEqual(bases, ["base0", "commit-1"]);
+});
+
+test("review→fix: el segundo rechazo al mismo agente escala a otro", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+
+  const workers: string[] = [];
+  let reviewCalls = 0;
+
+  const deps: ProjectDeps = {
+    storage,
+    workspace: fakeWorkspace(),
+    plannerExecute: async () => JSON.stringify(singleTaskPlan),
+    workerExecute: async (_prompt, agent) => {
+      workers.push(describeAgent(agent));
+      return "ok";
+    },
+    reviewerExecute: async () => {
+      reviewCalls += 1;
+      return JSON.stringify(
+        reviewCalls <= 2
+          ? {
+              approved: false,
+              summary: "no cumple",
+              issues: [{ severity: "high", description: "falta algo" }],
+            }
+          : { approved: true, summary: "ok", issues: [] },
+      );
+    },
+    supervisorExecute: async () =>
+      JSON.stringify({ action: "continue", reason: "ok" }),
+  };
+
+  const project = await createProject({ goal: "x" }, deps);
+  const finished = await runProject(project.id, deps);
+
+  assert.equal(finished.status, "completed");
+  assert.equal(workers.length, 3);
+  // El primer rechazo lo corrige el mismo agente; el segundo, otro.
+  assert.equal(workers[1], workers[0]);
+  assert.notEqual(workers[2], workers[0]);
 });
 
 test("review caído: la tarea falla sin rehacer el trabajo del worker", async () => {

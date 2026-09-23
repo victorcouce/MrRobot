@@ -465,6 +465,11 @@ async function runTaskOnce(
           }
         }
 
+        // La duración del worker se corta aquí: `onWorkspaceSuccess` corre los
+        // checks y el reviewer, y contarlos inflaba el tiempo del agente (el
+        // 23-09, TASK-004 figuraba con 1m31s cuando el worker tardó 1m16s).
+        const workerDurationMs = Date.now() - startedAt.getTime();
+
         if (options.onWorkspaceSuccess) {
           await options.onWorkspaceSuccess(workspace, committed !== undefined, {
             ...(resultCommit !== undefined ? { commit: resultCommit } : {}),
@@ -509,7 +514,7 @@ async function runTaskOnce(
           attempt: attempt + 1,
           chainIndex: index,
           chainLength: chain.length,
-          durationMs: Date.now() - startedAt.getTime(),
+          durationMs: workerDurationMs,
           ...(attemptUsage ? { usage: attemptUsage } : {}),
         });
 

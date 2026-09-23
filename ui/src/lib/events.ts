@@ -137,6 +137,12 @@ export function describeEvent(event: ProjectEvent): EventDescriptor {
         title: "Plan generado",
         detail: payloadString(event.payload),
       };
+    case "plan.rejected":
+      return {
+        category: "system",
+        title: "Plan descartado, reintentando",
+        detail: payloadString(event.payload),
+      };
     case "plan.updated":
       return { category: "system", title: `Plan actualizado${taskLabel(event)}` };
     case "project.created":

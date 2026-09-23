@@ -107,6 +107,27 @@ test("runTask: avisa a onWorkspaceSuccess de que hubo cambios", async () => {
   assert.deepEqual(calls, [true]);
 });
 
+test("runTask: la duración del worker no incluye checks ni review", async () => {
+  const durations: number[] = [];
+
+  await runTask(task({ type: "coding" }), {
+    execute: async () => "ok",
+    workspace: fakeWorkspace("abc123"),
+    allowedAgents: [CLAUDE_SONNET],
+    onWorkspaceSuccess: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    },
+    onAgentEvent: (info) => {
+      if (info.phase === "success" && info.durationMs !== undefined) {
+        durations.push(info.durationMs);
+      }
+    },
+  });
+
+  assert.equal(durations.length, 1);
+  assert.ok((durations[0] ?? Infinity) < 100, `duración ${durations[0]}ms`);
+});
+
 test("runTask: sin cambios no pide checks", async () => {
   const calls: boolean[] = [];
 

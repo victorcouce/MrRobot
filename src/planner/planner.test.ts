@@ -59,6 +59,25 @@ test("planner: JSON inválido dispara reparación", async () => {
   assert.equal(plan.tasks.length, 2);
 });
 
+test("planner: onInvalidPlan recibe el motivo de cada intento descartado", async () => {
+  let calls = 0;
+  const rejected: Array<[number, string]> = [];
+  await planProject("objetivo", {}, {
+    execute: async () => {
+      calls += 1;
+      return calls === 1 ? "no soy json" : JSON.stringify(validPlan);
+    },
+    maxAttempts: 2,
+    onInvalidPlan: (attempt, problem) => {
+      rejected.push([attempt, problem]);
+    },
+  });
+
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0]?.[0], 1);
+  assert.ok(rejected[0]?.[1]);
+});
+
 test("planner: dependencia inexistente dispara reparación", async () => {
   let calls = 0;
   const plan = await planProject("objetivo", {}, {

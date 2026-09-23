@@ -31,6 +31,13 @@ export interface PlannerDeps {
   onAgent?: ((agent: AgentCandidate) => void) | undefined;
   /** Monitorización: inicio/éxito/fallo de cada intento, con duración. */
   onAgentEvent?: OnAgentEvent | undefined;
+  /**
+   * Se llama cuando un intento del planner devuelve un plan inválido (JSON mal
+   * formado o que no pasa la validación), con el motivo que se le devolverá
+   * como feedback. Sin esto el reintento solo se veía como un segundo
+   * `agent.started` y no había forma de saber por qué.
+   */
+  onInvalidPlan?: ((attempt: number, problem: string) => void | Promise<void>) | undefined;
 }
 
 /**
@@ -257,6 +264,7 @@ function buildPrompt(
     "Cada tarea debe poder completarla un agente que escribe archivos y ejecuta comandos.",
     "Las tareas sin dependencias entre sí se ejecutan en paralelo, así que minimiza la cadena más larga del grafo: en dependsOn pon solo las tareas cuyo código necesita de verdad, no la anterior por costumbre. Por ejemplo, la documentación o dos componentes independientes pueden depender solo del scaffolding. Dos tareas paralelas no deben modificar los mismos archivos: sus cambios se integran por separado y chocarían.",
     "Los criterios de aceptación deben poder comprobarse automáticamente sobre el repositorio (comandos, tests). No crees tareas ni criterios de verificación manual, interacción con un navegador real, inspección visual ni capturas: no son verificables. Si hace falta validar la UI, pide tests automatizados que se ejecuten con un comando.",
+    "El sistema ejecuta `npm test` (y `build`/`typecheck` si existen) después de CADA tarea, no solo al final: cualquier script que declare una tarea debe funcionar ya en ese momento. Si el scaffolding añade un script `test` antes de que otra tarea escriba los tests, usa `node --test` sin ruta (o un patrón que no exija que exista la carpeta), nunca `node --test tests/` apuntando a una carpeta que aún no existe.",
     "Los criterios de aceptación deben usar rutas RELATIVAS a la raíz del repositorio (por ejemplo `package.json`, `src/index.ts`), nunca rutas absolutas del filesystem (`/Users/...`, `C:\\...`, `~/...`): cada tarea se ejecuta en un worktree aislado y una ruta absoluta apuntaría fuera de él.",
   );
 
@@ -291,6 +299,7 @@ export async function planProject(
 
     if (!parsed.ok) {
       feedback = parsed.error;
+      await deps.onInvalidPlan?.(attempt, feedback);
       continue;
     }
 
@@ -301,6 +310,7 @@ export async function planProject(
     }
 
     feedback = problems.join("; ");
+    await deps.onInvalidPlan?.(attempt, feedback);
   }
 
   throw new Error(

@@ -9,7 +9,11 @@ import type {
   GeneratedPlan,
   PlanContext,
 } from "../planner/types.js";
-import { emitProjectEvent, type ProjectDeps } from "../projects/service.js";
+import {
+  emitInvalidPlan,
+  emitProjectEvent,
+  type ProjectDeps,
+} from "../projects/service.js";
 import type { Project } from "../projects/types.js";
 import type { AgentSpec } from "../agents/types.js";
 import { validatePlan } from "../scheduler/validation.js";
@@ -426,6 +430,8 @@ export async function sendChatMessage(
         plannerAgentUsed = agent;
       },
       onAgentEvent: (info) => onPlannerAgentEvent(undefined, info),
+      onInvalidPlan: (attempt, problem) =>
+        emitInvalidPlan(deps.storage, projectId, attempt, problem),
     });
 
     const generated = remapChatTasks(plan, chat.seq, chatId, chatAttachments);

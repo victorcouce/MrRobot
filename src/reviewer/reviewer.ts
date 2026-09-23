@@ -88,6 +88,13 @@ function buildPrompt(task: Task, context: ReviewContext): string {
   if (context.checks?.length) {
     parts.push("", "CHECKS LOCALES");
     for (const check of context.checks) {
+      if (check.noTests) {
+        parts.push(
+          `${check.command}: SIN TESTS (el runner no encontró ningún test; no cuenta como fallo, pero tampoco verifica nada)`,
+        );
+        continue;
+      }
+
       if (check.success) {
         parts.push(`${check.command}: OK`);
         continue;

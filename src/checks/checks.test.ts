@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   ensureDependencies,
+  isNoTestsFailure,
   runDevSmokeCheck,
   runInstallCheck,
   runProjectChecks,
@@ -157,6 +158,35 @@ test("runProjectChecks conserva el final de una salida larga (donde está el err
     assert.equal(result?.success, false);
     assert.match(result?.stderr ?? "", /ERROR-FINAL$/);
     assert.ok((result?.stderr ?? "").length < 5000);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("isNoTestsFailure reconoce runners sin tests y no un fallo real", () => {
+  assert.equal(isNoTestsFailure("Could not find 'tests/'\n> calc@1.0.0 test"), true);
+  assert.equal(isNoTestsFailure("No test files found, exiting with code 1"), true);
+  assert.equal(isNoTestsFailure("No tests found, exiting with code 1"), true);
+  assert.equal(
+    isNoTestsFailure("ℹ tests 5\nℹ pass 4\nℹ fail 1\nCould not find 'x'"),
+    false,
+  );
+  assert.equal(isNoTestsFailure("AssertionError: expected 1 to equal 2"), false);
+});
+
+test("runProjectChecks da por bueno un test que falla solo por no haber tests", async () => {
+  const dir = await tempDir();
+
+  try {
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "node --test tests/" } }),
+    );
+
+    const [result] = await runProjectChecks(dir, ["test"]);
+
+    assert.equal(result?.success, true);
+    assert.equal(result?.noTests, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

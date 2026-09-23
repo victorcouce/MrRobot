@@ -3,7 +3,7 @@ import { access, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { pickAttachments } from "../agents/attachments.js";
 import { AgentHealth } from "../agents/health.js";
-import { assertFileWritingAgent } from "../agents/selector.js";
+import { agentKey, assertFileWritingAgent } from "../agents/selector.js";
 import type { AgentCandidate, AgentSpec, Attachment } from "../agents/types.js";
 import {
   detectCheckScripts,
@@ -90,6 +90,19 @@ async function emit(
 }
 
 export { emit as emitProjectEvent };
+
+/** Registra por qué se descartó un intento del planner (ver `onInvalidPlan`). */
+export async function emitInvalidPlan(
+  storage: Storage,
+  projectId: string,
+  attempt: number,
+  problem: string,
+): Promise<void> {
+  await emit(storage, projectId, "plan.rejected", undefined, {
+    attempt,
+    summary: `intento ${attempt} descartado: ${problem}`,
+  });
+}
 
 function deriveName(goal: string): string {
   const firstLine = goal.trim().split("\n")[0] ?? "proyecto";
@@ -347,6 +360,8 @@ export async function generatePlan(
     maxRetriesPerAgent: config.maxRetriesPerAgent,
     ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
     onAgentEvent: (info) => onPlannerAgentEvent(undefined, info),
+    onInvalidPlan: (attempt, problem) =>
+      emitInvalidPlan(storage, projectId, attempt, problem),
   });
 
   const ready: Project = {
@@ -571,7 +586,8 @@ function summarizeChecks(checks: CheckResult[]): string {
     .map((check) => {
       const time =
         check.durationMs !== undefined ? ` ${formatDuration(check.durationMs)}` : "";
-      return `${check.command} ${check.success ? "✓" : "✗"}${time}`;
+      const mark = check.noTests ? "∅ sin tests" : check.success ? "✓" : "✗";
+      return `${check.command} ${mark}${time}`;
     })
     .join(" · ");
 }
@@ -1086,6 +1102,8 @@ function makeTaskExecutor(
     let feedback: string | undefined;
     let lastResult: Task = task;
     let demoteAgents: AgentCandidate[] = [];
+    // Rechazos del reviewer (con checks en verde) por agente en esta tarea.
+    const reviewRejections = new Map<string, number>();
 
     for (let cycle = 0; cycle <= config.maxReviewFixCycles; cycle++) {
       await emit(storage, pid, "task.started", task.id, { cycle });
@@ -1217,9 +1235,19 @@ function makeTaskExecutor(
       lastResult = result;
       feedback = buildFixFeedback(review, checks);
       // Si fallaron los checks, el fix lo intenta primero otro agente: el que
-      // produjo el fallo suele repetirlo. Un rechazo del reviewer con checks
-      // en verde sí lo sigue corrigiendo el mismo, que tiene el contexto.
-      demoteAgents = !checksPass && result.executedBy ? [result.executedBy] : [];
+      // produjo el fallo suele repetirlo. Un primer rechazo del reviewer con
+      // checks en verde lo sigue corrigiendo el mismo (suele ser un detalle,
+      // como tocar un fichero fuera de alcance); si ese agente ya había sido
+      // rechazado antes en esta tarea, el siguiente ciclo escala a otro.
+      demoteAgents = [];
+
+      if (result.executedBy) {
+        const key = agentKey(result.executedBy);
+        const rejections = checksPass ? (reviewRejections.get(key) ?? 0) + 1 : 0;
+
+        if (checksPass) reviewRejections.set(key, rejections);
+        if (!checksPass || rejections >= 2) demoteAgents = [result.executedBy];
+      }
     }
 
     const failed: Task = {
@@ -1467,6 +1495,8 @@ export async function runProject(
           maxRetriesPerAgent: config.maxRetriesPerAgent,
           ...(config.limitRetry ? { limitRetry: config.limitRetry } : {}),
           onAgentEvent: (info) => onReplanAgentEvent(undefined, info),
+          onInvalidPlan: (attempt, problem) =>
+            emitInvalidPlan(storage, pid, attempt, problem),
         });
 
         const merged = mergeReplan(project.tasks, newPlan);

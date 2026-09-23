@@ -264,14 +264,41 @@ function runScript(
   });
 }
 
+/**
+ * Mensajes con los que los runners de tests fallan cuando no encuentran ningún
+ * test: `node --test <dir>` con la carpeta aún inexistente, Vitest y Jest.
+ */
+const NO_TESTS_PATTERNS: RegExp[] = [
+  /^Could not find '[^']+'$/m,
+  /^No test files found/m,
+  /^No tests found/m,
+];
+
+/**
+ * El check de tests corre en todas las tareas, también en el scaffolding que
+ * deja `"test": "node --test tests/"` antes de que otra tarea cree `tests/`.
+ * Tratarlo como fallo rechazaba una tarea correcta y gastaba un ciclo de fix
+ * (TASK-001 de la calculadora, 23-09). Solo cuenta si no se ejecutó ningún
+ * test: un fallo real imprime el resumen del runner y no casa.
+ */
+export function isNoTestsFailure(output: string): boolean {
+  if (/^\s*(?:ℹ|#)\s*tests\s+[1-9]/m.test(output)) return false;
+  return NO_TESTS_PATTERNS.some((pattern) => pattern.test(output));
+}
+
 async function runCheck(dir: string, script: string): Promise<CheckResult> {
   const startedAt = Date.now();
-  const { success, stdout, stderr } = await runScript(dir, script);
+  const run = await runScript(dir, script);
+  const { stdout, stderr } = run;
+  const noTests =
+    !run.success && script === "test" && isNoTestsFailure(`${stdout}\n${stderr}`);
   const result: CheckResult = {
     command: `npm run ${script}`,
-    success,
+    success: run.success || noTests,
     durationMs: Date.now() - startedAt,
   };
+
+  if (noTests) result.noTests = true;
 
   if (stdout.trim()) result.stdout = truncate(stdout.trim());
   if (stderr.trim()) result.stderr = truncate(stderr.trim());
