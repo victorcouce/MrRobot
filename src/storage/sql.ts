@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentSpec, Attachment } from "../agents/types.js";
 import type { Chat, ChatMessage } from "../chats/types.js";
 import type { Project } from "../projects/types.js";
+import type { Space } from "../spaces/types.js";
 import type { Task, TaskAttempt, TaskStatus } from "../tasks/types.js";
 import type { IntegrationError } from "../workspace/types.js";
 import type {
@@ -150,6 +151,15 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   error TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS spaces (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  icon TEXT NOT NULL,
+  path TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 function toJson(value: unknown): string | null {
@@ -215,6 +225,15 @@ interface ChatMessageRow {
   agent: unknown;
   error: string | null;
   created_at: string;
+}
+
+interface SpaceRow {
+  id: string;
+  name: string;
+  icon: string;
+  path: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface TaskRow {
@@ -841,5 +860,40 @@ export class SqlStorage implements Storage {
       if (row.error) message.error = row.error;
       return message;
     });
+  }
+
+  async saveSpace(space: Space): Promise<void> {
+    await this.db.query(
+      `INSERT INTO spaces (id, name, icon, path, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         icon = EXCLUDED.icon,
+         path = EXCLUDED.path,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        space.id,
+        space.name,
+        space.icon,
+        space.path,
+        space.createdAt.toISOString(),
+        space.updatedAt.toISOString(),
+      ],
+    );
+  }
+
+  async listSpaces(): Promise<Space[]> {
+    const rows = await this.db.query<SpaceRow>(
+      `SELECT * FROM spaces ORDER BY created_at`,
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      icon: row.icon,
+      path: row.path,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    }));
   }
 }

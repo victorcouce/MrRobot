@@ -4,6 +4,7 @@ import type {
   ChatMessage as DomainChatMessage,
 } from "../chats/types.js";
 import type { Project as DomainProject } from "../projects/types.js";
+import type { Space as DomainSpace } from "../spaces/types.js";
 import type {
   ProjectEvent as DomainEvent,
   StoredReview as DomainReview,
@@ -20,6 +21,7 @@ import type {
   ProjectResult,
   ProjectStats,
   ProjectSummary,
+  Space,
   StoredReview,
   SupervisorRun,
   Task,
@@ -377,5 +379,16 @@ export function serializeChatDetail(
   return {
     ...serializeChatSummary(chat, messages.length, taskIds),
     messages: messages.map(serializeChatMessage),
+  };
+}
+
+export function serializeSpace(space: DomainSpace): Space {
+  return {
+    id: space.id,
+    name: space.name,
+    icon: space.icon,
+    path: space.path,
+    createdAt: space.createdAt.toISOString(),
+    updatedAt: space.updatedAt.toISOString(),
   };
 }

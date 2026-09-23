@@ -1,5 +1,6 @@
 import type { Project } from "../projects/types.js";
 import type { Chat, ChatMessage } from "../chats/types.js";
+import type { Space } from "../spaces/types.js";
 import type {
   ProjectEvent,
   Storage,
@@ -20,6 +21,7 @@ export class InMemoryStorage implements Storage {
   private readonly agentRuns: StoredAgentRun[] = [];
   private readonly chats = new Map<string, Chat>();
   private readonly chatMessages: ChatMessage[] = [];
+  private readonly spaces = new Map<string, Space>();
 
   async init(): Promise<void> {}
   async close(): Promise<void> {}
@@ -137,5 +139,13 @@ export class InMemoryStorage implements Storage {
     return this.chatMessages
       .filter((message) => message.chatId === chatId)
       .map((message) => structuredClone(message));
+  }
+
+  async saveSpace(space: Space): Promise<void> {
+    this.spaces.set(space.id, structuredClone(space));
+  }
+
+  async listSpaces(): Promise<Space[]> {
+    return [...this.spaces.values()].map((space) => structuredClone(space));
   }
 }

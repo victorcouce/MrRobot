@@ -289,6 +289,48 @@ test("api server: flujo HTTP básico con modo mock", async () => {
   await runtime.shutdown();
 });
 
+test("api server: crea y lista proyectos del usuario (spaces)", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const post = (body: unknown) =>
+    fetch(`${base}/api/spaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const created = await post({
+    name: " Recetas ",
+    icon: "palette",
+    path: "/proyectos/recetas",
+  });
+  assert.equal(created.status, 201);
+  const space = await created.json();
+  assert.equal(space.name, "Recetas");
+  assert.equal(space.icon, "palette");
+  assert.equal(space.path, "/proyectos/recetas");
+
+  const relative = await post({ name: "x", path: "relativa" });
+  assert.equal(relative.status, 400);
+  const badIcon = await post({ name: "x", icon: "<svg>", path: "/x" });
+  assert.equal(badIcon.status, 400);
+
+  const list = await (await fetch(`${base}/api/spaces`)).json();
+  assert.deepEqual(list, [space]);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});
+
 test("api server: POST /api/grill devuelve la entrevista en modo mock", async () => {
   const runtime = await Runtime.create({ mock: true });
   const server = buildApiServer(runtime);

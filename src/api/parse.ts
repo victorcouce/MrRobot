@@ -5,6 +5,7 @@ import type { OrchestratorConfig } from "../config/index.js";
 import type { GrillMessage } from "../grill/types.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
 import type { ImportProjectInput } from "../projects/import.js";
+import type { NewSpaceInput } from "../spaces/types.js";
 import type {
   TaskComplexity,
   TaskType,
@@ -244,6 +245,36 @@ export function parseImportProject(
   }
 
   return input;
+}
+
+const MAX_SPACE_NAME = 80;
+const SPACE_ICON = /^[a-z0-9-]{1,40}$/;
+
+export function parseNewSpace(body: Record<string, unknown>): NewSpaceInput {
+  const name = body["name"];
+  if (typeof name !== "string" || !name.trim()) {
+    throw new Error('El campo "name" es obligatorio.');
+  }
+  if (name.trim().length > MAX_SPACE_NAME) {
+    throw new Error(
+      `El campo "name" debe ser un texto de ${MAX_SPACE_NAME} caracteres como mucho.`,
+    );
+  }
+
+  const path = body["path"];
+  if (typeof path !== "string" || !path.trim()) {
+    throw new Error('El campo "path" es obligatorio.');
+  }
+  if (!isAbsolute(path.trim())) {
+    throw new Error('El campo "path" debe ser una ruta absoluta.');
+  }
+
+  const icon = body["icon"] ?? "folder";
+  if (typeof icon !== "string" || !SPACE_ICON.test(icon)) {
+    throw new Error('El campo "icon" es inválido.');
+  }
+
+  return { name: name.trim(), icon, path: path.trim() };
 }
 
 export interface ParsedAttachment {

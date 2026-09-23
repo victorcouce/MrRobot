@@ -171,6 +171,16 @@ export interface ChatSummary {
   taskIds: string[];
 }
 
+/** Proyecto del usuario: nombre, icono y carpeta donde se trabaja. */
+export interface Space {
+  id: string;
+  name: string;
+  icon: string;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatDetail extends ChatSummary {
   messages: ChatMessage[];
 }

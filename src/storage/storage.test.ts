@@ -222,6 +222,24 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.equal((await storage.listChats("proj-1")).length, 0);
   assert.equal((await storage.listChatMessages("chat-1")).length, 0);
 
+  const space = {
+    id: "space-1",
+    name: "Domótica",
+    icon: "wrench",
+    path: "/proyectos/domotica",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  await storage.saveSpace(space);
+  await storage.saveSpace({
+    ...space,
+    name: "Casa",
+    updatedAt: new Date("2026-01-02T00:00:00Z"),
+  });
+  assert.deepEqual(await storage.listSpaces(), [
+    { ...space, name: "Casa", updatedAt: new Date("2026-01-02T00:00:00Z") },
+  ]);
+
   await storage.close();
 }
 

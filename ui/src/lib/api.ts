@@ -16,6 +16,7 @@ import type {
   ProjectSummary,
   RemoteCheck,
   SearchResults,
+  Space,
   StoredReview,
   SupervisorRun,
   Task,
@@ -72,6 +73,14 @@ export const api = {
     }),
 
   listProjects: () => request<ProjectSummary[]>("/api/projects"),
+
+  listSpaces: () => request<Space[]>("/api/spaces"),
+
+  createSpace: (input: { name: string; icon: string; path: string }) =>
+    request<Space>("/api/spaces", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 
   createProject: (input: {
     goal: string;

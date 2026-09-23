@@ -8,6 +8,7 @@ import {
   parseFallbackChainInput,
   parseGrillInput,
   parseImportProject,
+  parseNewSpace,
   parseNewTask,
   parseRepoOptions,
   parseTaskPatch,
@@ -242,6 +243,20 @@ async function dispatch(
     const body = await readJson(req);
     sendJson(res, 200, runtime.fallbackChain(parseFallbackChainInput(body)));
     return;
+  }
+
+  // /api/spaces
+  if (segments[1] === "spaces" && segments.length === 2) {
+    if (req.method === "GET") {
+      sendJson(res, 200, await runtime.listSpaces());
+      return;
+    }
+
+    if (req.method === "POST") {
+      const body = await readJson(req);
+      sendJson(res, 201, await runtime.createSpace(parseNewSpace(body)));
+      return;
+    }
   }
 
   // /api/search

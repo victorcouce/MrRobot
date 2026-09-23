@@ -73,7 +73,9 @@ import type {
   ProjectPreview,
   ProjectSummary,
   SearchResults,
+  Space,
 } from "../../shared/types.js";
+import type { NewSpaceInput } from "../spaces/types.js";
 import type { Task } from "../tasks/types.js";
 import { askTaskAgent, type TaskInstructionMessage, type TaskInstructionOutcome } from "../tasks/instructions.js";
 import { checkAgentAvailability } from "./availability.js";
@@ -93,6 +95,7 @@ import {
   serializeEvent,
   serializeProject,
   serializeReview,
+  serializeSpace,
   serializeSummary,
   serializeSupervisorRun,
 } from "./serialize.js";
@@ -427,6 +430,18 @@ export class Runtime {
       .slice(0, 20);
 
     return { chats: matchedChats, tasks: matchedTasks };
+  }
+
+  async listSpaces(): Promise<Space[]> {
+    const spaces = await this.storage.listSpaces();
+    return spaces.map(serializeSpace);
+  }
+
+  async createSpace(input: NewSpaceInput): Promise<Space> {
+    const now = new Date();
+    const space = { id: randomUUID(), ...input, createdAt: now, updatedAt: now };
+    await this.storage.saveSpace(space);
+    return serializeSpace(space);
   }
 
   async listProjects(): Promise<ProjectSummary[]> {

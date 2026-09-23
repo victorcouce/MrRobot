@@ -7,10 +7,11 @@ import { useAppInfo } from "@/lib/hooks";
 import { RobotLottie } from "@/components/RobotLottie";
 import { ChatAgentSelector } from "@/components/ChatAgentSelector";
 import { FastModeToggle } from "@/components/FastModeToggle";
-import { clsx } from "@/lib/cx";
+import { NewSpaceDialog } from "@/components/spaces/NewSpaceDialog";
+import { SpacePicker } from "@/components/spaces/SpacePicker";
 import { autoProjectName } from "@/lib/format";
 import { hasFileWritingAgent } from "@/lib/agents";
-import type { AgentSpec } from "@/lib/types";
+import type { AgentSpec, Space } from "@/lib/types";
 
 const TITLES = [
   "¿Qué construimos hoy?",
@@ -30,15 +31,15 @@ export default function HomePage() {
   const { info } = useAppInfo();
   const router = useRouter();
   const [goal, setGoal] = useState("");
-  const [repoPath, setRepoPath] = useState("");
-  const [pickingFolder, setPickingFolder] = useState(false);
-  const [pickError, setPickError] = useState<string | null>(null);
+  const [spaces, setSpaces] = useState<Space[]>([]);
+  const [space, setSpace] = useState<Space | null>(null);
+  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [selectedAgents, setSelectedAgents] = useState<AgentSpec[]>([]);
   const [fastMode, setFastMode] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [folderError, setFolderError] = useState(false);
-  const [folderShake, setFolderShake] = useState(false);
+  const [spaceError, setSpaceError] = useState(false);
+  const [spaceShake, setSpaceShake] = useState(false);
   const agentsInitialized = useRef(false);
   const goalRef = useRef<HTMLTextAreaElement>(null);
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
@@ -50,10 +51,17 @@ export default function HomePage() {
     setSelectedAgents(info.config?.defaultAllowedAgents ?? []);
   }, [info]);
 
-  // Al elegir carpeta se limpia el resaltado de error.
   useEffect(() => {
-    if (repoPath.trim()) setFolderError(false);
-  }, [repoPath]);
+    api
+      .listSpaces()
+      .then(setSpaces)
+      .catch(() => setSpaces([]));
+  }, []);
+
+  const selectSpace = (next: Space) => {
+    setSpace(next);
+    setSpaceError(false);
+  };
 
   // El campo crece con el contenido hasta 7 líneas y luego hace scroll.
   useEffect(() => {
@@ -70,9 +78,9 @@ export default function HomePage() {
 
   const submit = async () => {
     if (!goal.trim() || creating) return;
-    if (!repoPath.trim()) {
-      setFolderError(true);
-      setFolderShake(true);
+    if (!space) {
+      setSpaceError(true);
+      setSpaceShake(true);
       return;
     }
 
@@ -83,7 +91,7 @@ export default function HomePage() {
       const project = await api.createProject({
         goal: goal.trim(),
         name: autoProjectName(goal.trim()),
-        repoPath: repoPath.trim(),
+        repoPath: space.path,
         ...(selectedAgents.length > 0
           ? { defaultAllowedAgents: selectedAgents }
           : {}),
@@ -100,21 +108,6 @@ export default function HomePage() {
 
   const missingFileWriter =
     selectedAgents.length > 0 && !hasFileWritingAgent(selectedAgents);
-
-  const handlePickFolder = async () => {
-    setPickingFolder(true);
-    setPickError(null);
-    try {
-      const result = await api.pickFolder();
-      if (result.path) setRepoPath(result.path);
-    } catch (err) {
-      setPickError(
-        err instanceof Error ? err.message : "No se pudo abrir el selector",
-      );
-    } finally {
-      setPickingFolder(false);
-    }
-  };
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-12 py-12">
@@ -166,35 +159,15 @@ export default function HomePage() {
 
         <div className="flex items-center justify-between gap-3 border-t border-line-soft px-4 py-3">
           <div className="flex min-w-0 items-center gap-2 text-xs text-ink-4">
-            <button
-              type="button"
-              onClick={() => void handlePickFolder()}
-              disabled={pickingFolder}
-              title={repoPath || "Seleccionar carpeta"}
-              aria-label={
-                repoPath ? `Carpeta: ${repoPath}. Cambiar carpeta` : "Seleccionar carpeta"
-              }
-              onAnimationEnd={() => setFolderShake(false)}
-              className={clsx(
-                "focus-ring inline-flex max-w-[240px] items-center gap-1.5 rounded-btn border bg-surface px-2.5 py-1.5 text-xs text-ink-2 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
-                folderError
-                  ? "border-ink ring-1 ring-ink/20"
-                  : "border-line-strong",
-                folderShake && "shake-x",
-              )}
-            >
-              {pickingFolder ? (
-                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                </svg>
-              )}
-              <span className="truncate font-mono">
-                {repoPath || "Carpeta"}
-              </span>
-            </button>
-            {pickError && <span className="text-danger-text">{pickError}</span>}
+            <SpacePicker
+              spaces={spaces}
+              selected={space}
+              onSelect={selectSpace}
+              onCreateNew={() => setNewSpaceOpen(true)}
+              invalid={spaceError}
+              shake={spaceShake}
+              onShakeEnd={() => setSpaceShake(false)}
+            />
             <ChatAgentSelector
               allowedAgents={selectedAgents}
               agentAvailability={info?.agents}
@@ -232,6 +205,16 @@ export default function HomePage() {
           {createError}
         </div>
       )}
+
+      <NewSpaceDialog
+        open={newSpaceOpen}
+        onClose={() => setNewSpaceOpen(false)}
+        onCreated={(created) => {
+          setSpaces((current) => [...current, created]);
+          selectSpace(created);
+          setNewSpaceOpen(false);
+        }}
+      />
     </div>
   );
 }

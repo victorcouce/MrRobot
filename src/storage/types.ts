@@ -1,5 +1,6 @@
 import type { Project } from "../projects/types.js";
 import type { Chat, ChatMessage } from "../chats/types.js";
+import type { Space } from "../spaces/types.js";
 
 export type AgentRole = "planner" | "worker" | "reviewer" | "supervisor";
 
@@ -72,4 +73,7 @@ export interface Storage {
 
   appendChatMessage(message: ChatMessage): Promise<void>;
   listChatMessages(chatId: string): Promise<ChatMessage[]>;
+
+  saveSpace(space: Space): Promise<void>;
+  listSpaces(): Promise<Space[]>;
 }
