@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import type { ProjectPreview, PreviewStatus } from "../../shared/types.js";
@@ -34,6 +34,52 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const ROOT_MARKERS = ["package.json", "index.html"];
+const MAX_ROOT_DEPTH = 2;
+
+/**
+ * Los agentes a veces dejan la app en una subcarpeta (p. ej. `calculadora/`).
+ * Devuelve el directorio más superficial, buscando por niveles, que tenga
+ * `package.json` o `index.html`; si no hay ninguno, la propia raíz.
+ */
+export async function findProjectRoot(dir: string): Promise<string> {
+  let level = [dir];
+
+  for (let depth = 0; depth <= MAX_ROOT_DEPTH && level.length > 0; depth += 1) {
+    for (const candidate of level) {
+      for (const marker of ROOT_MARKERS) {
+        if (await exists(join(candidate, marker))) {
+          return candidate;
+        }
+      }
+    }
+
+    const next: string[] = [];
+
+    for (const candidate of level) {
+      try {
+        const entries = await readdir(candidate, { withFileTypes: true });
+
+        for (const entry of entries) {
+          if (
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            entry.name !== "node_modules"
+          ) {
+            next.push(join(candidate, entry.name));
+          }
+        }
+      } catch {
+        // Directorio ilegible: se ignora.
+      }
+    }
+
+    level = next.sort();
+  }
+
+  return dir;
 }
 
 export async function detectPackageManager(
@@ -244,12 +290,13 @@ export class PreviewManager {
     session.workspace = ws;
     session.manager = workspace;
 
-    const pkg = await this.readPackageJson(ws.path);
+    const root = await findProjectRoot(ws.path);
+    const pkg = await this.readPackageJson(root);
     const script = pkg ? pickPreviewScript(pkg) : undefined;
 
     if (!script) {
-      if (await exists(join(ws.path, "index.html"))) {
-        await this.serveStatic(session, ws.path);
+      if (await exists(join(root, "index.html"))) {
+        await this.serveStatic(session, root);
         return;
       }
 
@@ -260,16 +307,16 @@ export class PreviewManager {
       );
     }
 
-    const manager = await detectPackageManager(ws.path, pkg as PackageJsonLike);
+    const manager = await detectPackageManager(root, pkg as PackageJsonLike);
 
-    if (!(await exists(join(ws.path, "node_modules")))) {
+    if (!(await exists(join(root, "node_modules")))) {
       session.status = "installing";
-      await this.runToCompletion(session, installCommand(manager), ws.path);
+      await this.runToCompletion(session, installCommand(manager), root);
     }
 
     session.status = "starting";
     session.command = runCommand(manager, script);
-    this.spawnServer(session, session.command, ws.path);
+    this.spawnServer(session, session.command, root);
   }
 
   private async readPackageJson(

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -7,6 +7,7 @@ import type { Project } from "../projects/types.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
 import {
   detectPackageManager,
+  findProjectRoot,
   installCommand,
   parsePreviewUrl,
   pickPreviewScript,
@@ -152,4 +153,44 @@ test("preview no arranca si el proyecto no está completado", async () => {
     () => manager.start(project, fakeWorkspace(".")),
     /completado/,
   );
+});
+
+test("findProjectRoot encuentra la app en una subcarpeta", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mrrobot-nested-"));
+
+  assert.equal(await findProjectRoot(dir), dir);
+
+  await mkdir(join(dir, "node_modules", "dep"), { recursive: true });
+  await writeFile(join(dir, "node_modules", "dep", "index.html"), "x");
+  assert.equal(await findProjectRoot(dir), dir);
+
+  await mkdir(join(dir, "calculadora-dark"));
+  await writeFile(join(dir, "calculadora-dark", "index.html"), "<h1>x</h1>");
+  assert.equal(await findProjectRoot(dir), join(dir, "calculadora-dark"));
+
+  await writeFile(join(dir, "index.html"), "<h1>raíz</h1>");
+  assert.equal(await findProjectRoot(dir), dir);
+});
+
+test("preview sirve un index.html que está en una subcarpeta", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mrrobot-nested-"));
+  await mkdir(join(dir, "calculadora-dark"));
+  await writeFile(
+    join(dir, "calculadora-dark", "index.html"),
+    "<h1>Calculadora dark</h1>",
+  );
+
+  const manager = new PreviewManager();
+  await manager.start(completedProject(dir), fakeWorkspace(dir));
+
+  let status = manager.get("p1");
+  for (let i = 0; i < 50 && status?.status !== "running"; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    status = manager.get("p1");
+  }
+
+  assert.equal(status?.status, "running");
+  assert.match(await (await fetch(`${status.url}/`)).text(), /Calculadora dark/);
+
+  await manager.stop("p1");
 });
