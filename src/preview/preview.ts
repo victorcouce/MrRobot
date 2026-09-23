@@ -42,14 +42,18 @@ const MAX_ROOT_DEPTH = 2;
 /**
  * Los agentes a veces dejan la app en una subcarpeta (p. ej. `calculadora/`).
  * Devuelve el directorio más superficial, buscando por niveles, que tenga
- * `package.json` o `index.html`; si no hay ninguno, la propia raíz.
+ * alguno de `markers` (por defecto `package.json` o `index.html`); si no hay
+ * ninguno, la propia raíz.
  */
-export async function findProjectRoot(dir: string): Promise<string> {
+export async function findProjectRoot(
+  dir: string,
+  markers: string[] = ROOT_MARKERS,
+): Promise<string> {
   let level = [dir];
 
   for (let depth = 0; depth <= MAX_ROOT_DEPTH && level.length > 0; depth += 1) {
     for (const candidate of level) {
-      for (const marker of ROOT_MARKERS) {
+      for (const marker of markers) {
         if (await exists(join(candidate, marker))) {
           return candidate;
         }

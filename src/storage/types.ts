@@ -76,4 +76,5 @@ export interface Storage {
 
   saveSpace(space: Space): Promise<void>;
   listSpaces(): Promise<Space[]>;
+  deleteSpace(id: string): Promise<boolean>;
 }

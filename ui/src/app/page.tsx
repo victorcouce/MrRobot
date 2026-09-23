@@ -6,10 +6,10 @@ import { api } from "@/lib/api";
 import { useAppInfo } from "@/lib/hooks";
 import { RobotLottie } from "@/components/RobotLottie";
 import { ChatAgentSelector } from "@/components/ChatAgentSelector";
+import { AutoRunToggle } from "@/components/AutoRunToggle";
 import { FastModeToggle } from "@/components/FastModeToggle";
 import { NewSpaceDialog } from "@/components/spaces/NewSpaceDialog";
 import { SpacePicker } from "@/components/spaces/SpacePicker";
-import { autoProjectName } from "@/lib/format";
 import { hasFileWritingAgent } from "@/lib/agents";
 import type { AgentSpec, Space } from "@/lib/types";
 
@@ -36,6 +36,7 @@ export default function HomePage() {
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [selectedAgents, setSelectedAgents] = useState<AgentSpec[]>([]);
   const [fastMode, setFastMode] = useState(false);
+  const [autoRun, setAutoRun] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [spaceError, setSpaceError] = useState(false);
@@ -90,12 +91,20 @@ export default function HomePage() {
     try {
       const project = await api.createProject({
         goal: goal.trim(),
-        name: autoProjectName(goal.trim()),
+        name: space.name,
+        icon: space.icon,
         repoPath: space.path,
         ...(selectedAgents.length > 0
           ? { defaultAllowedAgents: selectedAgents }
           : {}),
-        ...(fastMode ? { config: { fastMode: true } } : {}),
+        ...(fastMode || autoRun
+          ? {
+              config: {
+                ...(fastMode ? { fastMode: true } : {}),
+                ...(autoRun ? { autoRun: true } : {}),
+              },
+            }
+          : {}),
       });
       router.push(`/projects/${project.id}`);
     } catch (err) {
@@ -174,6 +183,7 @@ export default function HomePage() {
               onSelect={setSelectedAgents}
             />
             <FastModeToggle enabled={fastMode} onChange={setFastMode} />
+            <AutoRunToggle enabled={autoRun} onChange={setAutoRun} />
             {missingFileWriter && (
               <span className="text-danger-text">
                 Añade al menos un agente que escriba archivos (Codex, Claude o DeepSeek).

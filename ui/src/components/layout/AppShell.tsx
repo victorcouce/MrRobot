@@ -4,9 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useAllChats, useAppInfo, useProjects } from "../../lib/hooks";
-import type { ChatSummary, ProjectSummary } from "../../lib/types";
+import { useAppInfo, useProjects } from "../../lib/hooks";
+import type { ProjectSummary } from "../../lib/types";
 import { clsx } from "../../lib/cx";
+import { spaceIcon } from "../../lib/space-icons";
 import { PROJECT_STATUS } from "../../lib/status";
 import { DOT_CLASSES } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
@@ -41,18 +42,11 @@ const SEARCH_ICON = (
   </svg>
 );
 
-const CHAT_RAIL_LIMIT = 12;
+function ProjectIcon({ name }: { name: string }) {
+  const Icon = spaceIcon(name);
 
-const CHAT_ICON = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <path
-      d="M2.5 4.5A2.5 2.5 0 0 1 5 2h6a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 11 10H7l-3.2 2.8V10A2.5 2.5 0 0 1 2.5 7.5z"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
+  return <Icon className="h-[18px] w-[18px]" aria-hidden />;
+}
 
 function ProjectRail({
   pathname,
@@ -76,9 +70,13 @@ function ProjectRail({
                 isActive ? "border-ink" : "border-line",
               )}
             >
-              <span className="text-xs font-semibold">
-                {project.name.substring(0, 2).toUpperCase()}
-              </span>
+              {project.icon ? (
+                <ProjectIcon name={project.icon} />
+              ) : (
+                <span className="text-xs font-semibold">
+                  {project.name.substring(0, 2).toUpperCase()}
+                </span>
+              )}
               <span
                 className={clsx("h-2 w-2 rounded-full absolute bottom-0 right-0", dotColor)}
               />
@@ -90,47 +88,10 @@ function ProjectRail({
   );
 }
 
-function ChatRail({ chats }: { chats: ChatSummary[] }) {
-  const recentChats = chats.slice(0, CHAT_RAIL_LIMIT);
-
-  return (
-    <nav aria-label="Chats" className="flex flex-col items-center gap-1.5">
-      {recentChats.map((chat) => (
-        <Tooltip key={chat.id} label={chat.title}>
-          <Link
-            href={`/projects/${chat.projectId}?chat=${chat.id}`}
-            aria-label={chat.title}
-            className="focus-ring flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink-2 hover:border-ink hover:text-ink"
-          >
-            {CHAT_ICON}
-          </Link>
-        </Tooltip>
-      ))}
-    </nav>
-  );
-}
-
-function RailLabel({ children }: { children: ReactNode }) {
-  return (
-    <span className="w-16 select-none px-1 text-center text-[9px] font-semibold uppercase leading-none tracking-[0.08em] text-ink-4">
-      {children}
-    </span>
-  );
-}
-
-function ProjectChatGroups({ pathname }: { pathname: string }) {
+function ProjectNav({ pathname }: { pathname: string }) {
   const { projects } = useProjects();
-  const { chats } = useAllChats();
 
-  return (
-    <div className="flex w-full flex-col items-center gap-1.5">
-      <RailLabel>Proyectos</RailLabel>
-      <ProjectRail pathname={pathname} projects={projects} />
-      <div role="separator" className="my-1 h-px w-6 bg-line-strong" />
-      <RailLabel>Chats</RailLabel>
-      <ChatRail chats={chats} />
-    </div>
-  );
+  return <ProjectRail pathname={pathname} projects={projects} />;
 }
 
 export function AppShell({
@@ -188,7 +149,7 @@ export function AppShell({
 
         <div className="w-16 flex-1 overflow-y-auto px-2">
           <div className="mb-1.5" />
-          <ProjectChatGroups pathname={pathname} />
+          <ProjectNav pathname={pathname} />
         </div>
 
         <div className="flex w-16 flex-col items-center gap-1.5 px-2 py-3">

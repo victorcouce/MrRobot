@@ -5,6 +5,7 @@ import type { OrchestratorConfig } from "../config/index.js";
 import type { GrillMessage } from "../grill/types.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
 import type { ImportProjectInput } from "../projects/import.js";
+import type { ProjectBrief } from "../projects/types.js";
 import type { NewSpaceInput } from "../spaces/types.js";
 import type {
   TaskComplexity,
@@ -469,6 +470,43 @@ export interface FallbackChainInput {
   allowedAgents?: AgentSpec[];
 }
 
+/** Entrevista de afinado opcional que acompaña a la generación del plan. */
+export function parseProjectBrief(value: unknown): ProjectBrief | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error('El campo "brief" debe ser un objeto.');
+  }
+
+  const obj = value as Record<string, unknown>;
+  const rawRounds = obj["rounds"] ?? [];
+  const summary = obj["summary"] ?? "";
+
+  if (!Array.isArray(rawRounds)) {
+    throw new Error('El campo "brief.rounds" debe ser un array.');
+  }
+
+  if (typeof summary !== "string") {
+    throw new Error('El campo "brief.summary" debe ser un texto.');
+  }
+
+  const rounds = rawRounds.map((item) => {
+    const round = (item ?? {}) as Record<string, unknown>;
+    const message = round["message"];
+    const answer = round["answer"];
+
+    if (typeof message !== "string" || typeof answer !== "string") {
+      throw new Error(
+        'Cada ronda de "brief.rounds" debe tener "message" y "answer" de texto.',
+      );
+    }
+
+    return { message, answer };
+  });
+
+  return { rounds, summary: summary.trim() };
+}
+
 export function parseTaskInstructions(body: Record<string, unknown>): string {
   const instructions = body["instructions"];
 
@@ -565,6 +603,13 @@ export function parseConfigOverrides(
       throw new Error('El campo "fastMode" debe ser booleano.');
     }
     overrides.fastMode = body["fastMode"];
+  }
+
+  if (body["autoRun"] !== undefined) {
+    if (typeof body["autoRun"] !== "boolean") {
+      throw new Error('El campo "autoRun" debe ser booleano.');
+    }
+    overrides.autoRun = body["autoRun"];
   }
 
   if (body["defaultAllowedAgents"] !== undefined) {

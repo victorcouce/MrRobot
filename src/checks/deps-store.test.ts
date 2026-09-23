@@ -193,3 +193,42 @@ test("el node_modules sembrado no entra en el commit de la tarea", async () => {
   await rm(source, { recursive: true, force: true });
   await rm(target, { recursive: true, force: true });
 });
+
+test("prime y save usan el package.json de una subcarpeta", async () => {
+  const saved = await mkdtemp(join(tmpdir(), "mrrobot-wt-"));
+  const primed = await mkdtemp(join(tmpdir(), "mrrobot-wt-"));
+
+  try {
+    for (const dir of [saved, primed]) {
+      await mkdir(join(dir, "kanban-app"));
+      await writeFile(join(dir, "kanban-app", "package.json"), PACKAGE_JSON, "utf8");
+      await writeFile(
+        join(dir, "kanban-app", "package-lock.json"),
+        '{"lockfileVersion":3,"sub":true}',
+        "utf8",
+      );
+    }
+
+    await mkdir(join(saved, "kanban-app", "node_modules", "left_pad"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(saved, "kanban-app", "node_modules", "left_pad", "index.js"),
+      "module.exports = 1;",
+      "utf8",
+    );
+
+    assert.equal(await saveDependencies(saved), true);
+    assert.equal(await primeDependencies(primed), "hit");
+    assert.equal(
+      await readFile(
+        join(primed, "kanban-app", "node_modules", "left_pad", "index.js"),
+        "utf8",
+      ),
+      "module.exports = 1;",
+    );
+  } finally {
+    await rm(saved, { recursive: true, force: true });
+    await rm(primed, { recursive: true, force: true });
+  }
+});

@@ -22,10 +22,15 @@ function makeProject(): Project {
   return {
     id: "proj-1",
     name: "habits",
+    icon: "calculator",
     goal: "crear app de hábitos",
     status: "running",
     baseRef: "base0",
     defaultAllowedAgents: [{ provider: "codex" }],
+    brief: {
+      rounds: [{ message: "¿Para móvil?", answer: "Q1 (Plataforma): web" }],
+      summary: "- App web de hábitos",
+    },
     config: {
       concurrency: 4,
       maxRetriesPerAgent: 2,
@@ -76,11 +81,13 @@ async function roundTrip(storage: Storage): Promise<void> {
   const loaded = await storage.getProject("proj-1");
   assert.ok(loaded);
   assert.equal(loaded.name, "habits");
+  assert.equal(loaded.icon, "calculator");
   assert.equal(loaded.status, "running");
   assert.equal(loaded.tasks.length, 2);
   assert.equal(loaded.config?.concurrency, 4);
   assert.equal(loaded.config?.maxReviewFixCycles, 3);
   assert.deepEqual(loaded.defaultAllowedAgents, [{ provider: "codex" }]);
+  assert.deepEqual(loaded.brief, project.brief);
 
   const task1 = loaded.tasks.find((task) => task.id === "TASK-001");
   assert.ok(task1);
@@ -239,6 +246,9 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.deepEqual(await storage.listSpaces(), [
     { ...space, name: "Casa", updatedAt: new Date("2026-01-02T00:00:00Z") },
   ]);
+  assert.equal(await storage.deleteSpace("space-1"), true);
+  assert.equal(await storage.deleteSpace("space-1"), false);
+  assert.deepEqual(await storage.listSpaces(), []);
 
   await storage.close();
 }

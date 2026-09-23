@@ -236,10 +236,12 @@ export function serializeProject(project: DomainProject): Project {
   if (finishedAt) serialized.finishedAt = finishedAt;
   if (project.repoPath) serialized.repoPath = project.repoPath;
   if (project.remoteUrl) serialized.remoteUrl = project.remoteUrl;
+  if (project.icon) serialized.icon = project.icon;
   if (project.defaultAllowedAgents?.length) {
     serialized.defaultAllowedAgents =
       project.defaultAllowedAgents.map(serializeAgent);
   }
+  if (project.brief) serialized.brief = project.brief;
   if (project.resultBranch) serialized.resultBranch = project.resultBranch;
   if (project.resultCommit) serialized.resultCommit = project.resultCommit;
 
@@ -256,6 +258,7 @@ export function serializeProject(project: DomainProject): Project {
       ),
     };
     if (project.config.fastMode) serialized.config.fastMode = true;
+    if (project.config.autoRun) serialized.config.autoRun = true;
   }
 
   const result = serializeResult(project, startedAt, finishedAt);
@@ -280,6 +283,7 @@ export function serializeSummary(project: DomainProject): ProjectSummary {
   if (startedAt) summary.startedAt = startedAt;
   if (finishedAt) summary.finishedAt = finishedAt;
   if (project.repoPath) summary.repoPath = project.repoPath;
+  if (project.icon) summary.icon = project.icon;
   if (project.resultBranch) summary.resultBranch = project.resultBranch;
   if (project.resultCommit) summary.resultCommit = project.resultCommit;
 

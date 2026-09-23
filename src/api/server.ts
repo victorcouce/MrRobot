@@ -7,6 +7,7 @@ import {
   parseConfigOverrides,
   parseFallbackChainInput,
   parseGrillInput,
+  parseProjectBrief,
   parseImportProject,
   parseNewSpace,
   parseNewTask,
@@ -259,6 +260,16 @@ async function dispatch(
     }
   }
 
+  // /api/spaces/:id
+  if (
+    req.method === "DELETE" &&
+    segments[1] === "spaces" &&
+    segments.length === 3
+  ) {
+    sendJson(res, 200, await runtime.deleteSpace(segments[2] ?? ""));
+    return;
+  }
+
   // /api/search
   if (req.method === "GET" && segments[1] === "search") {
     sendJson(res, 200, await runtime.search(query.get("q") ?? ""));
@@ -321,6 +332,10 @@ async function dispatch(
         typeof body["name"] === "string" && body["name"].trim()
           ? body["name"].trim()
           : undefined;
+      const icon =
+        typeof body["icon"] === "string" && body["icon"].trim()
+          ? body["icon"].trim()
+          : undefined;
       const configBody = body["config"];
       const config =
         configBody && typeof configBody === "object" && !Array.isArray(configBody)
@@ -334,6 +349,7 @@ async function dispatch(
         {
           goal,
           ...(name ? { name } : {}),
+          ...(icon ? { icon } : {}),
           ...repo,
           ...(defaultAllowedAgents.length > 0 ? { defaultAllowedAgents } : {}),
         },
@@ -400,7 +416,12 @@ async function dispatch(
         typeof body["instructions"] === "string"
           ? body["instructions"]
           : undefined;
-      sendJson(res, 202, await runtime.generatePlan(projectId, instructions));
+      const brief = parseProjectBrief(body["brief"]);
+      sendJson(
+        res,
+        202,
+        await runtime.generatePlan(projectId, instructions, brief),
+      );
       return;
     }
 

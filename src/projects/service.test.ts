@@ -1154,6 +1154,25 @@ test("renderWorkspaceMap lista scripts y archivos sin node_modules", async () =>
   }
 });
 
+test("renderWorkspaceMap usa la app de la subcarpeta y avisa de dependencias ya instaladas", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wsmap-"));
+  try {
+    mkdirSync(join(dir, "kanban-app", "node_modules"), { recursive: true });
+    writeFileSync(
+      join(dir, "kanban-app", "package.json"),
+      JSON.stringify({ scripts: { typecheck: "tsc", build: "vite build" } }),
+    );
+
+    const map = await renderWorkspaceMap(dir);
+
+    assert.match(map ?? "", /Scripts de npm \(en kanban-app\/\): typecheck, build/);
+    assert.match(map ?? "", /Dependencias: ya instaladas/);
+    assert.match(map ?? "", /no hay AGENTS\.md/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("modo rápido: el planner lo sabe y la tarea no pasa por checks ni reviewer", async () => {
   const storage = new InMemoryStorage();
   await storage.init();

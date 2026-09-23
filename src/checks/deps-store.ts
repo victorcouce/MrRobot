@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { detectPackageManager, type PackageJsonLike } from "../preview/preview.js";
+import {
+  detectPackageManager,
+  findProjectRoot,
+  type PackageJsonLike,
+} from "../preview/preview.js";
 
 /**
  * Cada intento de cada tarea corre en un worktree recién creado, que nace sin
@@ -33,6 +37,15 @@ const MANIFEST_KEYS = [
   "resolutions",
   "packageManager",
 ];
+
+/**
+ * Directorio con el `package.json` del proyecto: la raíz o, si los agentes
+ * dejaron la app en una subcarpeta (p. ej. `kanban-app/`), esa subcarpeta. Sin
+ * esto el almacén nunca se usaba en esos proyectos y cada tarea reinstalaba.
+ */
+export function findPackageRoot(dir: string): Promise<string> {
+  return findProjectRoot(dir, ["package.json"]);
+}
 
 export function depsStoreRoot(): string {
   return (
@@ -170,8 +183,11 @@ export type PrimeOutcome = "hit" | "miss" | "present" | "skip";
  * para su lockfile. Nunca lanza: si algo falla, el worktree se queda como
  * estaba y la instalación normal se encarga.
  */
-export async function primeDependencies(dir: string): Promise<PrimeOutcome> {
+export async function primeDependencies(
+  worktree: string,
+): Promise<PrimeOutcome> {
   try {
+    const dir = await findPackageRoot(worktree);
     const target = join(dir, "node_modules");
 
     if (await exists(target)) {
@@ -219,8 +235,9 @@ export async function primeDependencies(dir: string): Promise<PrimeOutcome> {
  * lockfile, para que los siguientes worktrees lo reciban sembrado. Devuelve si
  * escribió una entrada nueva. Nunca lanza.
  */
-export async function saveDependencies(dir: string): Promise<boolean> {
+export async function saveDependencies(worktree: string): Promise<boolean> {
   try {
+    const dir = await findPackageRoot(worktree);
     const source = join(dir, "node_modules");
 
     if (!(await exists(source))) {

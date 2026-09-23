@@ -111,6 +111,17 @@ export interface ProjectResult {
   finishedAt: string;
 }
 
+export interface ProjectBriefRound {
+  message: string;
+  answer: string;
+}
+
+/** Entrevista de afinado que precedió al plan inicial. */
+export interface ProjectBrief {
+  rounds: ProjectBriefRound[];
+  summary: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -119,9 +130,11 @@ export interface Project {
   baseRef: string;
   repoPath?: string;
   remoteUrl?: string;
+  icon?: string;
   tasks: Task[];
   config?: ConfigInfo;
   defaultAllowedAgents?: AgentSpec[];
+  brief?: ProjectBrief;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -209,6 +222,7 @@ export interface ProjectSummary {
   goal: string;
   status: ProjectStatus;
   repoPath?: string;
+  icon?: string;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -309,6 +323,8 @@ export interface ConfigInfo {
   defaultAllowedAgents: AgentSpec[];
   /** Modo rápido: sin tareas de tests, checks ni reviewer. */
   fastMode?: boolean;
+  /** Ejecuta el plan inicial en cuanto se genera, sin pedir confirmación. */
+  autoRun?: boolean;
 }
 
 export interface FolderCheck {

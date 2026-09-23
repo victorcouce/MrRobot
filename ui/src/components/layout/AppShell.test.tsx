@@ -1,12 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatSummary, ProjectStats, ProjectSummary } from "../../lib/types";
+import type { ProjectStats, ProjectSummary } from "../../lib/types";
 import { AppShell } from "./AppShell";
 
 const mocks = vi.hoisted(() => ({
   projects: [] as ProjectSummary[],
-  chats: [] as ChatSummary[],
   info: null as { agents?: { connected: boolean }[] } | null,
 }));
 
@@ -17,12 +16,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("../../lib/hooks", () => ({
   useProjects: () => ({
     projects: mocks.projects,
-    error: null,
-    loading: false,
-    refresh: vi.fn(),
-  }),
-  useAllChats: () => ({
-    chats: mocks.chats,
     error: null,
     loading: false,
     refresh: vi.fn(),
@@ -56,24 +49,9 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
   };
 }
 
-function makeChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
-  const now = new Date().toISOString();
-  return {
-    id: "c1",
-    projectId: "p1",
-    title: "Plan inicial",
-    createdAt: now,
-    updatedAt: now,
-    messageCount: 1,
-    taskIds: [],
-    ...overrides,
-  };
-}
-
 describe("AppShell", () => {
   beforeEach(() => {
     mocks.projects = [];
-    mocks.chats = [];
     mocks.info = null;
   });
 
@@ -85,6 +63,16 @@ describe("AppShell", () => {
     const link = screen.getByRole("link", { name: "Web" });
     expect(link).toHaveAttribute("href", "/projects/p1");
     expect(link).toHaveTextContent("WE");
+  });
+
+  it("muestra el icono elegido por el usuario en vez de las iniciales", () => {
+    mocks.projects = [makeProject({ name: "Calculadora", icon: "calculator" })];
+
+    render(<AppShell>contenido</AppShell>);
+
+    const link = screen.getByRole("link", { name: "Calculadora" });
+    expect(link.querySelector("svg")).not.toBeNull();
+    expect(link).not.toHaveTextContent("CA");
   });
 
   it("mantiene Agentes, Actividad y Ajustes en la parte inferior", () => {
@@ -104,30 +92,16 @@ describe("AppShell", () => {
     );
   });
 
-  it("separa los proyectos de los chats y enlaza cada chat a su proyecto", () => {
-    mocks.projects = [makeProject()];
-    mocks.chats = [makeChat({ id: "c1", title: "Plan inicial" })];
-
-    render(<AppShell>contenido</AppShell>);
-
-    expect(screen.getByRole("navigation", { name: "Proyectos" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Chats" })).toBeTruthy();
-    expect(screen.getByRole("separator")).toBeTruthy();
-
-    const chatLink = screen.getByRole("link", { name: "Plan inicial" });
-    expect(chatLink).toHaveAttribute("href", "/projects/p1?chat=c1");
-  });
-
-  it("muestra el separador y las etiquetas aunque no haya chats", () => {
+  it("solo muestra botones de proyecto, sin etiquetas ni chats", () => {
     mocks.projects = [makeProject()];
 
     render(<AppShell>contenido</AppShell>);
 
     expect(screen.getByRole("navigation", { name: "Proyectos" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Chats" })).toBeTruthy();
-    expect(screen.getByRole("separator")).toBeTruthy();
-    expect(screen.getByText("Proyectos")).toBeTruthy();
-    expect(screen.getByText("Chats")).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Chats" })).toBeNull();
+    expect(screen.queryByRole("separator")).toBeNull();
+    expect(screen.queryByText("Proyectos")).toBeNull();
+    expect(screen.queryByText("Chats")).toBeNull();
   });
 
   it("no ofrece control para expandir la barra lateral", () => {

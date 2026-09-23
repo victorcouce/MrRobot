@@ -39,4 +39,10 @@ export interface OrchestratorConfig {
    * checks ni reviewer (se dan por buenas si el agente escribe cambios).
    */
   fastMode?: boolean;
+
+  /**
+   * Ejecuta el plan en cuanto se genera, sin esperar a que el usuario lo
+   * apruebe. Solo afecta al plan inicial, no a las replanificaciones del chat.
+   */
+  autoRun?: boolean;
 }

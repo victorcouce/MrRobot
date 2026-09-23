@@ -145,6 +145,10 @@ export class InMemoryStorage implements Storage {
     this.spaces.set(space.id, structuredClone(space));
   }
 
+  async deleteSpace(id: string): Promise<boolean> {
+    return this.spaces.delete(id);
+  }
+
   async listSpaces(): Promise<Space[]> {
     return [...this.spaces.values()].map((space) => structuredClone(space));
   }

@@ -8,12 +8,12 @@ import { choiceToAgent, monoAgentLabel } from "../../lib/agents";
 import { countLevels } from "../../lib/plan";
 import { useProject, useAppInfo } from "../../lib/hooks";
 import { PlayIcon } from "../ui/icons";
-import type { AgentSpec, Task } from "../../lib/types";
+import type { AgentSpec, ProjectBrief, Task } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/Badge";
 import { Dialog } from "../ui/Dialog";
 import { ChatThread } from "./ChatThread";
-import { GrillThread } from "./GrillThread";
+import { GrillThread, GrillTranscript } from "./GrillThread";
 import { ThreadComposer } from "./ThreadComposer";
 import { ThreadHeader } from "./ThreadHeader";
 import { TaskEditor, type TaskFormData } from "./TaskEditor";
@@ -237,10 +237,13 @@ export function ProjectWorkspace({
     (project.status === "draft" || project.status === "planning");
   const showGrill = grillProjectId === id || grillPhase;
 
-  async function generatePlanFromGrill(instructions: string) {
+  async function generatePlanFromGrill(
+    instructions: string,
+    brief: ProjectBrief,
+  ) {
     setActionError(null);
     try {
-      await api.generatePlan(id, instructions);
+      await api.generatePlan(id, instructions, brief);
       await refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -379,7 +382,11 @@ export function ProjectWorkspace({
                 />
               ),
             }
-          : {})}
+          : {
+              briefPanel: (
+                <GrillTranscript goal={project.goal} brief={project.brief} />
+              ),
+            })}
       />
 
       {!grillPhase && (

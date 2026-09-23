@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { pickAttachments } from "../agents/attachments.js";
 import { AgentHealth } from "../agents/health.js";
 import { assertFileWritingAgent } from "../agents/selector.js";
@@ -11,6 +11,7 @@ import {
   runInstallCheck,
   runProjectChecks,
 } from "../checks/checks.js";
+import { findPackageRoot } from "../checks/deps-store.js";
 import type { CheckResult } from "../checks/types.js";
 import { formatDuration } from "../../shared/log-format.js";
 import { classifyFailure } from "../agents/failure.js";
@@ -54,6 +55,7 @@ export interface ProjectDeps {
 export interface CreateProjectInput {
   goal: string;
   name?: string;
+  icon?: string;
   repoPath?: string;
   remoteUrl?: string;
   config?: OrchestratorConfig;
@@ -246,6 +248,7 @@ export async function createProject(
   if (input.config) project.config = input.config;
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
+  if (input.icon) project.icon = input.icon;
   if (input.defaultAllowedAgents?.length) {
     project.defaultAllowedAgents = input.defaultAllowedAgents;
   }
@@ -286,6 +289,7 @@ export async function createProjectDraft(
 
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
+  if (input.icon) project.icon = input.icon;
   if (input.defaultAllowedAgents?.length) {
     project.defaultAllowedAgents = input.defaultAllowedAgents;
   }
@@ -496,10 +500,13 @@ export function wantsDevSmoke(task: Task): boolean {
  * de preparación se registran y los checks se ejecutan igualmente.
  */
 async function runChecksInDir(
-  dir: string,
+  worktree: string,
   config: OrchestratorConfig,
   task: Task,
 ): Promise<CheckResult[]> {
+  // Si la app vive en una subcarpeta (`kanban-app/`), los checks corren allí:
+  // en la raíz no hay package.json y se saltaban todos sin avisar.
+  const dir = await findPackageRoot(worktree);
   const configured =
     config.checks.commands.length > 0
       ? config.checks.commands
@@ -673,19 +680,59 @@ export async function gatherRepoContext(root: string): Promise<RepoContext> {
   return context;
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function someExists(dir: string, names: string[]): Promise<boolean> {
+  for (const name of names) {
+    if (await pathExists(join(dir, name))) return true;
+  }
+  return false;
+}
+
 /**
  * Mapa del worktree para el prompt del worker: scripts de npm y estructura
  * (profundidad 2, acotada), para que no tenga que explorarlo antes de empezar.
  */
 export async function renderWorkspaceMap(dir: string): Promise<string | undefined> {
   const context = await gatherRepoContext(dir);
+  const packageRoot = await findPackageRoot(dir);
+  const packageDir = relative(dir, packageRoot);
   const parts: string[] = [];
 
-  if (context.scripts?.length) {
-    parts.push(`Scripts de npm: ${context.scripts.join(", ")}`);
+  // Si la app vive en una subcarpeta, sus scripts son los que importan.
+  const scripts = packageDir
+    ? await detectCheckScripts(packageRoot)
+    : (context.scripts ?? []);
+
+  if (scripts.length > 0) {
+    parts.push(
+      packageDir
+        ? `Scripts de npm (en ${packageDir}/): ${scripts.join(", ")}`
+        : `Scripts de npm: ${scripts.join(", ")}`,
+    );
   }
   if (context.files?.length) {
     parts.push(`Archivos:\n${context.files.join("\n")}`);
+  }
+
+  // Cada worker empezaba reinstalando (y, sin red, peleándose con npm) aunque
+  // el almacén ya le hubiera sembrado las dependencias.
+  if (await pathExists(join(packageRoot, "node_modules"))) {
+    parts.push(
+      "Dependencias: ya instaladas. No ejecutes npm install ni npm ci salvo que cambies las dependencias de package.json.",
+    );
+  }
+
+  // Codex buscaba AGENTS.md por todos los directorios padre en cada tarea.
+  if (!(await someExists(dir, ["AGENTS.md", "CLAUDE.md"]))) {
+    parts.push("Instrucciones del repo: no hay AGENTS.md ni CLAUDE.md; no los busques.");
   }
 
   return parts.length > 0

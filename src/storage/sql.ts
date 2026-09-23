@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentSpec, Attachment } from "../agents/types.js";
 import type { Chat, ChatMessage } from "../chats/types.js";
-import type { Project } from "../projects/types.js";
+import type { Project, ProjectBrief } from "../projects/types.js";
 import type { Space } from "../spaces/types.js";
 import type { Task, TaskAttempt, TaskStatus } from "../tasks/types.js";
 import type { IntegrationError } from "../workspace/types.js";
@@ -30,10 +30,12 @@ CREATE TABLE IF NOT EXISTS projects (
   base_ref TEXT NOT NULL,
   repo_path TEXT,
   remote_url TEXT,
+  icon TEXT,
   result_branch TEXT,
   result_commit TEXT,
   config JSONB,
   default_allowed_agents JSONB,
+  brief JSONB,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
@@ -194,10 +196,12 @@ interface ProjectRow {
   base_ref: string;
   repo_path: string | null;
   remote_url: string | null;
+  icon: string | null;
   result_branch: string | null;
   result_commit: string | null;
   config: unknown;
   default_allowed_agents: unknown;
+  brief: unknown;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -280,9 +284,11 @@ export class SqlStorage implements Storage {
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS config JSONB");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT");
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS remote_url TEXT");
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS icon TEXT");
     await this.db.exec(
       "ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_allowed_agents JSONB",
     );
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS brief JSONB");
     await this.db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS chat_id TEXT");
     await this.db.exec(
       "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_ids JSONB",
@@ -300,9 +306,9 @@ export class SqlStorage implements Storage {
   async saveProject(project: Project): Promise<void> {
     await this.db.query(
       `INSERT INTO projects
-        (id, name, goal, status, base_ref, repo_path, remote_url, result_branch, result_commit,
-         config, default_allowed_agents, created_at, updated_at, started_at, finished_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14,$15)
+        (id, name, goal, status, base_ref, repo_path, remote_url, icon, result_branch, result_commit,
+         config, default_allowed_agents, brief, created_at, updated_at, started_at, finished_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          goal = EXCLUDED.goal,
@@ -310,10 +316,12 @@ export class SqlStorage implements Storage {
          base_ref = EXCLUDED.base_ref,
          repo_path = EXCLUDED.repo_path,
          remote_url = EXCLUDED.remote_url,
+         icon = EXCLUDED.icon,
          result_branch = EXCLUDED.result_branch,
          result_commit = EXCLUDED.result_commit,
          config = EXCLUDED.config,
          default_allowed_agents = EXCLUDED.default_allowed_agents,
+         brief = EXCLUDED.brief,
          updated_at = EXCLUDED.updated_at,
          started_at = EXCLUDED.started_at,
          finished_at = EXCLUDED.finished_at`,
@@ -325,10 +333,12 @@ export class SqlStorage implements Storage {
         project.baseRef,
         project.repoPath ?? null,
         project.remoteUrl ?? null,
+        project.icon ?? null,
         project.resultBranch ?? null,
         project.resultCommit ?? null,
         toJson(project.config),
         toJson(project.defaultAllowedAgents),
+        toJson(project.brief),
         project.createdAt.toISOString(),
         project.updatedAt.toISOString(),
         iso(project.startedAt),
@@ -478,6 +488,7 @@ export class SqlStorage implements Storage {
 
     if (row.repo_path) project.repoPath = row.repo_path;
     if (row.remote_url) project.remoteUrl = row.remote_url;
+    if (row.icon) project.icon = row.icon;
     if (row.result_branch) project.resultBranch = row.result_branch;
     if (row.result_commit) project.resultCommit = row.result_commit;
     const config = fromJson<Project["config"]>(row.config);
@@ -488,6 +499,8 @@ export class SqlStorage implements Storage {
     if (defaultAllowedAgents?.length) {
       project.defaultAllowedAgents = defaultAllowedAgents;
     }
+    const brief = fromJson<ProjectBrief>(row.brief);
+    if (brief) project.brief = brief;
     const startedAt = date(row.started_at);
     const finishedAt = date(row.finished_at);
     if (startedAt) project.startedAt = startedAt;
@@ -880,6 +893,15 @@ export class SqlStorage implements Storage {
         space.updatedAt.toISOString(),
       ],
     );
+  }
+
+  async deleteSpace(id: string): Promise<boolean> {
+    const rows = await this.db.query(
+      `DELETE FROM spaces WHERE id = $1 RETURNING id`,
+      [id],
+    );
+
+    return rows.length > 0;
   }
 
   async listSpaces(): Promise<Space[]> {

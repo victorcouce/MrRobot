@@ -77,6 +77,8 @@ interface ChatThreadProps {
   ) => Promise<TaskInstructionOutcome>;
   /** Entrevista de afinado en curso: sustituye al estado vacío del hilo. */
   grillPanel?: React.ReactNode;
+  /** Entrevista inicial ya cerrada: abre el hilo antes que los chats. */
+  briefPanel?: React.ReactNode;
 }
 
 /** Columna del hilo: 820px, salvo los bloques anchos (grafo y tablero). */
@@ -214,6 +216,7 @@ export function ChatThread({
   onRetryPlan,
   onSendInstructions,
   grillPanel,
+  briefPanel,
 }: ChatThreadProps) {
   const threadEndRef = useRef<HTMLDivElement>(null);
 
@@ -264,7 +267,8 @@ export function ChatThread({
       })),
   ].sort((a, b) => a.at - b.at);
 
-  const empty = messages.length === 0 && !hasTasks && !grillPanel;
+  const empty =
+    messages.length === 0 && !hasTasks && !grillPanel && !briefPanel;
 
   const orderedMessages = [...messages].sort(
     (a, b) =>
@@ -399,6 +403,8 @@ export function ChatThread({
             </div>
           </Row>
         )}
+
+        {briefPanel && <Row>{briefPanel}</Row>}
 
         {orderedMessages.map((message) => {
           const wide = message.id === planAnchorMessageId && isWideView;

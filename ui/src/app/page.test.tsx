@@ -140,7 +140,8 @@ describe("Inicio", () => {
     });
     expect(mocks.createProject).toHaveBeenCalledWith({
       goal: "una calculadora",
-      name: "una-calculadora",
+      name: "Calculadora",
+      icon: "calculator",
       repoPath: "/proyectos/calc",
     });
   });
@@ -197,7 +198,8 @@ describe("Inicio", () => {
     await waitFor(() => {
       expect(mocks.createProject).toHaveBeenCalledWith({
         goal: "una calculadora",
-        name: "una-calculadora",
+        name: "Calculadora",
+      icon: "calculator",
         repoPath: "/proyectos/calc",
         defaultAllowedAgents: [
           { provider: "codex" },
@@ -226,9 +228,32 @@ describe("Inicio", () => {
     await waitFor(() => {
       expect(mocks.createProject).toHaveBeenCalledWith({
         goal: "una calculadora",
-        name: "una-calculadora",
+        name: "Calculadora",
+      icon: "calculator",
         repoPath: "/proyectos/calc",
         config: { fastMode: true },
+      });
+    });
+  });
+
+  it("con la ejecución automática activa crea el proyecto con config.autoRun", async () => {
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+      target: { value: "una calculadora" },
+    });
+    await pickCalcSpace();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Ejecución automática" }));
+    fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
+
+    await waitFor(() => {
+      expect(mocks.createProject).toHaveBeenCalledWith({
+        goal: "una calculadora",
+        name: "Calculadora",
+        icon: "calculator",
+        repoPath: "/proyectos/calc",
+        config: { autoRun: true },
       });
     });
   });

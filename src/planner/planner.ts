@@ -255,6 +255,7 @@ function buildPrompt(
     "",
     "Reglas: IDs únicos; dependsOn solo referencia IDs existentes; sin ciclos; al menos una tarea sin dependencias; type y complexity deben ser valores válidos.",
     "Cada tarea debe poder completarla un agente que escribe archivos y ejecuta comandos.",
+    "Las tareas sin dependencias entre sí se ejecutan en paralelo, así que minimiza la cadena más larga del grafo: en dependsOn pon solo las tareas cuyo código necesita de verdad, no la anterior por costumbre. Por ejemplo, la documentación o dos componentes independientes pueden depender solo del scaffolding. Dos tareas paralelas no deben modificar los mismos archivos: sus cambios se integran por separado y chocarían.",
     "Los criterios de aceptación deben poder comprobarse automáticamente sobre el repositorio (comandos, tests). No crees tareas ni criterios de verificación manual, interacción con un navegador real, inspección visual ni capturas: no son verificables. Si hace falta validar la UI, pide tests automatizados que se ejecuten con un comando.",
     "Los criterios de aceptación deben usar rutas RELATIVAS a la raíz del repositorio (por ejemplo `package.json`, `src/index.ts`), nunca rutas absolutas del filesystem (`/Users/...`, `C:\\...`, `~/...`): cada tarea se ejecuta en un worktree aislado y una ruta absoluta apuntaría fuera de él.",
   );

@@ -25,7 +25,7 @@ import type { OrchestratorConfig } from "../config/index.js";
 import { runGrill } from "../grill/grill.js";
 import type { GrillMessage, GrillOutcome } from "../grill/types.js";
 import { loadConfig, mergeConfig } from "../config/index.js";
-import type { Project } from "../projects/types.js";
+import type { Project, ProjectBrief } from "../projects/types.js";
 import {
   cancelProject,
   createProjectDraft,
@@ -437,6 +437,14 @@ export class Runtime {
     return spaces.map(serializeSpace);
   }
 
+  async deleteSpace(id: string): Promise<{ id: string; deleted: true }> {
+    if (!(await this.storage.deleteSpace(id))) {
+      throw new ProjectNotFoundError(`Proyecto ${id} no encontrado.`);
+    }
+
+    return { id, deleted: true };
+  }
+
   async createSpace(input: NewSpaceInput): Promise<Space> {
     const now = new Date();
     const space = { id: randomUUID(), ...input, createdAt: now, updatedAt: now };
@@ -559,7 +567,11 @@ export class Runtime {
     return listFinalBranches(repoPath);
   }
 
-  async generatePlan(projectId: string, instructions?: string) {
+  async generatePlan(
+    projectId: string,
+    instructions?: string,
+    brief?: ProjectBrief,
+  ) {
     const project = await this.mustGetProject(projectId);
 
     if (project.status === "running" || project.status === "completed") {
@@ -568,13 +580,17 @@ export class Runtime {
       );
     }
 
-    if (project.status !== "planning") {
+    if (project.status !== "planning" || brief) {
       const planning: Project = {
         ...project,
+        ...(brief ? { brief } : {}),
         status: "planning",
         updatedAt: new Date(),
       };
       await this.storage.saveProject(planning);
+    }
+
+    if (project.status !== "planning") {
       await emitProjectEvent(this.storage, projectId, "plan.started");
     }
 
@@ -583,7 +599,17 @@ export class Runtime {
       : {};
 
     this.runInBackground(projectId, async () => {
-      await generatePlan(projectId, await this.depsFor(projectId), context);
+      const planned = await generatePlan(
+        projectId,
+        await this.depsFor(projectId),
+        context,
+      );
+
+      // La espera a que el usuario apruebe el plan era el mayor hueco muerto
+      // del proyecto (~4 min en el tablero kanban del 23-09).
+      if (planned.config?.autoRun && planned.tasks.length > 0) {
+        await this.run(projectId);
+      }
     });
 
     return this.getProject(projectId);

@@ -8,6 +8,7 @@ import type {
   GrillQuestion,
   GrillResponse,
   Project,
+  ProjectBrief,
 } from "../../lib/types";
 import { Block, BlockContent, BlockFooter, BlockHeader } from "../ui/Block";
 import { Button } from "../ui/Button";
@@ -74,7 +75,7 @@ export function GrillThread({
   onGeneratePlan,
 }: {
   project: Project;
-  onGeneratePlan: (instructions: string) => Promise<void>;
+  onGeneratePlan: (instructions: string, brief: ProjectBrief) => Promise<void>;
 }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [rounds, setRounds] = useState<CompletedRound[]>([]);
@@ -191,14 +192,14 @@ export function GrillThread({
       const instructions = summary.trim()
         ? `Requisitos acordados:\n${summary.trim()}`
         : "";
-      await onGeneratePlan(instructions);
+      await onGeneratePlan(instructions, { rounds, summary: summary.trim() });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al generar el plan",
       );
       setGenerating(false);
     }
-  }, [summary, onGeneratePlan]);
+  }, [summary, rounds, onGeneratePlan]);
 
   const retry = useCallback(() => {
     setError(null);
@@ -449,6 +450,42 @@ export function GrillThread({
             Reintentar
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * La entrevista ya cerrada, de solo lectura: el hilo la reconstruye desde lo
+ * guardado en el proyecto para no perder la conversación inicial al recargar
+ * o cuando el proyecto ya está planificado o terminado.
+ */
+export function GrillTranscript({
+  goal,
+  brief,
+}: {
+  goal: string;
+  brief?: ProjectBrief | undefined;
+}) {
+  return (
+    <div className="flex w-full flex-col gap-7">
+      <UserBubble>{goal}</UserBubble>
+
+      {brief?.rounds.map((round, index) => (
+        <div key={index} className="flex flex-col gap-3">
+          <Who meta="afinando el objetivo" />
+          <p className="max-w-[820px] whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
+            {round.message}
+          </p>
+          <UserBubble>{round.answer}</UserBubble>
+        </div>
+      ))}
+
+      {brief?.summary && (
+        <Block>
+          <BlockHeader title="Entendimiento compartido" />
+          <SummaryView text={brief.summary} />
+        </Block>
       )}
     </div>
   );

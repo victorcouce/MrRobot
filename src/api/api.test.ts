@@ -91,6 +91,24 @@ test("runtime mock: crear → plan → run → completed", async () => {
   await runtime.shutdown();
 });
 
+test("runtime mock: con autoRun el plan se ejecuta sin esperar a run()", async () => {
+  const runtime = await Runtime.create({ mock: true });
+
+  const draft = await runtime.createProject(
+    { goal: "librería TS con sum" },
+    { autoRun: true },
+  );
+  assert.equal(draft.config?.autoRun, true);
+
+  await runtime.generatePlan(draft.id);
+  await waitFor(runtime, draft.id, (status) => status === "completed");
+
+  const events = await runtime.listEvents(draft.id);
+  assert.ok(events.some((event) => event.type === "project.started"));
+
+  await runtime.shutdown();
+});
+
 test("runtime mock: escenario fail deja el proyecto failed", async () => {
   const runtime = await Runtime.create({ mock: true, scenario: "fail" });
 
@@ -265,12 +283,26 @@ test("api server: flujo HTTP básico con modo mock", async () => {
     await fetch(`${base}/api/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: "librería TS" }),
+      body: JSON.stringify({
+        goal: "librería TS",
+        name: "Mi librería",
+        icon: "rocket",
+      }),
     })
   ).json();
   assert.equal(created.status, "draft");
+  assert.equal(created.name, "Mi librería");
+  assert.equal(created.icon, "rocket");
 
-  await fetch(`${base}/api/projects/${created.id}/plan`, { method: "POST" });
+  const brief = {
+    rounds: [{ message: "¿Qué runtime?", answer: "Q1 (Runtime): Node" }],
+    summary: "- Librería TS para Node",
+  };
+  await fetch(`${base}/api/projects/${created.id}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instructions: "Requisitos acordados", brief }),
+  });
   await waitFor(runtime, created.id, (status) => status === "ready");
 
   await fetch(`${base}/api/projects/${created.id}/run`, { method: "POST" });
@@ -279,6 +311,12 @@ test("api server: flujo HTTP básico con modo mock", async () => {
   const list = await (await fetch(`${base}/api/projects`)).json();
   assert.equal(list.length, 1);
   assert.equal(list[0].status, "completed");
+  assert.equal(list[0].icon, "rocket");
+  // La entrevista inicial sobrevive a la ejecución: el hilo la sigue mostrando.
+  const detail = await (
+    await fetch(`${base}/api/projects/${created.id}`)
+  ).json();
+  assert.deepEqual(detail.brief, brief);
 
   const events = await (
     await fetch(`${base}/api/projects/${created.id}/events`)
@@ -326,6 +364,16 @@ test("api server: crea y lista proyectos del usuario (spaces)", async () => {
 
   const list = await (await fetch(`${base}/api/spaces`)).json();
   assert.deepEqual(list, [space]);
+
+  const removed = await fetch(`${base}/api/spaces/${space.id}`, {
+    method: "DELETE",
+  });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(await (await fetch(`${base}/api/spaces`)).json(), []);
+  const again = await fetch(`${base}/api/spaces/${space.id}`, {
+    method: "DELETE",
+  });
+  assert.equal(again.status, 404);
 
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();

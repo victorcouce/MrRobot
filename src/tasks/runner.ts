@@ -25,7 +25,7 @@ import {
 } from "../agents/limit-retry.js";
 import { agentKey, canWriteFiles, describeAgent } from "../agents/selector.js";
 import type { AgentCandidate, Attachment, OnAgentEvent } from "../agents/types.js";
-import { primeDependencies } from "../checks/deps-store.js";
+import { primeDependencies, saveDependencies } from "../checks/deps-store.js";
 import type { RunOptions } from "../providers/types.js";
 import { gitWorkspaceManager } from "../workspace/manager.js";
 import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
@@ -130,6 +130,8 @@ DESCRIPCIÓN
 ${task.description}${criteriaBlock}${attachmentsBlock}
 
 Completa exclusivamente esta tarea.
+
+Verifica al terminar, no después de cada cambio: ejecuta una vez los comandos que exigen los criterios y, si alguno falla, corrige y repite solo ese.
 
 Devuelve un resultado claro y directamente utilizable.`;
 }
@@ -468,6 +470,13 @@ async function runTaskOnce(
             ...(resultCommit !== undefined ? { commit: resultCommit } : {}),
             output,
           });
+        }
+
+        // El almacén solo se llenaba desde los checks: sin ellos (modo rápido,
+        // proyectos sin scripts) cada tarea reinstalaba desde cero. Va después
+        // de los checks para que, si corren, guarde su instalación completa.
+        if (await saveDependencies(workspace.path)) {
+          console.log(`Dependencias:\nguardadas en el almacén`);
         }
 
         await workspaceManager.remove(workspace, {

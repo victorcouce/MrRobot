@@ -11,6 +11,7 @@ import type {
   GrillResponse,
   MetricsSummary,
   Project,
+  ProjectBrief,
   ProjectEvent,
   ProjectPreview,
   ProjectSummary,
@@ -85,6 +86,7 @@ export const api = {
   createProject: (input: {
     goal: string;
     name?: string;
+    icon?: string;
     repoPath?: string;
     remoteUrl?: string;
     config?: Record<string, unknown>;
@@ -154,10 +156,13 @@ export const api = {
       body: JSON.stringify(config),
     }),
 
-  generatePlan: (id: string, instructions?: string) =>
+  generatePlan: (id: string, instructions?: string, brief?: ProjectBrief) =>
     request<Project>(`/api/projects/${id}/plan`, {
       method: "POST",
-      body: JSON.stringify(instructions ? { instructions } : {}),
+      body: JSON.stringify({
+        ...(instructions ? { instructions } : {}),
+        ...(brief ? { brief } : {}),
+      }),
     }),
 
   run: (id: string) =>
