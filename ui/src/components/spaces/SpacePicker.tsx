@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderPlus, MessageCircle } from "lucide-react";
+import { Check, ChevronDown, MessageCircle } from "lucide-react";
 import { clsx } from "@/lib/cx";
 import { spaceIcon } from "@/lib/space-icons";
 import type { Space } from "@/lib/types";
@@ -146,21 +146,9 @@ export function SpacePicker({
             <p className="px-2 py-2 text-xs text-ink-4">Ningún proyecto coincide.</p>
           )}
 
-          {spaces.length > 0 && (
+          {onClear && selected && (
             <div aria-hidden className="mx-1.5 my-1 h-px bg-line-soft" />
           )}
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsOpen(false);
-              onCreateNew();
-            }}
-            className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
-          >
-            <FolderPlus className="h-4 w-4 shrink-0" aria-hidden />
-            Nuevo proyecto
-          </button>
 
           {onClear && selected && (
             <button
