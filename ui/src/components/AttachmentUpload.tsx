@@ -3,15 +3,11 @@
 import { useCallback, useState } from "react";
 import { Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-
-interface ProcessedAttachment {
-  id: string;
-  name: string;
-  type: "image" | "markdown";
-  mimeType: string;
-  size: number;
-  data: string;
-}
+import {
+  ATTACHMENT_ACCEPT,
+  readAttachment,
+  type ProcessedAttachment,
+} from "@/lib/attachments";
 
 interface AttachmentUploadProps {
   attachments: ProcessedAttachment[];
@@ -20,36 +16,6 @@ interface AttachmentUploadProps {
   disabled?: boolean;
   /** Muestra u oculta la zona de arrastre; la lista de adjuntos se mantiene. */
   showDropzone?: boolean;
-}
-
-const ALLOWED_TYPES = {
-  image: ["image/png", "image/jpeg", "image/webp"],
-  markdown: ["text/markdown", "text/plain"],
-};
-
-const MIME_TO_TYPE = {
-  "image/png": "image" as const,
-  "image/jpeg": "image" as const,
-  "image/webp": "image" as const,
-  "text/markdown": "markdown" as const,
-  "text/plain": "markdown" as const,
-};
-
-const MAX_SIZE = 2 * 1024 * 1024;
-const TOTAL_MAX_SIZE = 5 * 1024 * 1024;
-
-// `Buffer` no existe en el navegador: se codifica por bloques para no desbordar
-// la pila al pasar los bytes a String.fromCharCode.
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-
-  return btoa(binary);
 }
 
 export function AttachmentUpload({
@@ -71,38 +37,13 @@ export function AttachmentUpload({
     async (file: File) => {
       setError(null);
 
-      const mimeType = file.type || "application/octet-stream";
-      const type = MIME_TO_TYPE[mimeType as keyof typeof MIME_TO_TYPE];
-
-      if (!type) {
-        setError(`Tipo de archivo no permitido: ${mimeType}`);
+      const result = await readAttachment(file, getTotalSize());
+      if ("error" in result) {
+        setError(result.error);
         return;
       }
 
-      if (file.size > MAX_SIZE) {
-        setError(`El archivo excede 2MB: ${file.name}`);
-        return;
-      }
-
-      if (getTotalSize() + file.size > TOTAL_MAX_SIZE) {
-        setError("El total de adjuntos excede 5MB");
-        return;
-      }
-
-      try {
-        const base64 = toBase64(await file.arrayBuffer());
-
-        onAdd({
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: file.name,
-          type,
-          mimeType,
-          size: file.size,
-          data: base64,
-        });
-      } catch (err) {
-        setError(`Error al leer el archivo: ${file.name}`);
-      }
+      onAdd(result.attachment);
     },
     [getTotalSize, onAdd],
   );
@@ -162,7 +103,7 @@ export function AttachmentUpload({
         <input
           type="file"
           multiple
-          accept=".png,.jpg,.jpeg,.webp,.md"
+          accept={ATTACHMENT_ACCEPT}
           onChange={handleSelectFiles}
           disabled={disabled}
           className="absolute inset-0 opacity-0 cursor-pointer"

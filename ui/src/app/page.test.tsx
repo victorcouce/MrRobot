@@ -51,6 +51,18 @@ vi.mock("@/lib/api", () => ({
 import { api } from "@/lib/api";
 import { takePendingMessage } from "@/lib/pending-message";
 
+// jsdom no implementa Blob.arrayBuffer(); los navegadores sí.
+if (!Blob.prototype.arrayBuffer) {
+  Blob.prototype.arrayBuffer = function arrayBuffer(this: Blob) {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 async function pickCalcSpace() {
   fireEvent.click(screen.getByRole("button", { name: "Seleccionar proyecto" }));
   fireEvent.click(await screen.findByRole("button", { name: "Calculadora" }));
@@ -241,32 +253,16 @@ describe("Inicio", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sin proyecto (solo chat)" }));
 
     expect(screen.getByRole("button", { name: /Enviar/ })).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Modo rápido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Modo:/ })).toBeNull();
   });
 
-  it("pasa los agentes marcados en el composer al crear el proyecto", async () => {
-    mocks.info.agents = [
-      { provider: "codex", label: "Codex", connected: true },
-      { provider: "claude", label: "Claude", connected: true },
-      {
-        provider: "deepseek",
-        label: "DeepSeek",
-        connected: false,
-        reason: "DEEPSEEK_API_KEY no está definida.",
-      },
-    ];
+  it("usa los agentes marcados en Ajustes al crear el proyecto", async () => {
     mocks.info.config.defaultAllowedAgents = [
       { provider: "codex" },
       { provider: "claude", model: "sonnet" },
     ];
 
     render(<HomePage />);
-
-    expect(
-      screen.getByRole("button", {
-        name: "Agentes de este chat: 2 de 6 marcados",
-      }),
-    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
@@ -278,7 +274,7 @@ describe("Inicio", () => {
       expect(mocks.createProject).toHaveBeenCalledWith({
         goal: "una calculadora",
         name: "Calculadora",
-      icon: "calculator",
+        icon: "calculator",
         repoPath: "/proyectos/calc",
         defaultAllowedAgents: [
           { provider: "codex" },
@@ -288,34 +284,26 @@ describe("Inicio", () => {
     });
   });
 
-  it("con el modo rápido activo crea el proyecto con config.fastMode", async () => {
+  it("avisa si los agentes de Ajustes no escriben archivos", () => {
+    mocks.info.config.defaultAllowedAgents = [
+      // Proveedor ficticio: los tres reales escriben archivos.
+      { provider: "solo-lectura" } as unknown as AgentSpec,
+    ];
 
     render(<HomePage />);
 
     fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
-    await pickCalcSpace();
 
-    const toggle = screen.getByRole("switch", { name: "Modo rápido" });
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-
-    fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
-
-    await waitFor(() => {
-      expect(mocks.createProject).toHaveBeenCalledWith({
-        goal: "una calculadora",
-        name: "Calculadora",
-      icon: "calculator",
-        repoPath: "/proyectos/calc",
-        config: { fastMode: true },
-      });
-    });
+    expect(screen.getByText(/no escriben archivos/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Enviar/ })).toBeDisabled();
   });
 
-  it("con la ejecución automática activa crea el proyecto con config.autoRun", async () => {
+  it.each([
+    ["Automático", { autoRun: true }],
+    ["Rápido", { fastMode: true, autoRun: true }],
+  ])("el modo «%s» se traduce en su config", async (label, config) => {
     render(<HomePage />);
 
     fireEvent.change(screen.getByLabelText("Mensaje"), {
@@ -323,7 +311,12 @@ describe("Inicio", () => {
     });
     await pickCalcSpace();
 
-    fireEvent.click(screen.getByRole("switch", { name: "Ejecución automática" }));
+    fireEvent.click(screen.getByRole("button", { name: /Modo: Revisar el plan/ }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}`) }));
+    expect(
+      screen.getByRole("button", { name: `Modo: ${label}. Cambiar modo` }),
+    ).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
 
     await waitFor(() => {
@@ -332,8 +325,37 @@ describe("Inicio", () => {
         name: "Calculadora",
         icon: "calculator",
         repoPath: "/proyectos/calc",
-        config: { autoRun: true },
+        config,
       });
     });
+  });
+
+  it("adjunta archivos soltados sobre la tarjeta y los quita", async () => {
+    render(<HomePage />);
+
+    const card = screen.getByLabelText("Mensaje").closest("form")!;
+    const md = new File(["# Requisitos"], "requisitos.md", { type: "text/markdown" });
+    const png = new File([new Uint8Array([1, 2, 3])], "captura.png", { type: "image/png" });
+    fireEvent.drop(card, { dataTransfer: { files: [md, png], types: ["Files"] } });
+
+    expect(await screen.findByText("captura.png")).toBeInTheDocument();
+    expect(screen.getByText("requisitos.md")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar captura.png" }));
+    expect(screen.queryByText("captura.png")).toBeNull();
+    expect(screen.getByText("requisitos.md")).toBeInTheDocument();
+  });
+
+  it("rechaza tipos de archivo no permitidos", async () => {
+    render(<HomePage />);
+
+    const card = screen.getByLabelText("Mensaje").closest("form")!;
+    const pdf = new File(["x"], "contrato.pdf", { type: "application/pdf" });
+    fireEvent.drop(card, { dataTransfer: { files: [pdf], types: ["Files"] } });
+
+    expect(
+      await screen.findByText("Tipo de archivo no permitido: contrato.pdf"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Adjuntos" })).toBeNull();
   });
 });

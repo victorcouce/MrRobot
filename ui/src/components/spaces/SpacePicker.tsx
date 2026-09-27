@@ -91,25 +91,22 @@ export function SpacePicker({
         title={selected?.path}
         onAnimationEnd={onShakeEnd}
         className={clsx(
-          "focus-ring inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-chip border bg-surface px-2.5 text-[12.5px] text-ink-2 transition-colors",
-          isOpen
-            ? "border-primary ring-2 ring-primary-soft"
-            : invalid
-              ? "border-ink ring-1 ring-ink/20"
-              : "border-line-strong hover:bg-muted",
+          "focus-ring flex h-[34px] max-w-[240px] items-center gap-[7px] rounded-btn border px-2.5 text-[13px] text-ink-2 transition-colors hover:bg-muted",
+          invalid ? "border-ink ring-1 ring-ink/20" : "border-transparent",
+          isOpen && "bg-muted",
           shake && "shake-x",
         )}
       >
-        <SelectedIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <SelectedIcon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.8} aria-hidden />
         <span className="truncate">{selected?.name ?? "Proyecto"}</span>
-        <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+        <ChevronDown className="h-3 w-3 shrink-0 text-ink-4" strokeWidth={2} aria-hidden />
       </button>
 
       {isOpen && (
         <div
           role="dialog"
           aria-label="Proyectos"
-          className="absolute bottom-full left-0 z-50 mb-2 w-[300px] rounded-[14px] border border-line-strong bg-surface p-2 shadow-modal"
+          className="absolute bottom-full left-0 z-50 mb-2.5 w-[300px] rounded-[14px] border border-line-strong bg-surface p-2 shadow-modal"
         >
           <input
             autoFocus
@@ -119,32 +116,6 @@ export function SpacePicker({
             aria-label="Buscar proyectos"
             className="mb-1 h-9 w-full rounded-lg bg-transparent px-2 text-[13px] text-ink outline-none placeholder:text-ink-4"
           />
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsOpen(false);
-              onCreateNew();
-            }}
-            className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
-          >
-            <FolderPlus className="h-4 w-4 shrink-0" aria-hidden />
-            Nuevo proyecto
-          </button>
-
-          {onClear && selected && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onClear();
-              }}
-              className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
-            >
-              <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
-              Sin proyecto (solo chat)
-            </button>
-          )}
 
           <ul className="max-h-[280px] overflow-y-auto">
             {visible.map((space) => {
@@ -173,6 +144,36 @@ export function SpacePicker({
 
           {spaces.length > 0 && visible.length === 0 && (
             <p className="px-2 py-2 text-xs text-ink-4">Ningún proyecto coincide.</p>
+          )}
+
+          {spaces.length > 0 && (
+            <div aria-hidden className="mx-1.5 my-1 h-px bg-line-soft" />
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpen(false);
+              onCreateNew();
+            }}
+            className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
+          >
+            <FolderPlus className="h-4 w-4 shrink-0" aria-hidden />
+            Nuevo proyecto
+          </button>
+
+          {onClear && selected && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onClear();
+              }}
+              className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
+            >
+              <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+              Sin proyecto (solo chat)
+            </button>
           )}
         </div>
       )}

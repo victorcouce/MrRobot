@@ -1,30 +1,24 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
 import { setPendingMessage } from "@/lib/pending-message";
 import { useAppInfo } from "@/lib/hooks";
 import { RobotLottie } from "@/components/RobotLottie";
-import { ChatAgentSelector } from "@/components/ChatAgentSelector";
-import { AttachmentUpload } from "@/components/AttachmentUpload";
-import { AutoRunToggle } from "@/components/AutoRunToggle";
-import { FastModeToggle } from "@/components/FastModeToggle";
+import { AttachmentChip } from "@/components/AttachmentChip";
+import { ModePicker, modeConfig, type ComposerMode } from "@/components/ModePicker";
 import { NewSpaceDialog } from "@/components/spaces/NewSpaceDialog";
 import { SpacePicker } from "@/components/spaces/SpacePicker";
 import { hasFileWritingAgent } from "@/lib/agents";
-import { PaperclipIcon } from "@/components/ui/icons";
-import { clsx } from "@/lib/cx";
-import type { AgentSpec, Space } from "@/lib/types";
-
-interface ProcessedAttachment {
-  id: string;
-  name: string;
-  type: "image" | "markdown";
-  mimeType: string;
-  size: number;
-  data: string;
-}
+import {
+  ATTACHMENT_ACCEPT,
+  readAttachment,
+  type ProcessedAttachment,
+} from "@/lib/attachments";
+import type { Space } from "@/lib/types";
 
 const TITLES = [
   "¿Qué construimos hoy?",
@@ -61,25 +55,22 @@ function Home() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [space, setSpace] = useState<Space | null>(null);
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  const [selectedAgents, setSelectedAgents] = useState<AgentSpec[]>([]);
-  const [fastMode, setFastMode] = useState(false);
-  const [autoRun, setAutoRun] = useState(false);
+  const [mode, setMode] = useState<ComposerMode>("review");
   const [attachments, setAttachments] = useState<ProcessedAttachment[]>([]);
-  const [showUploader, setShowUploader] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [spaceError, setSpaceError] = useState(false);
   const [spaceShake, setSpaceShake] = useState(false);
-  const agentsInitialized = useRef(false);
   const goalRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
 
-  // Los agentes marcados por defecto en Ajustes son el punto de partida.
-  useEffect(() => {
-    if (!info || agentsInitialized.current) return;
-    agentsInitialized.current = true;
-    setSelectedAgents(info.config?.defaultAllowedAgents ?? []);
-  }, [info]);
+  // Los agentes salen del formulario: se usan siempre los marcados en Ajustes.
+  const selectedAgents = info?.config?.defaultAllowedAgents ?? [];
 
   useEffect(() => {
     api
@@ -87,6 +78,26 @@ function Home() {
       .then(setSpaces)
       .catch(() => setSpaces([]));
   }, []);
+
+  // Uno a uno, para que el límite total cuente los que se acaban de añadir.
+  const addFiles = async (files: File[]) => {
+    setAttachmentError(null);
+    for (const file of files) {
+      const total = attachmentsRef.current.reduce((sum, att) => sum + att.size, 0);
+      const result = await readAttachment(file, total);
+      if ("error" in result) {
+        setAttachmentError(result.error);
+        continue;
+      }
+      attachmentsRef.current = [...attachmentsRef.current, result.attachment];
+      setAttachments(attachmentsRef.current);
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachmentError(null);
+    setAttachments((current) => current.filter((att) => att.id !== id));
+  };
 
   const selectSpace = (next: Space) => {
     setSpace(next);
@@ -157,14 +168,7 @@ function Home() {
         ...(selectedAgents.length > 0
           ? { defaultAllowedAgents: selectedAgents }
           : {}),
-        ...(fastMode || autoRun
-          ? {
-              config: {
-                ...(fastMode ? { fastMode: true } : {}),
-                ...(autoRun ? { autoRun: true } : {}),
-              },
-            }
-          : {}),
+        ...(mode !== "review" ? { config: modeConfig(mode) } : {}),
       });
       router.push(`/projects/${project.id}`);
     } catch (err) {
@@ -206,15 +210,43 @@ function Home() {
           event.preventDefault();
           void submit();
         }}
-        className="w-full max-w-[820px] animate-slide-up rounded-composer border border-line-strong bg-surface shadow-block motion-reduce:animate-none"
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragging(false);
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          void addFiles(Array.from(event.dataTransfer.files));
+        }}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData.files);
+          if (files.length === 0) return;
+          event.preventDefault();
+          void addFiles(files);
+        }}
+        className="relative w-full max-w-[820px] animate-slide-up rounded-composer border border-line-strong bg-surface shadow-block motion-reduce:animate-none"
         style={{ animationDelay: "90ms" }}
       >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-1.5 z-30 flex items-center justify-center rounded-[14px] border-2 border-dashed border-primary-hover bg-primary-soft/95 text-sm font-medium text-ink">
+            Suelta para adjuntar
+          </div>
+        )}
+
         <label htmlFor="goal" className="sr-only">
           Mensaje
         </label>
         <textarea
           id="goal"
           ref={goalRef}
+          rows={2}
           value={goal}
           onChange={(event) => setGoal(event.target.value)}
           onKeyDown={(event) => {
@@ -228,47 +260,49 @@ function Home() {
               ? "Crea una calculadora web con historial y tests…"
               : "Pregunta lo que quieras…"
           }
-          className="w-full resize-none border-0 bg-transparent p-5 font-sans text-lg leading-normal outline-none"
+          className="block w-full resize-none border-0 bg-transparent px-5 pb-3 pt-5 font-sans text-lg leading-normal text-ink outline-none"
         />
 
-        {(showUploader || attachments.length > 0) && (
-          <div className="border-t border-line-soft px-4 py-3">
-            <AttachmentUpload
-              attachments={attachments}
-              onAdd={(attachment) =>
-                setAttachments((current) => [...current, attachment])
-              }
-              onRemove={(attachmentId) =>
-                setAttachments((current) =>
-                  current.filter((attachment) => attachment.id !== attachmentId),
-                )
-              }
-              disabled={creating}
-              showDropzone={showUploader}
-            />
-          </div>
+        {attachments.length > 0 && (
+          <ul aria-label="Adjuntos" className="flex flex-wrap gap-1.5 px-5 pb-2">
+            {attachments.map((attachment) => (
+              <li key={attachment.id}>
+                <AttachmentChip
+                  {...attachment}
+                  onRemove={() => removeAttachment(attachment.id)}
+                />
+              </li>
+            ))}
+          </ul>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t border-line-soft px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2 text-xs text-ink-4">
+        <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
+          <div className="flex min-w-0 items-center gap-1">
             <button
               type="button"
-              aria-pressed={showUploader}
-              onClick={() => setShowUploader((open) => !open)}
+              onClick={() => fileInputRef.current?.click()}
               disabled={creating}
-              className={clsx(
-                "focus-ring inline-flex h-7 items-center gap-1.5 rounded-[8px] border bg-surface px-2.5 text-[12.5px] text-ink-2 transition-colors disabled:opacity-50",
-                showUploader
-                  ? "border-primary ring-2 ring-primary-soft"
-                  : "border-line hover:bg-muted",
-              )}
+              aria-label="Adjuntar"
+              title="Adjuntar (o arrastra, o pega con ⌘V)"
+              className="focus-ring flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-btn text-ink-2 transition-colors hover:bg-muted disabled:opacity-50"
             >
-              <PaperclipIcon />
-              Adjuntar
-              {attachments.length > 0 && (
-                <span className="text-ink-4">({attachments.length})</span>
-              )}
+              <Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} aria-hidden />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT}
+              tabIndex={-1}
+              aria-hidden
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                void addFiles(files);
+              }}
+            />
+            <span aria-hidden className="mx-1 h-[18px] w-px shrink-0 bg-line" />
             <SpacePicker
               spaces={spaces}
               selected={space}
@@ -280,27 +314,13 @@ function Home() {
               shake={spaceShake}
               onShakeEnd={() => setSpaceShake(false)}
             />
-            <ChatAgentSelector
-              allowedAgents={selectedAgents}
-              agentAvailability={info?.agents}
-              onSelect={setSelectedAgents}
-            />
-            {space && (
-              <>
-                <FastModeToggle enabled={fastMode} onChange={setFastMode} />
-                <AutoRunToggle enabled={autoRun} onChange={setAutoRun} />
-              </>
-            )}
-            {missingFileWriter && (
-              <span className="text-danger-text">
-                Añade al menos un agente que escriba archivos (Codex, Claude o DeepSeek).
-              </span>
-            )}
+            {/* El modo solo aplica a proyectos: un chat suelto no planifica. */}
+            {space && <ModePicker value={mode} onChange={setMode} />}
           </div>
           <button
             type="submit"
             disabled={!goal.trim() || missingFileWriter || creating}
-            className="focus-ring inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-hover disabled:opacity-50"
+            className="focus-ring inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-btn bg-primary px-4 text-sm font-medium text-ink hover:bg-primary-hover disabled:opacity-50"
           >
             {creating ? "Creando…" : space || wantsProject ? "Planificar" : "Enviar"}
             {creating ? (
@@ -313,6 +333,20 @@ function Home() {
           </button>
         </div>
       </form>
+
+      {(attachmentError || missingFileWriter) && (
+        <p role="status" className="mt-3 w-full max-w-[820px] px-1 text-[12.5px] text-danger-text">
+          {attachmentError ?? (
+            <>
+              Los agentes marcados en{" "}
+              <Link href="/settings" className="underline hover:text-ink">
+                Ajustes
+              </Link>{" "}
+              no escriben archivos: añade Codex, Claude o DeepSeek.
+            </>
+          )}
+        </p>
+      )}
 
       {createError && (
         <div
