@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, FolderPlus, MessageCircle, Search, SquarePen, X } from "lucide-react";
+import { CheckSquare, MessageCircle, Search, SquarePen, X } from "lucide-react";
 import { useAllChats, useProjects } from "@/lib/hooks";
 import { api } from "@/lib/api";
 import { clsx } from "@/lib/cx";
@@ -54,12 +54,10 @@ function highlight(text: string, query: string): ReactNode {
  */
 export function CommandPalette({
   onNewChat,
-  onNewProject,
   open,
   onOpenChange,
 }: {
   onNewChat?: () => void;
-  onNewProject?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -374,27 +372,14 @@ export function CommandPalette({
           )}
         </div>
 
-        {onNewProject && (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line-soft px-4 py-2 text-[12px] text-ink-4">
-            <button
-              type="button"
-              onClick={() => {
-                onOpenChange(false);
-                onNewProject();
-              }}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:text-ink"
-            >
-              <FolderPlus className="h-3.5 w-3.5" aria-hidden />
-              Nuevo proyecto
-            </button>
-            <span className="flex items-center gap-1">
-              <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">↑↓</kbd>
-              <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">↲</kbd>
-              para abrir ·
-              <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">Esc</kbd>
-            </span>
-          </div>
-        )}
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-line-soft px-4 py-2 text-[12px] text-ink-4">
+          <span className="flex items-center gap-1">
+            <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">↑↓</kbd>
+            <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">↲</kbd>
+            para abrir ·
+            <kbd className="rounded border border-line-strong bg-subtle px-1.5 py-0.5 font-mono">Esc</kbd>
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ export function LayoutContent({ children }: { children: ReactNode }) {
   }, [router]);
 
   const goToNewProject = useCallback(() => {
-    router.push("/?nuevo=proyecto");
+    router.push("/?new=project");
   }, [router]);
 
   useEffect(() => {
@@ -43,7 +43,6 @@ export function LayoutContent({ children }: { children: ReactNode }) {
       </AppShell>
       <CommandPalette
         onNewChat={goToNewChat}
-        onNewProject={goToNewProject}
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
       />
