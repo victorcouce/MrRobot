@@ -7,7 +7,6 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   Archive,
-  FolderPlus,
   PanelLeftClose,
   Search,
   SlidersHorizontal,
@@ -26,15 +25,12 @@ import {
 } from "@/lib/sidebar";
 import { NewSpaceDialog } from "../spaces/NewSpaceDialog";
 import { CHAT_DRAG_TYPE, SidebarChatItem } from "./SidebarChatItem";
-import { SidebarProjectItem } from "./SidebarProjectItem";
+import { ProjectsPopup } from "./ProjectsPopup";
 import { SidebarSection } from "./SidebarSection";
 import { SpaceSelector } from "./SpaceSelector";
 import { useItemActions } from "./useItemActions";
 
-/** Proyectos visibles antes de «Ver más», como en ChatGPT. */
-const PROJECT_PREVIEW = 5;
-
-const OPEN_SECTIONS = { projects: true, chats: true };
+const OPEN_SECTIONS = { chats: true };
 
 const ROW_CLASS =
   "focus-ring flex h-9 w-full items-center gap-2.5 rounded-btn px-2.5 text-[13px] transition-colors duration-100";
@@ -107,7 +103,6 @@ export function Sidebar({
     "mrrobot.sidebar.sections.v2",
     OPEN_SECTIONS,
   );
-  const [showAllProjects, setShowAllProjects] = useState(false);
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [droppingOnChats, setDroppingOnChats] = useState(false);
   const actions = useItemActions({ projects });
@@ -126,14 +121,6 @@ export function Sidebar({
     [projects, space, chatsByProject],
   );
   const loose = useMemo(() => looseChats(chats), [chats]);
-
-  // El proyecto abierto nunca queda escondido tras «Ver más».
-  const activeIndex = ordered.findIndex((project) => project.id === actions.activeProjectId);
-  const projectLimit = showAllProjects
-    ? ordered.length
-    : Math.max(PROJECT_PREVIEW, activeIndex + 1);
-  const visibleProjects = ordered.slice(0, projectLimit);
-  const hiddenProjects = ordered.length - visibleProjects.length;
 
   function chatById(id: string) {
     return chats.find((chat) => chat.id === id);
@@ -193,68 +180,26 @@ export function Sidebar({
       </div>
 
       <nav aria-label="Proyectos y chats" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <SidebarSection
-          title="Proyectos"
-          count={ordered.length}
-          open={sections.projects !== false}
-          onToggle={() => setSections({ ...sections, projects: sections.projects === false })}
-        >
-          <li>
-            <button
-              type="button"
-              onClick={() => run(onNewProject)}
-              className={clsx(ROW_CLASS, "text-ink-2 hover:bg-muted hover:text-ink")}
-            >
-              <FolderPlus className="h-4 w-4" aria-hidden />
-              Nuevo proyecto
-            </button>
-          </li>
+        <div className="flex flex-col gap-2">
+          <ProjectsPopup
+            projects={ordered}
+            chatsByProject={chatsByProject}
+            activeProjectId={actions.activeProjectId}
+            onNewProject={() => run(onNewProject)}
+            onNavigate={onNavigate}
+          />
+
           {spaces.length > 0 && (
-            <li className="py-1">
+            <div className="px-2.5 py-2">
               <SpaceSelector
                 spaces={spaces}
                 current={space}
                 onChange={(next) => setSpaceId(next?.id ?? null)}
                 onCreateNew={() => setNewSpaceOpen(true)}
               />
-            </li>
+            </div>
           )}
-          {space && ordered.length === 0 && (
-            <li className="px-2.5 py-2 text-[12.5px] text-ink-4">
-              Aún no hay proyectos en {space.name}.
-            </li>
-          )}
-          {visibleProjects.map((project) => (
-            <SidebarProjectItem
-              key={project.id}
-              project={project}
-              chats={chatsByProject.get(project.id) ?? []}
-              active={project.id === actions.activeProjectId}
-              activeChatId={
-                project.id === actions.activeProjectId ? actions.activeChatId : null
-              }
-              menu={(rowActions) => actions.projectMenu(project, rowActions)}
-              chatMenu={(chat, rowActions) => actions.chatMenu(chat, rowActions)}
-              onRename={(title) => void actions.renameProject(project, title)}
-              onRenameChat={(chat, title) => void actions.renameChat(chat, title)}
-              onDropChat={(chatId) => {
-                const chat = chatById(chatId);
-                if (chat) void actions.moveChat(chat, project.id);
-              }}
-            />
-          ))}
-          {(hiddenProjects > 0 || (showAllProjects && ordered.length > PROJECT_PREVIEW)) && (
-            <li>
-              <button
-                type="button"
-                onClick={() => setShowAllProjects((value) => !value)}
-                className={clsx(ROW_CLASS, "h-8 text-[12.5px] text-ink-4 hover:bg-muted hover:text-ink")}
-              >
-                {showAllProjects ? "Ver menos" : `Ver más (${hiddenProjects})`}
-              </button>
-            </li>
-          )}
-        </SidebarSection>
+        </div>
 
         {loose.length > 0 && (
           <div
