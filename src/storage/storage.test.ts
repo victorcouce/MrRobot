@@ -31,6 +31,17 @@ function makeProject(): Project {
       rounds: [{ message: "¿Para móvil?", answer: "Q1 (Plataforma): web" }],
       summary: "- App web de hábitos",
     },
+    attachments: [
+      {
+        id: "att-1",
+        name: "requisitos.md",
+        type: "markdown",
+        mimeType: "text/markdown",
+        size: 4,
+        data: "IyBB",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
     config: {
       concurrency: 4,
       maxRetriesPerAgent: 2,
@@ -88,6 +99,7 @@ async function roundTrip(storage: Storage): Promise<void> {
   assert.equal(loaded.config?.maxReviewFixCycles, 3);
   assert.deepEqual(loaded.defaultAllowedAgents, [{ provider: "codex" }]);
   assert.deepEqual(loaded.brief, project.brief);
+  assert.deepEqual(loaded.attachments, project.attachments);
 
   const task1 = loaded.tasks.find((task) => task.id === "TASK-001");
   assert.ok(task1);
@@ -219,6 +231,45 @@ async function roundTrip(storage: Storage): Promise<void> {
 
   const projects = await storage.listProjects();
   assert.equal(projects.length, 1);
+
+  // Barra lateral: título, fijado y archivado del proyecto.
+  const archivedAt = new Date("2026-01-05T00:00:00Z");
+  await storage.saveProject({ ...projects[0]!, title: "Hábitos", pinned: true, archivedAt });
+  const decorated = await storage.getProject("proj-1");
+  assert.equal(decorated?.title, "Hábitos");
+  assert.equal(decorated?.pinned, true);
+  assert.deepEqual(decorated?.archivedAt, archivedAt);
+
+  // Chat suelto (sin proyecto) que luego se mueve al proyecto.
+  await storage.saveChat({
+    id: "chat-loose",
+    title: "Ideas",
+    seq: 0,
+    pinned: true,
+    archivedAt,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+  });
+  await storage.appendChatMessage({
+    id: "msg-loose",
+    chatId: "chat-loose",
+    role: "user",
+    content: "una idea",
+    taskIds: [],
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+  });
+  const loose = await storage.getChat("chat-loose");
+  assert.equal(loose?.projectId, undefined);
+  assert.equal(loose?.pinned, true);
+  assert.deepEqual(loose?.archivedAt, archivedAt);
+  assert.equal((await storage.listChatMessages("chat-loose"))[0]?.projectId, undefined);
+  assert.ok((await storage.listAllChats()).some((chat) => chat.id === "chat-loose"));
+
+  await storage.saveChat({ ...loose!, projectId: "proj-1", seq: 2 });
+  await storage.setChatMessagesProject("chat-loose", "proj-1");
+  assert.equal((await storage.getChat("chat-loose"))?.seq, 2);
+  assert.equal((await storage.listChats("proj-1")).length, 2);
+  assert.equal((await storage.listChatMessages("chat-loose"))[0]?.projectId, "proj-1");
 
   await storage.deleteProject("proj-1");
   assert.equal(await storage.getProject("proj-1"), undefined);

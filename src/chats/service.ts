@@ -18,6 +18,7 @@ import type { Project } from "../projects/types.js";
 import type { AgentSpec } from "../agents/types.js";
 import { validatePlan } from "../scheduler/validation.js";
 import type { Task } from "../tasks/types.js";
+import { converse, type ConversationDeps } from "./conversation.js";
 import type { Chat, ChatMessage } from "./types.js";
 
 const REACTIVATABLE_STATUSES = new Set([
@@ -51,6 +52,8 @@ export interface ChatDetailResult {
   messages: ChatMessage[];
   taskIds: string[];
 }
+
+const DEFAULT_CHAT_TITLE = "Nuevo chat";
 
 function deriveChatTitle(content: string): string {
   const firstLine = content.trim().split("\n")[0] ?? "Nuevo chat";
@@ -235,7 +238,7 @@ export async function listAllChats(
 
   for (const chat of chats) {
     const messages = await deps.storage.listChatMessages(chat.id);
-    const tasks = tasksByProject.get(chat.projectId) ?? [];
+    const tasks = chat.projectId ? (tasksByProject.get(chat.projectId) ?? []) : [];
     results.push({
       chat,
       messageCount: messages.length,
@@ -529,4 +532,264 @@ export async function updateChatAllowedAgents(
     allowedAgents: agents,
   });
   return updated;
+}
+
+type IncomingAttachment = NonNullable<CreateChatInput["attachments"]>[number];
+
+function toAttachments(attachments: IncomingAttachment[] | undefined): Attachment[] {
+  return (
+    attachments?.map((att) => ({
+      id: randomUUID(),
+      name: att.name,
+      type: att.type,
+      mimeType: att.mimeType,
+      size: att.size,
+      data: att.data,
+      createdAt: new Date(),
+    })) ?? []
+  );
+}
+
+export async function loadChatById(chatId: string, deps: ProjectDeps): Promise<Chat> {
+  const chat = await deps.storage.getChat(chatId);
+
+  if (!chat) {
+    throw new Error(`Chat ${chatId} no encontrado.`);
+  }
+
+  return chat;
+}
+
+async function chatTaskIds(chat: Chat, deps: ProjectDeps): Promise<string[]> {
+  if (!chat.projectId) return [];
+  const project = await deps.storage.getProject(chat.projectId);
+  return (project?.tasks ?? [])
+    .filter((task) => task.chatId === chat.id)
+    .map((task) => task.id);
+}
+
+export async function getChatDetailById(
+  chatId: string,
+  deps: ProjectDeps,
+): Promise<ChatDetailResult> {
+  const chat = await loadChatById(chatId, deps);
+  const messages = await deps.storage.listChatMessages(chatId);
+  return { chat, messages, taskIds: await chatTaskIds(chat, deps) };
+}
+
+/** Chat suelto: sin proyecto, sin repo y sin tareas. Solo conversación. */
+export async function createStandaloneChat(
+  input: Pick<CreateChatInput, "title" | "message">,
+  deps: ProjectDeps,
+  allowedAgents?: AgentSpec[],
+): Promise<Chat> {
+  const now = new Date();
+  const chat: Chat = {
+    id: randomUUID(),
+    title:
+      input.title?.trim() ||
+      (input.message ? deriveChatTitle(input.message) : DEFAULT_CHAT_TITLE),
+    seq: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  if (allowedAgents?.length) chat.allowedAgents = allowedAgents;
+
+  await deps.storage.saveChat(chat);
+  return chat;
+}
+
+export async function sendStandaloneMessage(
+  chatId: string,
+  content: string,
+  attachments: IncomingAttachment[] | undefined,
+  deps: ProjectDeps,
+  conversation: ConversationDeps,
+): Promise<Chat> {
+  const chat = await loadChatById(chatId, deps);
+
+  if (chat.projectId) {
+    throw new Error("Este chat pertenece a un proyecto.");
+  }
+
+  const trimmed = content.trim();
+  if (!trimmed) {
+    throw new Error("El mensaje no puede estar vacío.");
+  }
+
+  const history = await deps.storage.listChatMessages(chatId);
+  const processed = toAttachments(attachments);
+
+  await deps.storage.appendChatMessage({
+    id: randomUUID(),
+    chatId,
+    role: "user",
+    content: trimmed,
+    taskIds: [],
+    ...(processed.length > 0 ? { attachments: processed } : {}),
+    createdAt: new Date(),
+  });
+
+  const chatAttachments = [
+    ...history.flatMap((message) => message.attachments ?? []),
+    ...processed,
+  ];
+
+  let reply: ChatMessage;
+  try {
+    let agentUsed: AgentSpec | undefined;
+    const content = await converse(
+      [
+        ...history.map((message) => ({ role: message.role, content: message.content })),
+        { role: "user" as const, content: trimmed },
+      ],
+      {
+        ...conversation,
+        ...(chat.allowedAgents?.length ? { allowedAgents: chat.allowedAgents } : {}),
+        ...(chatAttachments.length > 0 ? { attachments: chatAttachments } : {}),
+        onAgent: (agent) => {
+          agentUsed = agent;
+        },
+      },
+    );
+    reply = {
+      id: randomUUID(),
+      chatId,
+      role: "assistant",
+      content,
+      taskIds: [],
+      ...(agentUsed ? { agent: agentUsed } : {}),
+      createdAt: new Date(),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reply = {
+      id: randomUUID(),
+      chatId,
+      role: "assistant",
+      content: `No pude responder: ${message}`,
+      taskIds: [],
+      error: message,
+      createdAt: new Date(),
+    };
+  }
+
+  await deps.storage.appendChatMessage(reply);
+  const updated: Chat = { ...chat, updatedAt: new Date() };
+  // Como en ChatGPT: el chat nace sin nombre y lo toma de su primer mensaje.
+  if (history.length === 0 && chat.title === DEFAULT_CHAT_TITLE) {
+    updated.title = deriveChatTitle(trimmed);
+  }
+  await deps.storage.saveChat(updated);
+  return updated;
+}
+
+export interface ChatPatch {
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  /** `null` saca el chat de su proyecto (pasa a ser suelto). */
+  projectId?: string | null;
+}
+
+/**
+ * Renombrar, fijar, archivar y mover de proyecto. Un chat que ya generó tareas
+ * no se mueve: sus tareas viven en el plan de su proyecto y dependen de él.
+ */
+export async function updateChat(
+  chatId: string,
+  patch: ChatPatch,
+  deps: ProjectDeps,
+): Promise<Chat> {
+  const chat = await loadChatById(chatId, deps);
+  const updated: Chat = { ...chat };
+
+  if (patch.title !== undefined) {
+    const title = patch.title.trim();
+    if (!title) throw new Error("El título no puede estar vacío.");
+    updated.title = title;
+  }
+
+  if (patch.pinned !== undefined) {
+    if (patch.pinned) updated.pinned = true;
+    else delete updated.pinned;
+  }
+
+  if (patch.archived !== undefined) {
+    if (patch.archived) updated.archivedAt = chat.archivedAt ?? new Date();
+    else delete updated.archivedAt;
+  }
+
+  const target = patch.projectId === null ? undefined : patch.projectId;
+  const moving = patch.projectId !== undefined && target !== chat.projectId;
+
+  if (moving) {
+    if (chat.projectId) {
+      const source = await deps.storage.getProject(chat.projectId);
+      const tasks = (source?.tasks ?? []).filter((task) => task.chatId === chat.id);
+      if (tasks.length > 0) {
+        throw new Error(
+          `No se puede mover este chat: ya generó tareas en «${source?.title || source?.goal || source?.name}».`,
+        );
+      }
+    }
+
+    if (target) {
+      const project = await loadProject(target, deps);
+      if (project.status === "running") {
+        throw new Error(
+          "No se puede mover un chat a un proyecto que se está ejecutando.",
+        );
+      }
+      const chats = await deps.storage.listChats(target);
+      updated.projectId = target;
+      updated.seq = chats.reduce((max, other) => Math.max(max, other.seq), 0) + 1;
+      if (!updated.allowedAgents?.length && project.defaultAllowedAgents?.length) {
+        updated.allowedAgents = project.defaultAllowedAgents;
+      }
+    } else {
+      delete updated.projectId;
+      updated.seq = 0;
+    }
+  }
+
+  // Renombrar o mover cuenta como actividad; fijar y archivar no reordenan.
+  if (patch.title !== undefined || moving) {
+    updated.updatedAt = new Date();
+  }
+
+  await deps.storage.saveChat(updated);
+
+  if (moving) {
+    await deps.storage.setChatMessagesProject(chatId, updated.projectId);
+    if (chat.projectId) {
+      await emitProjectEvent(deps.storage, chat.projectId, "chat.deleted", undefined, {
+        chatId,
+      });
+    }
+    if (updated.projectId) {
+      await emitProjectEvent(deps.storage, updated.projectId, "chat.created", undefined, {
+        chatId,
+        title: updated.title,
+      });
+    }
+  } else if (updated.projectId) {
+    await emitProjectEvent(deps.storage, updated.projectId, "chat.updated", undefined, {
+      chatId,
+    });
+  }
+
+  return updated;
+}
+
+export async function deleteChatById(chatId: string, deps: ProjectDeps): Promise<Chat> {
+  const chat = await loadChatById(chatId, deps);
+
+  if (chat.projectId) {
+    return deleteChat(chat.projectId, chatId, deps);
+  }
+
+  await deps.storage.deleteChat(chatId);
+  return chat;
 }

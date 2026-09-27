@@ -2,8 +2,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { ProjectEvent } from "../storage/types.js";
 import {
   parseAllowedAgents,
+  parseAttachments,
   parseChatInput,
   parseChatMessage,
+  parseChatPatch,
+  parseProjectPatch,
   parseConfigOverrides,
   parseFallbackChainInput,
   parseGrillInput,
@@ -25,7 +28,8 @@ import {
 } from "./runtime.js";
 import { serializeEvent } from "./serialize.js";
 
-const MAX_BODY_BYTES = 1024 * 1024;
+// Los adjuntos viajan en base64 (+33 %): 5 MB de archivos son ~6,7 MB de JSON.
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 interface RequestContext {
   req: IncomingMessage;
@@ -288,6 +292,7 @@ async function dispatch(
         input.messages,
         input.repoPath,
         input.allowedAgents,
+        input.projectId,
       ),
     );
     return;
@@ -306,10 +311,57 @@ async function dispatch(
     return;
   }
 
-  // /api/chats
-  if (req.method === "GET" && segments[1] === "chats") {
-    sendJson(res, 200, await runtime.listAllChats());
-    return;
+  // /api/chats: todos los chats (de proyecto y sueltos) por id.
+  if (segments[1] === "chats") {
+    if (req.method === "GET" && segments.length === 2) {
+      sendJson(res, 200, await runtime.listAllChats());
+      return;
+    }
+
+    if (req.method === "POST" && segments.length === 2) {
+      const body = await readJson(req);
+      const allowedAgents = parseAllowedAgents(body["allowedAgents"]);
+      sendJson(
+        res,
+        201,
+        await runtime.createStandaloneChat({
+          ...parseChatInput(body),
+          ...(allowedAgents.length > 0 ? { allowedAgents } : {}),
+        }),
+      );
+      return;
+    }
+
+    const chatId = segments[2];
+
+    if (chatId && segments.length === 3) {
+      if (req.method === "GET") {
+        sendJson(res, 200, await runtime.getChatById(chatId));
+        return;
+      }
+
+      if (req.method === "PATCH") {
+        const body = await readJson(req);
+        sendJson(res, 200, await runtime.updateChat(chatId, parseChatPatch(body)));
+        return;
+      }
+
+      if (req.method === "DELETE") {
+        sendJson(res, 200, await runtime.deleteChatById(chatId));
+        return;
+      }
+    }
+
+    if (chatId && req.method === "POST" && segments[3] === "messages") {
+      const body = await readJson(req);
+      const parsed = parseChatMessage(body);
+      sendJson(
+        res,
+        200,
+        await runtime.sendMessageToChat(chatId, parsed.content, parsed.attachments),
+      );
+      return;
+    }
   }
 
   // /api/projects
@@ -344,10 +396,12 @@ async function dispatch(
 
       const repo = parseRepoOptions(body);
       const defaultAllowedAgents = parseAllowedAgents(body["defaultAllowedAgents"]);
+      const attachments = parseAttachments(body["attachments"]);
 
       const project = await runtime.createProject(
         {
           goal,
+          ...(attachments ? { attachments } : {}),
           ...(name ? { name } : {}),
           ...(icon ? { icon } : {}),
           ...repo,
@@ -395,6 +449,13 @@ async function dispatch(
     // /api/projects/:id
     if (req.method === "DELETE" && segments.length === 3) {
       sendJson(res, 200, await runtime.deleteProject(projectId));
+      return;
+    }
+
+    // /api/projects/:id (renombrar, fijar, archivar)
+    if (req.method === "PATCH" && segments.length === 3) {
+      const body = await readJson(req);
+      sendJson(res, 200, await runtime.updateProject(projectId, parseProjectPatch(body)));
       return;
     }
 
@@ -636,7 +697,10 @@ export function buildApiServer(
         return;
       }
 
-      if (error instanceof ProjectNotFoundError) {
+      if (
+        error instanceof ProjectNotFoundError ||
+        (error instanceof Error && /^Chat .* no encontrado\.$/.test(error.message))
+      ) {
         sendJson(res, 404, { error: error.message });
         return;
       }

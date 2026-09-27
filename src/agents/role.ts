@@ -29,7 +29,8 @@ export type OrchestrationRole =
   | "reviewer"
   | "supervisor"
   | "grill"
-  | "instructions";
+  | "instructions"
+  | "chat";
 
 const ROLE_TASK_TYPE: Record<OrchestrationRole, TaskType> = {
   planner: "planning",
@@ -37,6 +38,7 @@ const ROLE_TASK_TYPE: Record<OrchestrationRole, TaskType> = {
   supervisor: "planning",
   grill: "research",
   instructions: "planning",
+  chat: "research",
 };
 
 export interface RunRoleOptions {

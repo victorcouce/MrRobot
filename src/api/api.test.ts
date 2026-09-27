@@ -835,6 +835,131 @@ test("api server: GET /api/chats lista los chats de todos los proyectos", async 
 });
 
 
+async function startMockServer() {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  const call = async (path: string, method = "GET", body?: unknown) => {
+    const response = await fetch(`${base}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const stop = async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await runtime.shutdown();
+  };
+  return { call, stop };
+}
+
+test("api server: chat suelto sin proyecto conversa y se mueve a un proyecto", async () => {
+  const { call, stop } = await startMockServer();
+
+  const created = await call("/api/chats", "POST", { message: "idea: una app de notas" });
+  assert.equal(created.status, 201);
+  const chat = created.body;
+  assert.equal(chat.projectId, undefined);
+  assert.equal(chat.title, "idea: una app de notas");
+  assert.equal(chat.messages.length, 2);
+  assert.match(chat.messages[1].content, /Recibido: idea: una app de notas/);
+  assert.deepEqual(chat.taskIds, []);
+
+  const sent = await call(`/api/chats/${chat.id}/messages`, "POST", { content: "con tags" });
+  assert.equal(sent.body.messages.length, 4);
+
+  const project = (await call("/api/projects", "POST", { goal: "notas" })).body;
+  const moved = await call(`/api/chats/${chat.id}`, "PATCH", { projectId: project.id });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.body.projectId, project.id);
+  assert.ok(moved.body.messages.every((m: { projectId?: string }) => m.projectId === project.id));
+
+  const projectChats = (await call(`/api/projects/${project.id}/chats`)).body;
+  assert.equal(projectChats.length, 1);
+
+  // Ya en el proyecto, un mensaje pasa por el planner y genera tareas.
+  const planned = await call(`/api/chats/${chat.id}/messages`, "POST", { content: "hazlo" });
+  assert.ok(planned.body.taskIds.length > 0);
+
+  // Con tareas ya no se puede sacar del proyecto.
+  const refused = await call(`/api/chats/${chat.id}`, "PATCH", { projectId: null });
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error, /No se puede mover/);
+
+  await stop();
+});
+
+test("api server: renombrar, fijar y archivar chats y proyectos", async () => {
+  const { call, stop } = await startMockServer();
+
+  const untitled = (await call("/api/chats", "POST", {})).body;
+  assert.equal(untitled.title, "Nuevo chat");
+  // El primer mensaje le da nombre.
+  const named = await call(`/api/chats/${untitled.id}/messages`, "POST", { content: "Plan de viaje\ncon detalles" });
+  assert.equal(named.body.title, "Plan de viaje");
+  const chat = untitled;
+
+  const renamed = await call(`/api/chats/${chat.id}`, "PATCH", { title: "  Ideas  " });
+  assert.equal(renamed.body.title, "Ideas");
+
+  const pinned = await call(`/api/chats/${chat.id}`, "PATCH", { pinned: true });
+  assert.equal(pinned.body.pinned, true);
+
+  const archived = await call(`/api/chats/${chat.id}`, "PATCH", { archived: true });
+  assert.ok(archived.body.archivedAt);
+  const unarchived = await call(`/api/chats/${chat.id}`, "PATCH", { archived: false });
+  assert.equal(unarchived.body.archivedAt, undefined);
+
+  const empty = await call(`/api/chats/${chat.id}`, "PATCH", {});
+  assert.equal(empty.status, 400);
+
+  const project = (await call("/api/projects", "POST", { goal: "tienda" })).body;
+  const patched = await call(`/api/projects/${project.id}`, "PATCH", {
+    title: "Mi tienda",
+    pinned: true,
+    archived: true,
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.title, "Mi tienda");
+  assert.equal(patched.body.pinned, true);
+  assert.ok(patched.body.archivedAt);
+
+  const listed = (await call("/api/projects")).body;
+  assert.equal(listed[0].title, "Mi tienda");
+
+  const cleared = await call(`/api/projects/${project.id}`, "PATCH", { title: null });
+  assert.equal(cleared.body.title, undefined);
+
+  const deleted = await call(`/api/chats/${chat.id}`, "DELETE");
+  assert.equal(deleted.body.deleted, true);
+  const missing = await call(`/api/chats/${chat.id}`);
+  assert.equal(missing.status, 404);
+
+  await stop();
+});
+
+test("api server: la búsqueda encuentra chats por contenido con fragmento", async () => {
+  const { call, stop } = await startMockServer();
+
+  const chat = (await call("/api/chats", "POST", { title: "Varios", message: "hablemos de pagos con Stripe" })).body;
+  const archived = (await call("/api/chats", "POST", { message: "Stripe archivado" })).body;
+  await call(`/api/chats/${archived.id}`, "PATCH", { archived: true });
+
+  const results = (await call("/api/search?q=stripe")).body;
+  assert.equal(results.chats.length, 1);
+  assert.equal(results.chats[0].id, chat.id);
+  assert.match(results.chats[0].snippet, /Stripe/);
+  assert.equal(results.chats[0].projectId, undefined);
+
+  await stop();
+});
+
 test("api server: los agentes del proyecto y los adjuntos llegan al cliente", async () => {
   const runtime = await Runtime.create({ mock: true });
   const server = buildApiServer(runtime);

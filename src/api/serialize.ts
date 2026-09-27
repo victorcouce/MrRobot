@@ -237,11 +237,24 @@ export function serializeProject(project: DomainProject): Project {
   if (project.repoPath) serialized.repoPath = project.repoPath;
   if (project.remoteUrl) serialized.remoteUrl = project.remoteUrl;
   if (project.icon) serialized.icon = project.icon;
+  if (project.title) serialized.title = project.title;
+  if (project.pinned) serialized.pinned = true;
+  if (project.archivedAt) serialized.archivedAt = project.archivedAt.toISOString();
   if (project.defaultAllowedAgents?.length) {
     serialized.defaultAllowedAgents =
       project.defaultAllowedAgents.map(serializeAgent);
   }
   if (project.brief) serialized.brief = project.brief;
+  if (project.attachments?.length) {
+    serialized.attachments = project.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      type: attachment.type,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      createdAt: attachment.createdAt.toISOString(),
+    }));
+  }
   if (project.resultBranch) serialized.resultBranch = project.resultBranch;
   if (project.resultCommit) serialized.resultCommit = project.resultCommit;
 
@@ -284,6 +297,9 @@ export function serializeSummary(project: DomainProject): ProjectSummary {
   if (finishedAt) summary.finishedAt = finishedAt;
   if (project.repoPath) summary.repoPath = project.repoPath;
   if (project.icon) summary.icon = project.icon;
+  if (project.title) summary.title = project.title;
+  if (project.pinned) summary.pinned = true;
+  if (project.archivedAt) summary.archivedAt = project.archivedAt.toISOString();
   if (project.resultBranch) summary.resultBranch = project.resultBranch;
   if (project.resultCommit) summary.resultCommit = project.resultCommit;
 
@@ -331,12 +347,12 @@ export function serializeChatMessage(message: DomainChatMessage): ChatMessage {
   const result: ChatMessage = {
     id: message.id,
     chatId: message.chatId,
-    projectId: message.projectId,
     role: message.role,
     content: message.content,
     taskIds: message.taskIds,
     createdAt: message.createdAt.toISOString(),
   };
+  if (message.projectId) result.projectId = message.projectId;
   if (message.attachments?.length) {
     result.attachments = message.attachments.map((attachment) => ({
       id: attachment.id,
@@ -360,13 +376,16 @@ export function serializeChatSummary(
 ): ChatSummary {
   const summary: ChatSummary = {
     id: chat.id,
-    projectId: chat.projectId,
     title: chat.title,
     createdAt: chat.createdAt.toISOString(),
     updatedAt: chat.updatedAt.toISOString(),
     messageCount,
     taskIds,
   };
+
+  if (chat.projectId) summary.projectId = chat.projectId;
+  if (chat.pinned) summary.pinned = true;
+  if (chat.archivedAt) summary.archivedAt = chat.archivedAt.toISOString();
 
   if (chat.allowedAgents?.length) {
     summary.allowedAgents = chat.allowedAgents.map(serializeAgent);

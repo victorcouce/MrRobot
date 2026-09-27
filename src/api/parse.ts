@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import type { AgentSpec } from "../agents/types.js";
-import type { CreateChatInput } from "../chats/service.js";
+import type { ChatPatch, CreateChatInput } from "../chats/service.js";
 import type { OrchestratorConfig } from "../config/index.js";
 import type { GrillMessage } from "../grill/types.js";
 import type { NewTaskInput, TaskPatch } from "../projects/plan-editor.js";
@@ -388,6 +388,75 @@ export function parseChatInput(body: Record<string, unknown>): CreateChatInput {
   return input;
 }
 
+function optionalBoolean(body: Record<string, unknown>, key: string): boolean | undefined {
+  const value = body[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    throw new Error(`El campo "${key}" debe ser true o false.`);
+  }
+  return value;
+}
+
+export function parseChatPatch(body: Record<string, unknown>): ChatPatch {
+  const patch: ChatPatch = {};
+
+  const title = body["title"];
+  if (title !== undefined) {
+    if (typeof title !== "string" || !title.trim()) {
+      throw new Error('El campo "title" debe ser un texto no vacío.');
+    }
+    patch.title = title.trim();
+  }
+
+  const pinned = optionalBoolean(body, "pinned");
+  if (pinned !== undefined) patch.pinned = pinned;
+  const archived = optionalBoolean(body, "archived");
+  if (archived !== undefined) patch.archived = archived;
+
+  if ("projectId" in body) {
+    const projectId = body["projectId"];
+    if (projectId !== null && (typeof projectId !== "string" || !projectId.trim())) {
+      throw new Error('El campo "projectId" debe ser un id de proyecto o null.');
+    }
+    patch.projectId = projectId === null ? null : projectId.trim();
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("No hay campos para actualizar: se requiere title, pinned, archived o projectId.");
+  }
+
+  return patch;
+}
+
+export interface ProjectPatch {
+  title?: string | null;
+  pinned?: boolean;
+  archived?: boolean;
+}
+
+export function parseProjectPatch(body: Record<string, unknown>): ProjectPatch {
+  const patch: ProjectPatch = {};
+
+  if ("title" in body) {
+    const title = body["title"];
+    if (title !== null && typeof title !== "string") {
+      throw new Error('El campo "title" debe ser un texto o null.');
+    }
+    patch.title = title === null ? null : title.trim() || null;
+  }
+
+  const pinned = optionalBoolean(body, "pinned");
+  if (pinned !== undefined) patch.pinned = pinned;
+  const archived = optionalBoolean(body, "archived");
+  if (archived !== undefined) patch.archived = archived;
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("No hay campos para actualizar: se requiere title, pinned o archived.");
+  }
+
+  return patch;
+}
+
 export interface ParsedChatMessage {
   content: string;
   attachments?: ParsedAttachment[];
@@ -415,6 +484,8 @@ export interface ParsedGrillInput {
   messages: GrillMessage[];
   repoPath?: string;
   allowedAgents?: AgentSpec[];
+  /** Proyecto del que se toman los adjuntos del objetivo. */
+  projectId?: string;
 }
 
 export function parseGrillInput(body: Record<string, unknown>): ParsedGrillInput {
@@ -458,6 +529,12 @@ export function parseGrillInput(body: Record<string, unknown>): ParsedGrillInput
 
   if (body["allowedAgents"] !== undefined) {
     parsed.allowedAgents = parseAllowedAgents(body["allowedAgents"]);
+  }
+
+  const projectId = body["projectId"];
+
+  if (typeof projectId === "string" && projectId.trim()) {
+    parsed.projectId = projectId.trim();
   }
 
   return parsed;

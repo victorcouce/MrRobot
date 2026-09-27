@@ -147,6 +147,14 @@ export function mockTaskInstruction(
   };
 }
 
+/** Respuesta simulada de un chat suelto: eco del último mensaje. */
+export function mockConversation(
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+): string {
+  const last = messages.filter((message) => message.role === "user").at(-1);
+  return `(simulado) Recibido: ${last?.content ?? ""}`;
+}
+
 export function createMockWorkspace(): WorkspaceManager {
   let commits = 0;
   let workspaces = 0;

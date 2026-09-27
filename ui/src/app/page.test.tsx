@@ -14,7 +14,9 @@ const CALC_SPACE = {
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
+  search: "",
   createProject: vi.fn(),
+  createStandaloneChat: vi.fn(),
   listSpaces: vi.fn(),
   createSpace: vi.fn(),
   info: {
@@ -25,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mocks.push }),
+  useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 
 vi.mock("@/lib/hooks", () => ({
@@ -39,12 +42,14 @@ vi.mock("@/lib/api", () => ({
   api: {
     pickFolder: vi.fn(),
     createProject: mocks.createProject,
+    createStandaloneChat: mocks.createStandaloneChat,
     listSpaces: mocks.listSpaces,
     createSpace: mocks.createSpace,
   },
 }));
 
 import { api } from "@/lib/api";
+import { takePendingMessage } from "@/lib/pending-message";
 
 async function pickCalcSpace() {
   fireEvent.click(screen.getByRole("button", { name: "Seleccionar proyecto" }));
@@ -55,6 +60,9 @@ async function pickCalcSpace() {
 describe("Inicio", () => {
   beforeEach(() => {
     mocks.push.mockReset();
+    mocks.search = "";
+    mocks.createStandaloneChat.mockReset();
+    mocks.createStandaloneChat.mockResolvedValue({ id: "c9" });
     mocks.createProject.mockReset();
     mocks.createProject.mockResolvedValue({ id: "p1" });
     mocks.info.agents = [];
@@ -128,7 +136,7 @@ describe("Inicio", () => {
 
     render(<HomePage />);
 
-    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
     await pickCalcSpace();
@@ -146,23 +154,94 @@ describe("Inicio", () => {
     });
   });
 
-  it("sin proyecto resalta el selector en vez de continuar", async () => {
+  it("adjunta archivos al crear el proyecto", async () => {
+    render(<HomePage />);
+
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
+      target: { value: "una calculadora" },
+    });
+    await pickCalcSpace();
+
+    fireEvent.click(screen.getByRole("button", { name: /Adjuntar/ }));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["# Requisitos"], "requisitos.md", {
+      type: "text/markdown",
+    });
+    // jsdom no implementa Blob.arrayBuffer.
+    file.arrayBuffer = async () => new TextEncoder().encode("# Requisitos").buffer;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await screen.findByText("requisitos.md");
+    fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
+
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalled());
+    expect(mocks.createProject).toHaveBeenCalledWith({
+      goal: "una calculadora",
+      name: "Calculadora",
+      icon: "calculator",
+      repoPath: "/proyectos/calc",
+      attachments: [
+        {
+          name: "requisitos.md",
+          type: "markdown",
+          mimeType: "text/markdown",
+          size: 12,
+          data: btoa("# Requisitos"),
+        },
+      ],
+    });
+  });
+
+  it("sin proyecto abre un chat suelto y le pasa el mensaje", async () => {
     render(<HomePage />);
     await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
+      target: { value: "¿qué stack me recomiendas?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Enviar/ }));
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/chats/c9"));
+    expect(mocks.createStandaloneChat).toHaveBeenCalledWith({});
+    expect(mocks.createProject).not.toHaveBeenCalled();
+    expect(takePendingMessage("c9")).toEqual({ content: "¿qué stack me recomiendas?" });
+    // Solo se entrega una vez.
+    expect(takePendingMessage("c9")).toBeUndefined();
+  });
+
+  it("desde «Nuevo proyecto» sin carpeta resalta el selector en vez de continuar", async () => {
+    mocks.search = "nuevo=proyecto";
+    render(<HomePage />);
+    await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
+    // Llega con el selector abierto.
+    expect(await screen.findByRole("dialog", { name: "Proyectos" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
 
     const planificar = screen.getByRole("button", { name: /Planificar/ });
-    expect(planificar).toBeEnabled();
-
     const proyecto = screen.getByRole("button", { name: "Seleccionar proyecto" });
 
     fireEvent.click(planificar);
     expect(mocks.createProject).not.toHaveBeenCalled();
+    expect(mocks.createStandaloneChat).not.toHaveBeenCalled();
     expect(proyecto.className).toContain("shake-x");
     expect(proyecto.className).toContain("border-ink");
+  });
+
+  it("con un proyecto elegido se puede volver a solo chat", async () => {
+    render(<HomePage />);
+    fireEvent.change(screen.getByLabelText("Mensaje"), { target: { value: "hola" } });
+    await pickCalcSpace();
+    expect(screen.getByRole("button", { name: /Planificar/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Proyecto: Calculadora/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sin proyecto (solo chat)" }));
+
+    expect(screen.getByRole("button", { name: /Enviar/ })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Modo rápido" })).toBeNull();
   });
 
   it("pasa los agentes marcados en el composer al crear el proyecto", async () => {
@@ -189,7 +268,7 @@ describe("Inicio", () => {
       }),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
     await pickCalcSpace();
@@ -213,7 +292,7 @@ describe("Inicio", () => {
 
     render(<HomePage />);
 
-    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
     await pickCalcSpace();
@@ -239,7 +318,7 @@ describe("Inicio", () => {
   it("con la ejecución automática activa crea el proyecto con config.autoRun", async () => {
     render(<HomePage />);
 
-    fireEvent.change(screen.getByLabelText("Objetivo del proyecto"), {
+    fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "una calculadora" },
     });
     await pickCalcSpace();

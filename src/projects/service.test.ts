@@ -12,7 +12,9 @@ import type { WorkspaceManager } from "../workspace/types.js";
 import {
   buildProjectResult,
   createProject,
+  createProjectDraft,
   gatherRepoContext,
+  generatePlan,
   mergeReplan,
   recoverInterrupted,
   recoverInterruptedProjects,
@@ -1252,4 +1254,48 @@ test("modo rápido: el planner lo sabe y la tarea no pasa por checks ni reviewer
   assert.equal(finished.status, "completed");
   const events = await storage.listEvents(project.id);
   assert.equal(events.some((event) => event.type === "checks.completed"), false);
+});
+
+test("adjuntos del objetivo: se guardan, llegan al planner y se enlazan a las tareas", async () => {
+  const storage = new InMemoryStorage();
+  await storage.init();
+  const prompts: string[] = [];
+  const deps: ProjectDeps = {
+    ...baseDeps(storage, fakeWorkspace()),
+    plannerExecute: async (prompt: string) => {
+      prompts.push(prompt);
+      return JSON.stringify({
+        ...planA,
+        tasks: planA.tasks.map((task, index) => ({
+          ...task,
+          attachments: index === 0 ? ["ADJ-1"] : [],
+        })),
+      });
+    },
+  };
+  const notes = "# Requisitos\nUsar tema oscuro";
+
+  const draft = await createProjectDraft(
+    {
+      goal: "crear librería",
+      attachments: [
+        {
+          name: "requisitos.md",
+          type: "markdown",
+          mimeType: "text/markdown",
+          size: Buffer.byteLength(notes),
+          data: Buffer.from(notes).toString("base64"),
+        },
+      ],
+    },
+    deps,
+  );
+  assert.equal(draft.attachments?.length, 1);
+  assert.equal(draft.attachments?.[0]?.name, "requisitos.md");
+
+  const planned = await generatePlan(draft.id, deps);
+  assert.ok(prompts[0]?.includes("Usar tema oscuro"));
+  assert.deepEqual(planned.tasks[0]?.attachmentIds, [draft.attachments?.[0]?.id]);
+  assert.equal(planned.tasks[1]?.attachmentIds, undefined);
+  assert.equal(planned.attachments?.length, 1);
 });

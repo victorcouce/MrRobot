@@ -126,6 +126,9 @@ export interface Project {
   id: string;
   name: string;
   goal: string;
+  title?: string;
+  pinned?: boolean;
+  archivedAt?: string;
   status: ProjectStatus;
   baseRef: string;
   repoPath?: string;
@@ -135,6 +138,8 @@ export interface Project {
   config?: ConfigInfo;
   defaultAllowedAgents?: AgentSpec[];
   brief?: ProjectBrief;
+  /** Adjuntos del objetivo; sin `data` (el contenido no se reenvía en cada lectura). */
+  attachments?: Attachment[];
   createdAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -163,7 +168,7 @@ export interface Attachment {
 export interface ChatMessage {
   id: string;
   chatId: string;
-  projectId: string;
+  projectId?: string;
   role: ChatMessageRole;
   content: string;
   taskIds: string[];
@@ -175,8 +180,11 @@ export interface ChatMessage {
 
 export interface ChatSummary {
   id: string;
-  projectId: string;
+  /** Sin proyecto es un chat suelto. */
+  projectId?: string;
   title: string;
+  pinned?: boolean;
+  archivedAt?: string;
   allowedAgents?: AgentSpec[];
   createdAt: string;
   updatedAt: string;
@@ -220,6 +228,9 @@ export interface ProjectSummary {
   id: string;
   name: string;
   goal: string;
+  title?: string;
+  pinned?: boolean;
+  archivedAt?: string;
   status: ProjectStatus;
   repoPath?: string;
   icon?: string;
@@ -364,9 +375,13 @@ export interface AgentMatrixRow {
 
 export interface SearchResultItem {
   id: string;
-  projectId: string;
-  projectName: string;
+  /** Vacío en los chats sueltos. */
+  projectId?: string;
+  projectName?: string;
   title: string;
+  /** Fragmento del mensaje que coincide, cuando no coincide el título. */
+  snippet?: string;
+  updatedAt?: string;
 }
 
 export interface SearchResults {

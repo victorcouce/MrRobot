@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS projects (
   config JSONB,
   default_allowed_agents JSONB,
   brief JSONB,
+  attachments JSONB,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   started_at TEXT,
@@ -197,11 +198,15 @@ interface ProjectRow {
   repo_path: string | null;
   remote_url: string | null;
   icon: string | null;
+  title: string | null;
+  pinned: boolean | null;
+  archived_at: string | null;
   result_branch: string | null;
   result_commit: string | null;
   config: unknown;
   default_allowed_agents: unknown;
   brief: unknown;
+  attachments: unknown;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -210,10 +215,12 @@ interface ProjectRow {
 
 interface ChatRow {
   id: string;
-  project_id: string;
+  project_id: string | null;
   title: string;
   seq: number;
   allowed_agents: unknown;
+  pinned: boolean | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -221,7 +228,7 @@ interface ChatRow {
 interface ChatMessageRow {
   id: string;
   chat_id: string;
-  project_id: string;
+  project_id: string | null;
   role: ChatMessage["role"];
   content: string;
   task_ids: unknown;
@@ -289,6 +296,9 @@ export class SqlStorage implements Storage {
       "ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_allowed_agents JSONB",
     );
     await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS brief JSONB");
+    await this.db.exec(
+      "ALTER TABLE projects ADD COLUMN IF NOT EXISTS attachments JSONB",
+    );
     await this.db.exec("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS chat_id TEXT");
     await this.db.exec(
       "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachment_ids JSONB",
@@ -299,6 +309,16 @@ export class SqlStorage implements Storage {
     await this.db.exec(
       "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS attachments JSONB",
     );
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS title TEXT");
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS pinned BOOLEAN");
+    await this.db.exec("ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TEXT");
+    await this.db.exec("ALTER TABLE chats ADD COLUMN IF NOT EXISTS pinned BOOLEAN");
+    await this.db.exec("ALTER TABLE chats ADD COLUMN IF NOT EXISTS archived_at TEXT");
+    // Los chats sueltos no tienen proyecto.
+    await this.db.exec("ALTER TABLE chats ALTER COLUMN project_id DROP NOT NULL");
+    await this.db.exec(
+      "ALTER TABLE chat_messages ALTER COLUMN project_id DROP NOT NULL",
+    );
   }
 
   async close(): Promise<void> {}
@@ -307,8 +327,9 @@ export class SqlStorage implements Storage {
     await this.db.query(
       `INSERT INTO projects
         (id, name, goal, status, base_ref, repo_path, remote_url, icon, result_branch, result_commit,
-         config, default_allowed_agents, brief, created_at, updated_at, started_at, finished_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17)
+         config, default_allowed_agents, brief, attachments, created_at, updated_at, started_at, finished_at,
+         title, pinned, archived_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19,$20,$21)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          goal = EXCLUDED.goal,
@@ -322,9 +343,13 @@ export class SqlStorage implements Storage {
          config = EXCLUDED.config,
          default_allowed_agents = EXCLUDED.default_allowed_agents,
          brief = EXCLUDED.brief,
+         attachments = EXCLUDED.attachments,
          updated_at = EXCLUDED.updated_at,
          started_at = EXCLUDED.started_at,
-         finished_at = EXCLUDED.finished_at`,
+         finished_at = EXCLUDED.finished_at,
+         title = EXCLUDED.title,
+         pinned = EXCLUDED.pinned,
+         archived_at = EXCLUDED.archived_at`,
       [
         project.id,
         project.name,
@@ -339,10 +364,14 @@ export class SqlStorage implements Storage {
         toJson(project.config),
         toJson(project.defaultAllowedAgents),
         toJson(project.brief),
+        toJson(project.attachments),
         project.createdAt.toISOString(),
         project.updatedAt.toISOString(),
         iso(project.startedAt),
         iso(project.finishedAt),
+        project.title ?? null,
+        project.pinned ?? null,
+        iso(project.archivedAt),
       ],
     );
 
@@ -489,6 +518,10 @@ export class SqlStorage implements Storage {
     if (row.repo_path) project.repoPath = row.repo_path;
     if (row.remote_url) project.remoteUrl = row.remote_url;
     if (row.icon) project.icon = row.icon;
+    if (row.title) project.title = row.title;
+    if (row.pinned) project.pinned = true;
+    const archivedAt = date(row.archived_at);
+    if (archivedAt) project.archivedAt = archivedAt;
     if (row.result_branch) project.resultBranch = row.result_branch;
     if (row.result_commit) project.resultCommit = row.result_commit;
     const config = fromJson<Project["config"]>(row.config);
@@ -501,6 +534,15 @@ export class SqlStorage implements Storage {
     }
     const brief = fromJson<ProjectBrief>(row.brief);
     if (brief) project.brief = brief;
+    const attachments = fromJson<
+      Array<Omit<Attachment, "createdAt"> & { createdAt: string }>
+    >(row.attachments);
+    if (attachments?.length) {
+      project.attachments = attachments.map((attachment) => ({
+        ...attachment,
+        createdAt: new Date(attachment.createdAt),
+      }));
+    }
     const startedAt = date(row.started_at);
     const finishedAt = date(row.finished_at);
     if (startedAt) project.startedAt = startedAt;
@@ -757,20 +799,27 @@ export class SqlStorage implements Storage {
 
   async saveChat(chat: Chat): Promise<void> {
     await this.db.query(
-      `INSERT INTO chats (id, project_id, title, seq, allowed_agents, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+      `INSERT INTO chats
+        (id, project_id, title, seq, allowed_agents, created_at, updated_at, pinned, archived_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9)
        ON CONFLICT (id) DO UPDATE SET
+         project_id = EXCLUDED.project_id,
          title = EXCLUDED.title,
+         seq = EXCLUDED.seq,
          allowed_agents = EXCLUDED.allowed_agents,
-         updated_at = EXCLUDED.updated_at`,
+         updated_at = EXCLUDED.updated_at,
+         pinned = EXCLUDED.pinned,
+         archived_at = EXCLUDED.archived_at`,
       [
         chat.id,
-        chat.projectId,
+        chat.projectId ?? null,
         chat.title,
         chat.seq,
         toJson(chat.allowedAgents),
         chat.createdAt.toISOString(),
         chat.updatedAt.toISOString(),
+        chat.pinned ?? null,
+        iso(chat.archivedAt),
       ],
     );
   }
@@ -807,15 +856,29 @@ export class SqlStorage implements Storage {
     await this.db.query(`DELETE FROM chats WHERE id = $1`, [id]);
   }
 
+  async setChatMessagesProject(
+    chatId: string,
+    projectId: string | undefined,
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE chat_messages SET project_id = $2 WHERE chat_id = $1`,
+      [chatId, projectId ?? null],
+    );
+  }
+
   private rowToChat(row: ChatRow): Chat {
     const chat: Chat = {
       id: row.id,
-      projectId: row.project_id,
       title: row.title,
       seq: row.seq,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
+
+    if (row.project_id) chat.projectId = row.project_id;
+    if (row.pinned) chat.pinned = true;
+    const archivedAt = date(row.archived_at);
+    if (archivedAt) chat.archivedAt = archivedAt;
 
     const allowedAgents = fromJson<AgentSpec[]>(row.allowed_agents);
     if (allowedAgents) chat.allowedAgents = allowedAgents;
@@ -831,7 +894,7 @@ export class SqlStorage implements Storage {
       [
         message.id,
         message.chatId,
-        message.projectId,
+        message.projectId ?? null,
         message.role,
         message.content,
         toJson(message.taskIds),
@@ -853,12 +916,12 @@ export class SqlStorage implements Storage {
       const message: ChatMessage = {
         id: row.id,
         chatId: row.chat_id,
-        projectId: row.project_id,
         role: row.role,
         content: row.content,
         taskIds: fromJson<string[]>(row.task_ids) ?? [],
         createdAt: new Date(row.created_at),
       };
+      if (row.project_id) message.projectId = row.project_id;
       const attachments = fromJson<Array<Omit<Attachment, "createdAt"> & { createdAt: string }>>(
         row.attachments,
       );

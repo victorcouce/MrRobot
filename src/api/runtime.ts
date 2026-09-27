@@ -1,10 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import type { ConversationDeps } from "../chats/conversation.js";
 import {
   createChat as createChatInService,
+  createStandaloneChat,
   deleteChat as deleteChatInService,
+  deleteChatById as deleteChatByIdInService,
   getChatDetail,
+  getChatDetailById,
+  sendStandaloneMessage,
+  updateChat as updateChatInService,
+  type ChatPatch,
   listAllChats as listAllChatsInService,
   listChats as listChatsInService,
   sendChatMessage as sendChatMessageInService,
@@ -82,6 +90,7 @@ import { checkAgentAvailability } from "./availability.js";
 import {
   createMockDeps,
   createMockWorkspace,
+  mockConversation,
   mockGrill,
   mockTaskInstruction,
   type MockScenario,
@@ -109,6 +118,16 @@ export interface RuntimeOptions {
 }
 
 export class ProjectNotFoundError extends Error {}
+
+/** Recorte de ~120 caracteres alrededor de la coincidencia. */
+export function searchSnippet(content: string, query: string): string {
+  const flat = content.replace(/\s+/g, " ").trim();
+  const index = flat.toLowerCase().indexOf(query);
+  if (index === -1) return flat.slice(0, 120);
+  const start = Math.max(0, index - 40);
+  const end = Math.min(flat.length, index + query.length + 80);
+  return `${start > 0 ? "…" : ""}${flat.slice(start, end)}${end < flat.length ? "…" : ""}`;
+}
 
 /**
  * Ejecutor de un rol de orquestación (planner/reviewer/supervisor/grill). Fija
@@ -373,10 +392,15 @@ export class Runtime {
     messages: GrillMessage[],
     repoPath?: string,
     allowedAgents?: AgentCandidate[],
+    projectId?: string,
   ): Promise<GrillOutcome> {
     if (this.mock) {
       return mockGrill(messages);
     }
+
+    const attachments = projectId
+      ? ((await this.storage.getProject(projectId))?.attachments ?? [])
+      : [];
 
     return runGrill(
       goal,
@@ -386,6 +410,7 @@ export class Runtime {
         maxRetriesPerAgent: this.config.maxRetriesPerAgent,
         ...(this.config.limitRetry ? { limitRetry: this.config.limitRetry } : {}),
         ...(allowedAgents && allowedAgents.length > 0 ? { allowedAgents } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       },
       repoPath,
     );
@@ -399,18 +424,42 @@ export class Runtime {
     }
 
     const projects = await this.storage.listProjects();
-    const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+    const projectNames = new Map(
+      projects.map((p) => [p.id, p.title || p.goal || p.name]),
+    );
 
-    const chats = await this.storage.listAllChats();
-    const matchedChats = chats
-      .filter((chat) => chat.title.toLowerCase().includes(query))
-      .slice(0, 20)
-      .map((chat) => ({
+    const chats = (await this.storage.listAllChats()).filter(
+      (chat) => !chat.archivedAt,
+    );
+    const matchedChats: SearchResults["chats"] = [];
+
+    // Como en ChatGPT: coincide el título o el contenido de algún mensaje, y en
+    // ese caso se enseña el fragmento.
+    for (const chat of chats) {
+      if (matchedChats.length >= 20) break;
+      let snippet: string | undefined;
+
+      if (!chat.title.toLowerCase().includes(query)) {
+        const messages = await this.storage.listChatMessages(chat.id);
+        const hit = messages.find((message) =>
+          message.content.toLowerCase().includes(query),
+        );
+        if (!hit) continue;
+        snippet = searchSnippet(hit.content, query);
+      }
+
+      const projectName = chat.projectId
+        ? projectNames.get(chat.projectId)
+        : undefined;
+      matchedChats.push({
         id: chat.id,
-        projectId: chat.projectId,
-        projectName: projectNames.get(chat.projectId) ?? "",
+        ...(chat.projectId ? { projectId: chat.projectId } : {}),
+        ...(projectName ? { projectName } : {}),
         title: chat.title,
-      }));
+        ...(snippet ? { snippet } : {}),
+        updatedAt: chat.updatedAt.toISOString(),
+      });
+    }
 
     const matchedTasks = projects
       .flatMap((project) =>
@@ -965,6 +1014,106 @@ export class Runtime {
       await this.depsFor(projectId),
     );
     return this.getChat(projectId, chatId);
+  }
+
+  private conversationDeps(): ConversationDeps {
+    if (this.mock) {
+      return { reply: mockConversation };
+    }
+    // Sin proyecto no hay repo: el agente arranca en un directorio neutro para
+    // no inspeccionar el del servidor.
+    return {
+      execute: roleExecutor(tmpdir()),
+      maxRetriesPerAgent: this.config.maxRetriesPerAgent,
+      ...(this.config.limitRetry ? { limitRetry: this.config.limitRetry } : {}),
+    };
+  }
+
+  /** Chat suelto (sin proyecto); si trae mensaje, ya se responde. */
+  async createStandaloneChat(input: CreateChatInput & { allowedAgents?: AgentSpec[] }) {
+    if (input.allowedAgents?.length) assertFileWritingAgent(input.allowedAgents);
+    const deps = this.baseDeps();
+    const chat = await createStandaloneChat(input, deps, input.allowedAgents);
+
+    if (input.message?.trim()) {
+      await sendStandaloneMessage(
+        chat.id,
+        input.message,
+        input.attachments,
+        deps,
+        this.conversationDeps(),
+      );
+    }
+
+    return this.getChatById(chat.id);
+  }
+
+  async getChatById(chatId: string) {
+    const detail = await getChatDetailById(chatId, this.baseDeps());
+    return serializeChatDetail(detail.chat, detail.messages, detail.taskIds);
+  }
+
+  /** Envía al planner si el chat es de un proyecto; si es suelto, conversa. */
+  async sendMessageToChat(
+    chatId: string,
+    content: string,
+    attachments?: CreateChatInput["attachments"],
+  ) {
+    const detail = await getChatDetailById(chatId, this.baseDeps());
+
+    if (detail.chat.projectId) {
+      return this.sendChatMessage(detail.chat.projectId, chatId, content, attachments);
+    }
+
+    await sendStandaloneMessage(
+      chatId,
+      content,
+      attachments,
+      this.baseDeps(),
+      this.conversationDeps(),
+    );
+    return this.getChatById(chatId);
+  }
+
+  async updateChat(chatId: string, patch: ChatPatch) {
+    const chat = await updateChatInService(chatId, patch, this.baseDeps());
+    return this.getChatById(chat.id);
+  }
+
+  async deleteChatById(chatId: string) {
+    await deleteChatByIdInService(chatId, this.baseDeps());
+    return { id: chatId, deleted: true };
+  }
+
+  /** Renombrar, fijar y archivar desde la barra lateral. */
+  async updateProject(
+    projectId: string,
+    patch: { title?: string | null; pinned?: boolean; archived?: boolean },
+  ) {
+    const project = await this.mustGetProject(projectId);
+    const updated: Project = { ...project };
+
+    if (patch.title !== undefined) {
+      const title = patch.title?.trim();
+      if (title) updated.title = title;
+      else delete updated.title;
+    }
+    if (patch.pinned !== undefined) {
+      if (patch.pinned) updated.pinned = true;
+      else delete updated.pinned;
+    }
+    if (patch.archived !== undefined) {
+      if (patch.archived) updated.archivedAt = project.archivedAt ?? new Date();
+      else delete updated.archivedAt;
+    }
+
+    await this.storage.saveProject(updated);
+    await emitProjectEvent(this.storage, projectId, "project.updated", undefined, {
+      ...(patch.title !== undefined ? { title: updated.title ?? null } : {}),
+      ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+      ...(patch.archived !== undefined ? { archived: patch.archived } : {}),
+    });
+    return serializeSummary(updated);
   }
 
   async updateChatAllowedAgents(

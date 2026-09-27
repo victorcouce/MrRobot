@@ -108,3 +108,33 @@ test("grill: el número de ronda crece con el historial", async () => {
   if (outcome.status !== "questions") return;
   assert.match(outcome.message, /Ronda 2/);
 });
+
+test("runGrill: los adjuntos del objetivo llegan al prompt", async () => {
+  const notes = "# Requisitos\nUsar tema oscuro";
+  let prompt = "";
+
+  await runGrill(
+    "app",
+    [],
+    {
+      attachments: [
+        {
+          id: "att-1",
+          name: "requisitos.md",
+          type: "markdown",
+          mimeType: "text/markdown",
+          size: Buffer.byteLength(notes),
+          data: Buffer.from(notes).toString("base64"),
+          createdAt: new Date(),
+        },
+      ],
+      execute: async (received) => {
+        prompt = received;
+        return JSON.stringify({ done: true, summary: "Objetivo:\n- app" });
+      },
+    },
+  );
+
+  assert.ok(prompt.includes("requisitos.md"));
+  assert.ok(prompt.includes("Usar tema oscuro"));
+});

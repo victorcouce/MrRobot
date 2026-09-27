@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { clsx } from "../../lib/cx";
 import type {
+  Attachment,
   GrillMessage,
   GrillQuestion,
   GrillResponse,
@@ -13,6 +14,7 @@ import type {
 import { Block, BlockContent, BlockFooter, BlockHeader } from "../ui/Block";
 import { Button } from "../ui/Button";
 import { RobotAvatar } from "../ui/Chip";
+import { PaperclipIcon } from "../ui/icons";
 import { PlanningState } from "./PlanningState";
 
 type Phase = "loading" | "asking" | "done" | "error";
@@ -43,13 +45,32 @@ function displayOptions(question: GrillQuestion): string[] {
   return options.length > 0 ? [recommended, ...options] : options;
 }
 
-function UserBubble({ children }: { children: React.ReactNode }) {
+function UserBubble({
+  children,
+  attachments,
+}: {
+  children: React.ReactNode;
+  attachments?: Attachment[] | undefined;
+}) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[560px] rounded-[18px_18px_4px_18px] bg-user-bubble px-4 py-[11px]">
         <p className="whitespace-pre-wrap text-[15px] leading-normal text-ink">
           {children}
         </p>
+        {attachments && attachments.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {attachments.map((attachment) => (
+              <li
+                key={attachment.id}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-[8px] border border-line bg-surface px-2 py-1 text-[12.5px] text-ink-2"
+              >
+                <PaperclipIcon />
+                <span className="truncate">{attachment.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -90,6 +111,7 @@ export function GrillThread({
   const [generating, setGenerating] = useState(false);
 
   const goal = project.goal;
+  const projectId = project.id;
   const repoPath = project.repoPath;
   const allowedAgents = project.defaultAllowedAgents;
   const planReady = project.tasks.length > 0;
@@ -126,6 +148,7 @@ export function GrillThread({
     try {
       const response = await api.grill({
         goal,
+        projectId,
         messages: [],
         ...(repoPath ? { repoPath } : {}),
         ...(allowedAgents && allowedAgents.length > 0 ? { allowedAgents } : {}),
@@ -137,7 +160,7 @@ export function GrillThread({
       );
       setPhase("error");
     }
-  }, [goal, repoPath, allowedAgents, applyResponse]);
+  }, [goal, projectId, repoPath, allowedAgents, applyResponse]);
 
   useEffect(() => {
     // Solo la primera carga: el proyecto se refresca con cada evento y no debe
@@ -166,6 +189,7 @@ export function GrillThread({
     try {
       const response = await api.grill({
         goal,
+        projectId,
         messages: history,
         ...(repoPath ? { repoPath } : {}),
         ...(allowedAgents && allowedAgents.length > 0 ? { allowedAgents } : {}),
@@ -175,7 +199,7 @@ export function GrillThread({
       setError(err instanceof Error ? err.message : "Error en la entrevista");
       setPhase("error");
     }
-  }, [rounds, roundMessage, questions, answers, goal, repoPath, allowedAgents, applyResponse]);
+  }, [rounds, roundMessage, questions, answers, goal, projectId, repoPath, allowedAgents, applyResponse]);
 
   const goBackToQuestions = useCallback(() => {
     setRounds((previous) => previous.slice(0, -1));
@@ -219,7 +243,7 @@ export function GrillThread({
 
   return (
     <div className="flex w-full flex-col gap-7">
-      <UserBubble>{goal}</UserBubble>
+      <UserBubble attachments={project.attachments}>{goal}</UserBubble>
 
       {rounds.map((round, index) => (
         <div key={index} className="flex flex-col gap-3">
@@ -463,13 +487,15 @@ export function GrillThread({
 export function GrillTranscript({
   goal,
   brief,
+  attachments,
 }: {
   goal: string;
   brief?: ProjectBrief | undefined;
+  attachments?: Attachment[] | undefined;
 }) {
   return (
     <div className="flex w-full flex-col gap-7">
-      <UserBubble>{goal}</UserBubble>
+      <UserBubble attachments={attachments}>{goal}</UserBubble>
 
       {brief?.rounds.map((round, index) => (
         <div key={index} className="flex flex-col gap-3">

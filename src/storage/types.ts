@@ -71,6 +71,9 @@ export interface Storage {
   listAllChats(): Promise<Chat[]>;
   deleteChat(id: string): Promise<void>;
 
+  /** Al mover un chat de proyecto (o sacarlo de él) sus mensajes lo siguen. */
+  setChatMessagesProject(chatId: string, projectId: string | undefined): Promise<void>;
+
   appendChatMessage(message: ChatMessage): Promise<void>;
   listChatMessages(chatId: string): Promise<ChatMessage[]>;
 

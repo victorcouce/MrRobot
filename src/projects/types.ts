@@ -1,4 +1,4 @@
-import type { AgentSpec } from "../agents/types.js";
+import type { AgentSpec, Attachment } from "../agents/types.js";
 import type { OrchestratorConfig } from "../config/types.js";
 import type { Task } from "../tasks/types.js";
 
@@ -33,6 +33,11 @@ export interface Project {
   name: string;
   goal: string;
 
+  /** Nombre que el usuario le pone en la barra lateral; si falta se usa el objetivo. */
+  title?: string;
+  pinned?: boolean;
+  archivedAt?: Date;
+
   status: ProjectStatus;
 
   baseRef: string;
@@ -52,6 +57,9 @@ export interface Project {
 
   /** Entrevista de afinado con la que se generó el plan inicial. */
   brief?: ProjectBrief;
+
+  /** Archivos adjuntos al objetivo al crear el proyecto. */
+  attachments?: Attachment[];
 
   createdAt: Date;
   updatedAt: Date;

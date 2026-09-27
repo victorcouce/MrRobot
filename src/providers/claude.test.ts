@@ -39,6 +39,8 @@ test("el worker puede escribir en su worktree", () => {
       "--disable-slash-commands",
       "--permission-mode",
       "acceptEdits",
+      "--allowedTools",
+      "Bash(npm:*),Bash(npx:*),Bash(pnpm:*),Bash(yarn:*),Bash(node:*),Bash(tsc:*)",
       "--model",
       "sonnet",
       "--output-format",
@@ -70,6 +72,12 @@ test("el modo de permisos se puede subir por entorno", () => {
 test("un modo inválido cae en el valor por defecto", () => {
   withEnv("yolo", () => {
     assert.equal(claudePermissionMode(undefined), "acceptEdits");
+  });
+});
+
+test("bypassPermissions no necesita allowlist", () => {
+  withEnv("bypassPermissions", () => {
+    assert.ok(!claudeArgs("haz X").includes("--allowedTools"));
   });
 });
 

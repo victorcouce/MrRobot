@@ -2,7 +2,25 @@
   "permissions": {
     "allow": [
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(kill -9 8097)",
+      "Bash(curl -s http://localhost:4000/health)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(grep -n \"^export\\\\|^  [a-zA-Z]*\\(.*{$\\\\|^  async [a-zA-Z]*\" src/projects/service.ts)",
+      "Bash(npx tsc *)",
+      "Bash(npm test *)",
+      "Bash(python3 -)",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs npx tsx --test --test-isolation=none --test-name-pattern=\"chat suelto|renombrar, fijar|búsqueda encuentra|chats\" src/api/api.test.ts)",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs timeout 90 npx tsx --test --test-isolation=none --test-name-pattern=\"chat suelto\" src/api/api.test.ts)",
+      "Read(//tmp/claude-501/**)",
+      "Bash(pkill -f \"test-name-pattern=chat suelto\")",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs npx tsx --test --test-isolation=none src/storage/storage.test.ts)",
+      "Bash(git rm *)",
+      "Bash(python3 - *)",
+      "Bash(npx vitest *)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)"
     ]
   }
 }

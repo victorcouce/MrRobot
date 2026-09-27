@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderPlus } from "lucide-react";
+import { Check, ChevronDown, FolderPlus, MessageCircle } from "lucide-react";
 import { clsx } from "@/lib/cx";
 import { spaceIcon } from "@/lib/space-icons";
 import type { Space } from "@/lib/types";
@@ -11,6 +11,10 @@ interface SpacePickerProps {
   selected: Space | null;
   onSelect: (space: Space) => void;
   onCreateNew: () => void;
+  /** Vuelve a «sin proyecto»: el mensaje abre un chat suelto. */
+  onClear?: () => void;
+  /** Se abre solo al llegar desde «Nuevo proyecto». */
+  autoOpen?: boolean;
   /** Resalta el botón cuando se intenta planificar sin proyecto. */
   invalid?: boolean;
   shake?: boolean;
@@ -22,11 +26,17 @@ export function SpacePicker({
   selected,
   onSelect,
   onCreateNew,
+  onClear,
+  autoOpen,
   invalid,
   shake,
   onShakeEnd,
 }: SpacePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpen) setIsOpen(true);
+  }, [autoOpen]);
   const [query, setQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +131,20 @@ export function SpacePicker({
             <FolderPlus className="h-4 w-4 shrink-0" aria-hidden />
             Nuevo proyecto
           </button>
+
+          {onClear && selected && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                onClear();
+              }}
+              className="focus-ring flex h-[38px] w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] text-ink hover:bg-sidebar"
+            >
+              <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+              Sin proyecto (solo chat)
+            </button>
+          )}
 
           <ul className="max-h-[280px] overflow-y-auto">
             {visible.map((space) => {

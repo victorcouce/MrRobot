@@ -70,7 +70,7 @@ export function ThreadHeader({
     <div className="shrink-0 border-b border-line bg-surface px-[28px] pr-5">
       <div className="flex h-14 items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-2.5 text-[13.5px]">
-          <span className="truncate text-ink-4">{project.name}</span>
+          <span className="truncate text-ink-4">{project.title || project.name}</span>
           <span className="text-line-strong">/</span>
           <span className="truncate font-semibold text-ink">
             {chatName ?? "Chat"}

@@ -9,31 +9,40 @@ export function LayoutContent({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  const goToNewProject = useCallback(() => {
+  const goToNewChat = useCallback(() => {
     router.push("/");
   }, [router]);
 
+  const goToNewProject = useCallback(() => {
+    router.push("/?nuevo=proyecto");
+  }, [router]);
+
   useEffect(() => {
+    // ⌘N y ⌘⇧O (el atajo de ChatGPT) abren un chat nuevo.
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "n") {
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if ((mod && !event.shiftKey && key === "n") || (mod && event.shiftKey && key === "o")) {
         event.preventDefault();
-        goToNewProject();
+        goToNewChat();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [goToNewProject]);
+  }, [goToNewChat]);
 
   return (
     <>
       <AppShell
+        onNewChat={goToNewChat}
         onNewProject={goToNewProject}
         onOpenSearch={() => setPaletteOpen(true)}
       >
         {children}
       </AppShell>
       <CommandPalette
+        onNewChat={goToNewChat}
         onNewProject={goToNewProject}
         open={paletteOpen}
         onOpenChange={setPaletteOpen}

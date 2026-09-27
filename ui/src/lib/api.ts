@@ -29,6 +29,29 @@ import type {
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4000";
 
+export interface OutgoingAttachment {
+  name: string;
+  type: "image" | "markdown";
+  mimeType: string;
+  size: number;
+  data: string;
+}
+
+export interface ChatPatch {
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  /** `null` saca el chat de su proyecto. */
+  projectId?: string | null;
+}
+
+export interface ProjectPatch {
+  /** `null` vuelve a mostrar el objetivo como nombre. */
+  title?: string | null;
+  pinned?: boolean;
+  archived?: boolean;
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -77,11 +100,14 @@ export const api = {
 
   listSpaces: () => request<Space[]>("/api/spaces"),
 
-  createSpace: (input: { name: string; icon: string; path: string }) =>
-    request<Space>("/api/spaces", {
+  createSpace: async (input: { name: string; icon: string; path: string }) => {
+    const space = await request<Space>("/api/spaces", {
       method: "POST",
       body: JSON.stringify(input),
-    }),
+    });
+    notifyProjectsChanged();
+    return space;
+  },
 
   createProject: (input: {
     goal: string;
@@ -91,6 +117,13 @@ export const api = {
     remoteUrl?: string;
     config?: Record<string, unknown>;
     defaultAllowedAgents?: AgentSpec[];
+    attachments?: Array<{
+      name: string;
+      type: "image" | "markdown";
+      mimeType: string;
+      size: number;
+      data: string;
+    }>;
   }) =>
     request<Project>("/api/projects", {
       method: "POST",
@@ -304,6 +337,62 @@ export const api = {
     return result;
   },
 
+  // Chats por id: sirven igual para los de proyecto y para los sueltos.
+  createStandaloneChat: async (input: {
+    message?: string;
+    attachments?: OutgoingAttachment[];
+    allowedAgents?: AgentSpec[];
+  }) => {
+    const chat = await request<ChatDetail>("/api/chats", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    notifyProjectsChanged();
+    return chat;
+  },
+
+  getChatById: (chatId: string) => request<ChatDetail>(`/api/chats/${chatId}`),
+
+  sendMessageToChat: async (
+    chatId: string,
+    content: string,
+    attachments?: OutgoingAttachment[],
+  ) => {
+    const chat = await request<ChatDetail>(`/api/chats/${chatId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content, attachments }),
+    });
+    notifyProjectsChanged();
+    return chat;
+  },
+
+  updateChat: async (chatId: string, patch: ChatPatch) => {
+    const chat = await request<ChatDetail>(`/api/chats/${chatId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    notifyProjectsChanged();
+    return chat;
+  },
+
+  deleteChatById: async (chatId: string) => {
+    const result = await request<{ id: string; deleted: boolean }>(
+      `/api/chats/${chatId}`,
+      { method: "DELETE" },
+    );
+    notifyProjectsChanged();
+    return result;
+  },
+
+  updateProject: async (id: string, patch: ProjectPatch) => {
+    const project = await request<ProjectSummary>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    notifyProjectsChanged();
+    return project;
+  },
+
   activity: (limit = 100) =>
     request<ProjectEvent[]>(`/api/activity?limit=${limit}`),
 
@@ -330,6 +419,7 @@ export const api = {
     messages: GrillMessage[];
     repoPath?: string;
     allowedAgents?: AgentSpec[];
+    projectId?: string;
   }) =>
     request<GrillResponse>("/api/grill", {
       method: "POST",

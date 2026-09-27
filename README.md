@@ -215,8 +215,10 @@ MRROBOT_CLAUDE_PERMISSION_MODE=acceptEdits   # permisos del CLI de Claude al eje
 `MRROBOT_CLAUDE_PERMISSION_MODE` (`default`, `acceptEdits`, `bypassPermissions`
 o `plan`) controla el `--permission-mode` con el que se lanza `claude -p` en las
 tareas de código. Por defecto `acceptEdits`: el agente escribe en su worktree
-sin preguntar, pero no ejecuta comandos. Súbelo a `bypassPermissions` si tus
-tareas también necesitan instalar dependencias o lanzar tests desde el agente.
+sin preguntar y puede ejecutar `npm`, `npx`, `pnpm`, `yarn`, `node` y `tsc`
+(`--allowedTools`; se reemplaza con `MRROBOT_CLAUDE_ALLOWED_TOOLS`, lista
+separada por comas). Cualquier otro comando se deniega. Súbelo a
+`bypassPermissions` si las tareas necesitan más.
 Con `default`, en modo no interactivo toda edición se deniega y las tareas
 fallan con "no creó ni modificó ningún archivo".
 

@@ -1,193 +1,131 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
-import { useAppInfo, useProjects } from "../../lib/hooks";
-import type { ProjectSummary } from "../../lib/types";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Menu, SquarePen } from "lucide-react";
 import { clsx } from "../../lib/cx";
-import { spaceIcon } from "../../lib/space-icons";
-import { PROJECT_STATUS } from "../../lib/status";
-import { DOT_CLASSES } from "../ui/Badge";
-import { Tooltip } from "../ui/Tooltip";
+import { usePersistentState } from "../../lib/sidebar";
+import { Sidebar } from "../sidebar/Sidebar";
+import { SidebarRail } from "../sidebar/SidebarRail";
 
-const NAV_ICONS: Record<string, ReactNode> = {
-  agents: (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <circle cx="5.5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="10.5" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M1.5 13.5c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5M6.5 13.5c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  ),
-  activity: (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M2 8h2l1.5-4 3 8L10 8h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  settings: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
-      <circle cx="15" cy="6" r="2" />
-      <circle cx="9" cy="12" r="2" />
-      <circle cx="17" cy="18" r="2" />
-    </svg>
-  ),
-};
+const TOP_BUTTON_CLASS =
+  "focus-ring flex h-9 w-9 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink";
 
-const SEARCH_ICON = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-    <circle cx="11" cy="11" r="7" />
-    <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-  </svg>
-);
+/** Cierra el cajón móvil cuando cambia la ruta o el chat abierto. */
+function CloseOnNavigate({ onNavigate }: { onNavigate: () => void }) {
+  const pathname = usePathname();
+  const chat = useSearchParams().get("chat");
 
-function ProjectIcon({ name }: { name: string }) {
-  const Icon = spaceIcon(name);
+  useEffect(() => {
+    onNavigate();
+  }, [pathname, chat, onNavigate]);
 
-  return <Icon className="h-[18px] w-[18px]" aria-hidden />;
-}
-
-function ProjectRail({
-  pathname,
-  projects,
-}: {
-  pathname: string;
-  projects: ProjectSummary[];
-}) {
-  return (
-    <nav aria-label="Proyectos" className="flex flex-col items-center gap-1.5">
-      {projects.map((project) => {
-        const isActive = pathname === `/projects/${project.id}`;
-        const dotColor = DOT_CLASSES[PROJECT_STATUS[project.status].color];
-        return (
-          <Tooltip key={project.id} label={project.name}>
-            <Link
-              href={`/projects/${project.id}`}
-              aria-label={project.name}
-              className={clsx(
-                "focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn border bg-surface text-ink-2 hover:border-ink hover:text-ink",
-                isActive ? "border-ink" : "border-line",
-              )}
-            >
-              {project.icon ? (
-                <ProjectIcon name={project.icon} />
-              ) : (
-                <span className="text-xs font-semibold">
-                  {project.name.substring(0, 2).toUpperCase()}
-                </span>
-              )}
-              <span
-                className={clsx("h-2 w-2 rounded-full absolute bottom-0 right-0", dotColor)}
-              />
-            </Link>
-          </Tooltip>
-        );
-      })}
-    </nav>
-  );
-}
-
-function ProjectNav({ pathname }: { pathname: string }) {
-  const { projects } = useProjects();
-
-  return <ProjectRail pathname={pathname} projects={projects} />;
+  return null;
 }
 
 export function AppShell({
   children,
+  onNewChat,
   onNewProject,
   onOpenSearch,
 }: {
   children: ReactNode;
+  onNewChat?: () => void;
   onNewProject?: () => void;
   onOpenSearch?: () => void;
 }) {
-  const pathname = usePathname();
-  const { info } = useAppInfo();
-  const anyAgentConnected = (info?.agents ?? []).some((agent) => agent.connected);
+  const [collapsed, setCollapsed] = usePersistentState("mrrobot.sidebar.collapsed", false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      <aside className="flex w-16 shrink-0 flex-col overflow-hidden whitespace-nowrap border-r border-line bg-sidebar pt-3">
-        <div className="flex h-12 w-16 items-center justify-center gap-2 px-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-btn bg-[#E1DFD8]">
-            <Image
-              src="/logo.png"
-              alt="MrRobot"
-              width={32}
-              height={32}
-              priority
-              className="h-8 w-8 shrink-0"
-            />
-          </div>
-        </div>
+      <Suspense fallback={null}>
+        <CloseOnNavigate onNavigate={closeDrawer} />
+      </Suspense>
 
-        <div className="mb-1.5 flex w-16 flex-col items-center gap-1.5 px-2">
-          <Tooltip label="Nuevo proyecto">
-            <button
-              onClick={() => onNewProject?.()}
-              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink hover:bg-muted"
-              aria-label="Nuevo proyecto"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip label="Buscar">
-            <button
-              onClick={() => onOpenSearch?.()}
-              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink hover:bg-muted"
-              aria-label="Buscar"
-            >
-              {SEARCH_ICON}
-            </button>
-          </Tooltip>
-          <div className="h-px w-6 bg-line-strong" />
-        </div>
+      {drawerOpen && (
+        <div
+          className="sidebar-fade fixed inset-0 z-40 bg-ink/30 md:hidden"
+          onClick={closeDrawer}
+          aria-hidden
+        />
+      )}
 
-        <div className="w-16 flex-1 overflow-y-auto px-2">
-          <div className="mb-1.5" />
-          <ProjectNav pathname={pathname} />
-        </div>
-
-        <div className="flex w-16 flex-col items-center gap-1.5 px-2 py-3">
-          <div className="h-px w-6 bg-line-strong" />
-          <Tooltip label="Agentes">
-            <Link
-              href="/agents"
-              aria-label="Agentes"
-              className="focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-            >
-              {NAV_ICONS.agents}
-              {anyAgentConnected && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-success" />
-              )}
-            </Link>
-          </Tooltip>
-          <Tooltip label="Actividad">
-            <Link
-              href="/activity"
-              aria-label="Actividad"
-              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-            >
-              {NAV_ICONS.activity}
-            </Link>
-          </Tooltip>
-          <Tooltip label="Ajustes">
-            <Link
-              href="/settings"
-              aria-label="Ajustes"
-              className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn text-ink-3 hover:bg-muted hover:text-ink-2"
-            >
-              {NAV_ICONS.settings}
-            </Link>
-          </Tooltip>
-        </div>
+      <aside
+        aria-label="Barra lateral"
+        className={clsx(
+          "fixed inset-y-0 left-0 z-50 w-[272px] max-w-[85vw] shrink-0 border-r border-line bg-sidebar transition-transform duration-200 ease-out",
+          "md:static md:z-auto md:w-[260px] md:max-w-none md:translate-x-0 md:transition-none",
+          drawerOpen ? "translate-x-0 shadow-modal" : "-translate-x-full",
+          collapsed && "md:hidden",
+        )}
+      >
+        <Suspense fallback={null}>
+          <Sidebar
+            onNewChat={onNewChat}
+            onNewProject={onNewProject}
+            onOpenSearch={onOpenSearch}
+            onNavigate={closeDrawer}
+            onCollapse={() => {
+              setDrawerOpen(false);
+              setCollapsed(true);
+            }}
+          />
+        </Suspense>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      {collapsed && (
+        <aside
+          aria-label="Barra lateral contraída"
+          className="hidden w-16 shrink-0 border-r border-line bg-sidebar md:block"
+        >
+          <SidebarRail
+            onExpand={() => setCollapsed(false)}
+            onNewChat={onNewChat}
+            onOpenSearch={onOpenSearch}
+          />
+        </aside>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-bg px-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Abrir barra lateral"
+            className={TOP_BUTTON_CLASS}
+          >
+            <Menu className="h-[18px] w-[18px]" aria-hidden />
+          </button>
+          <Link href="/" aria-label="MrRobot, inicio" className="focus-ring ml-1 flex items-center gap-2 rounded-btn">
+            <Image src="/logo.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+            <span className="font-display text-[14px] font-semibold text-ink">MrRobot</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => onNewChat?.()}
+            aria-label="Nuevo chat"
+            title="Nuevo chat"
+            className={clsx(TOP_BUTTON_CLASS, "ml-auto")}
+          >
+            <SquarePen className="h-[18px] w-[18px]" aria-hidden />
+          </button>
+        </div>
+
+        <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+      </div>
     </div>
   );
 }

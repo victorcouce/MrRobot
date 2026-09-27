@@ -3,10 +3,8 @@
 import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
 import { AttachmentUpload } from "../AttachmentUpload";
-import { ChatAgentSelector } from "../ChatAgentSelector";
 import { LockIcon, PaperclipIcon, SendIcon } from "../ui/icons";
 import { clsx } from "@/lib/cx";
-import type { AgentAvailability, AgentSpec } from "@/lib/types";
 
 interface ProcessedAttachment {
   id: string;
@@ -24,11 +22,11 @@ interface ThreadComposerProps {
     attachments?: ProcessedAttachment[],
   ) => Promise<void>;
   onPauseAndWrite?: (() => Promise<void>) | (() => void);
-  allowedAgents?: AgentSpec[];
-  agentAvailability?: AgentAvailability[];
-  onUpdateAllowedAgents?: (agents: AgentSpec[]) => Promise<void>;
   disabled?: boolean;
   loading?: boolean;
+  /** Nota bajo el composer; por defecto la del planner. */
+  hint?: string;
+  placeholder?: string;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -45,11 +43,10 @@ export function ThreadComposer({
   status,
   onSendMessage,
   onPauseAndWrite,
-  allowedAgents,
-  agentAvailability = [],
-  onUpdateAllowedAgents,
   disabled,
   loading,
+  hint = "Cada mensaje pasa por el planner. Las tareas hechas nunca se reescriben.",
+  placeholder = "Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)",
 }: ThreadComposerProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -84,15 +81,6 @@ export function ThreadComposer({
   const handleRemoveAttachment = useCallback((id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
-
-  const handleUpdateAgents = useCallback(
-    async (agents: AgentSpec[]) => {
-      if (onUpdateAllowedAgents) {
-        await onUpdateAllowedAgents(agents);
-      }
-    },
-    [onUpdateAllowedAgents],
-  );
 
   if (isRunning) {
     return (
@@ -160,7 +148,7 @@ export function ThreadComposer({
               e.currentTarget.form?.requestSubmit();
             }
           }}
-          placeholder="Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
+          placeholder={placeholder}
           disabled={disabled || submitting}
           rows={2}
           className="h-[44px] w-full resize-none border-0 bg-transparent text-[15px] leading-normal text-ink outline-none placeholder-ink-4 disabled:opacity-50"
@@ -183,13 +171,6 @@ export function ThreadComposer({
               <PaperclipIcon />
               Adjuntar
             </button>
-
-            <ChatAgentSelector
-              allowedAgents={allowedAgents}
-              agentAvailability={agentAvailability}
-              onSelect={handleUpdateAgents}
-              disabled={disabled || submitting}
-            />
           </div>
 
           <button
@@ -210,9 +191,7 @@ export function ThreadComposer({
         </div>
       </form>
 
-      <span className="text-[11.5px] text-ink-4">
-        Cada mensaje pasa por el planner. Las tareas hechas nunca se reescriben.
-      </span>
+      <span className="text-[11.5px] text-ink-4">{hint}</span>
     </Shell>
   );
 }

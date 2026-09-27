@@ -24,6 +24,38 @@ const DEFAULT_WRITE_PERMISSION_MODE = "acceptEdits";
 
 const PERMISSION_MODE_ENV = "MRROBOT_CLAUDE_PERMISSION_MODE";
 
+/**
+ * Comandos que el worker puede ejecutar en `acceptEdits` sin preguntar. En `-p`
+ * un comando fuera de la allowlist se deniega y el agente se queda pidiendo
+ * aprobación en texto ("¿puedo ejecutar `npm install`?") sin que nadie responda.
+ * Solo gestores de paquetes y lanzadores de tests/build: nada de `rm`, `curl`
+ * ni `git push`. Se puede reemplazar con MRROBOT_CLAUDE_ALLOWED_TOOLS (lista
+ * separada por comas; vacío para no permitir ninguno).
+ */
+const DEFAULT_ALLOWED_TOOLS = [
+  "Bash(npm:*)",
+  "Bash(npx:*)",
+  "Bash(pnpm:*)",
+  "Bash(yarn:*)",
+  "Bash(node:*)",
+  "Bash(tsc:*)",
+];
+
+const ALLOWED_TOOLS_ENV = "MRROBOT_CLAUDE_ALLOWED_TOOLS";
+
+export function claudeAllowedTools(): string[] {
+  const override = process.env[ALLOWED_TOOLS_ENV];
+
+  if (override === undefined) {
+    return DEFAULT_ALLOWED_TOOLS;
+  }
+
+  return override
+    .split(",")
+    .map((tool) => tool.trim())
+    .filter(Boolean);
+}
+
 let warnedInvalidMode = false;
 
 /**
@@ -77,6 +109,15 @@ export function claudeArgs(
 
   if (permissionMode) {
     args.push("--permission-mode", permissionMode);
+  }
+
+  // `bypassPermissions` ya lo permite todo; `plan` no ejecuta nada.
+  if (permissionMode === "acceptEdits" || permissionMode === "default") {
+    const allowed = claudeAllowedTools();
+
+    if (allowed.length > 0) {
+      args.push("--allowedTools", allowed.join(","));
+    }
   }
 
   if (model) {

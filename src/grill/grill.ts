@@ -1,7 +1,8 @@
 import { errorMessage } from "../agents/fallback.js";
 import type { LimitRetryPolicy } from "../agents/limit-retry.js";
+import { renderAttachments } from "../agents/attachments.js";
 import { runRoleAgent } from "../agents/role.js";
-import type { AgentCandidate } from "../agents/types.js";
+import type { AgentCandidate, Attachment } from "../agents/types.js";
 import { defaultConfig } from "../config/index.js";
 import type { TaskComplexity } from "../tasks/types.js";
 import { grillResponseSchema } from "./schema.js";
@@ -11,6 +12,8 @@ export interface GrillDeps {
   execute?: (prompt: string, agent: AgentCandidate) => Promise<string>;
   /** Agentes permitidos (del chat o del proyecto). Vacío = sin restricción. */
   allowedAgents?: AgentCandidate[];
+  /** Adjuntos del objetivo: el entrevistador los tiene en cuenta al preguntar. */
+  attachments?: Attachment[];
   complexity?: TaskComplexity;
   maxAttempts?: number;
   /** Reintentos por agente antes de pasar al siguiente de la cadena. */
@@ -101,6 +104,7 @@ function buildPrompt(
   round: number,
   feedback?: string,
   target?: string,
+  attachments: Attachment[] = [],
 ): string {
   const parts: string[] = [
     GRILLING_SKILL,
@@ -114,6 +118,14 @@ function buildPrompt(
       "",
       `CARPETA DEL PROYECTO: ${target}`,
       "Es un proyecto nuevo en su propia carpeta; no comparte código con el repositorio actual.",
+    );
+  }
+
+  if (attachments.length > 0) {
+    parts.push(
+      ...renderAttachments(attachments, { refs: false }),
+      "",
+      "El usuario adjuntó estos archivos al objetivo: no le preguntes lo que ya responden.",
     );
   }
 
@@ -198,7 +210,7 @@ export async function runGrill(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const raw = await runRoleAgent(
-      buildPrompt(goal, messages, round, feedback, target),
+      buildPrompt(goal, messages, round, feedback, target, deps.attachments),
       "grill",
       {
         ...(deps.execute ? { execute: deps.execute } : {}),

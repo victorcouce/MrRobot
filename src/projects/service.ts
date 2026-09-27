@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { access, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { pickAttachments } from "../agents/attachments.js";
+import { pickAttachments, resolveAttachmentRefs } from "../agents/attachments.js";
 import { AgentHealth } from "../agents/health.js";
 import { agentKey, assertFileWritingAgent } from "../agents/selector.js";
 import type { AgentCandidate, AgentSpec, Attachment } from "../agents/types.js";
@@ -60,6 +60,14 @@ export interface CreateProjectInput {
   remoteUrl?: string;
   config?: OrchestratorConfig;
   defaultAllowedAgents?: AgentSpec[];
+  /** Adjuntos del objetivo: el planner los ve y las tareas pueden referenciarlos. */
+  attachments?: Array<{
+    name: string;
+    type: "image" | "markdown";
+    mimeType: string;
+    size: number;
+    data: string;
+  }>;
 }
 
 export interface ProjectRoundResult {
@@ -109,16 +117,44 @@ function deriveName(goal: string): string {
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
 }
 
-function planToTasks(plan: GeneratedPlan): Task[] {
-  return plan.tasks.map((task) => ({
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: "todo",
-    type: task.type,
-    complexity: task.complexity,
-    dependsOn: task.dependsOn,
-    acceptanceCriteria: task.acceptanceCriteria,
+function planToTasks(
+  plan: GeneratedPlan,
+  attachments: Attachment[] = [],
+): Task[] {
+  return plan.tasks.map((task) => {
+    const mapped: Task = {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: "todo",
+      type: task.type,
+      complexity: task.complexity,
+      dependsOn: task.dependsOn,
+      acceptanceCriteria: task.acceptanceCriteria,
+    };
+
+    const attachmentIds = resolveAttachmentRefs(
+      task.attachments ?? [],
+      attachments,
+    );
+
+    if (attachmentIds.length > 0) {
+      mapped.attachmentIds = attachmentIds;
+    }
+
+    return mapped;
+  });
+}
+
+function toAttachments(input: CreateProjectInput["attachments"]): Attachment[] {
+  return (input ?? []).map((attachment) => ({
+    id: randomUUID(),
+    name: attachment.name,
+    type: attachment.type,
+    mimeType: attachment.mimeType,
+    size: attachment.size,
+    data: attachment.data,
+    createdAt: new Date(),
   }));
 }
 
@@ -232,9 +268,13 @@ export async function createProject(
   const workspace = deps.workspace ?? gitWorkspaceManager;
 
   const baseRef = await workspace.resolveBaseRef();
+  const attachments = toAttachments(input.attachments);
   const plan = await planProject(
     input.goal,
-    input.config?.fastMode ? { fastMode: true } : {},
+    {
+      ...(input.config?.fastMode ? { fastMode: true } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+    },
     {
       execute: deps.plannerExecute,
       ...(input.defaultAllowedAgents?.length
@@ -253,11 +293,12 @@ export async function createProject(
     goal: input.goal,
     status: "ready",
     baseRef,
-    tasks: planToTasks(plan),
+    tasks: planToTasks(plan, attachments),
     createdAt: now,
     updatedAt: now,
   };
 
+  if (attachments.length > 0) project.attachments = attachments;
   if (input.config) project.config = input.config;
   if (input.repoPath) project.repoPath = input.repoPath;
   if (input.remoteUrl) project.remoteUrl = input.remoteUrl;
@@ -295,6 +336,9 @@ export async function createProjectDraft(
     createdAt: now,
     updatedAt: now,
   };
+
+  const attachments = toAttachments(input.attachments);
+  if (attachments.length > 0) project.attachments = attachments;
 
   if (input.config) {
     project.config = input.config;
@@ -348,9 +392,11 @@ export async function generatePlan(
   }
 
   const onPlannerAgentEvent = createAgentEventEmitter(storage, projectId, "planner");
-  const planContext = project.config?.fastMode
-    ? { ...context, fastMode: true }
-    : context;
+  const planContext: PlanContext = {
+    ...context,
+    ...(project.config?.fastMode ? { fastMode: true } : {}),
+    ...(project.attachments?.length ? { attachments: project.attachments } : {}),
+  };
   const plan = await planProject(project.goal, planContext, {
     execute: deps.plannerExecute,
     ...(project.defaultAllowedAgents?.length
@@ -367,7 +413,7 @@ export async function generatePlan(
   const ready: Project = {
     ...project,
     status: "ready",
-    tasks: planToTasks(plan),
+    tasks: planToTasks(plan, project.attachments),
     updatedAt: new Date(),
   };
 
@@ -829,10 +875,11 @@ async function loadChatContext(
   projectId: string,
   storage: Storage,
   defaultAllowedAgents: AgentSpec[] = [],
+  projectAttachments: Attachment[] = [],
 ): Promise<ChatContext> {
   const chats = await storage.listChats(projectId);
   const agentsByChat = new Map<string, AgentSpec[]>();
-  const attachments: Attachment[] = [];
+  const attachments: Attachment[] = [...projectAttachments];
 
   for (const chat of chats) {
     if (chat.allowedAgents?.length) {
@@ -1292,6 +1339,7 @@ export async function runProjectRound(
     projectId,
     storage,
     project.defaultAllowedAgents ?? [],
+    project.attachments ?? [],
   );
 
   const executeTask = makeTaskExecutor(

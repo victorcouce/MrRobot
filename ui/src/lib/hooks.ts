@@ -11,12 +11,14 @@ import { subscribeProject } from "./sse";
 import type {
   AgentMatrixRow,
   AppInfo,
+  ChatDetail,
   ChatMessage,
   ChatSummary,
   MetricsSummary,
   Project,
   ProjectEvent,
   ProjectSummary,
+  Space,
   StoredReview,
   SupervisorRun,
 } from "./types";
@@ -147,6 +149,63 @@ export function useAllChats() {
   }, [refresh]);
 
   return { chats, error, loading, refresh };
+}
+
+/** Un chat por id (suelto o de proyecto). Se refresca con la barra lateral. */
+export function useChat(id: string) {
+  const [chat, setChat] = useState<ChatDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { begin, isCurrent } = useLatestRequestGuard();
+
+  const refresh = useCallback(async () => {
+    const version = begin();
+    try {
+      const next = await api.getChatById(id);
+      if (!isCurrent(version)) return;
+      setChat(next);
+      setError(null);
+      setNotFound(false);
+    } catch (error) {
+      if (!isCurrent(version)) return;
+      if (error instanceof ApiError && error.status === 404) setNotFound(true);
+      setError(errorMessage(error));
+    } finally {
+      if (isCurrent(version)) setLoading(false);
+    }
+  }, [id, begin, isCurrent]);
+
+  useEffect(() => {
+    setLoading(true);
+    void refresh();
+    return subscribeProjectsChanged(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  return { chat, setChat, error, notFound, loading, refresh };
+}
+
+export function useSpaces() {
+  const [spaces, setSpaces] = useState<Space[]>([]);
+
+  const refresh = useCallback(async () => {
+    try {
+      setSpaces(await api.listSpaces());
+    } catch {
+      // Sin espacios la barra lateral muestra todos los proyectos.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    return subscribeProjectsChanged(() => {
+      void refresh();
+    });
+  }, [refresh]);
+
+  return { spaces, refresh };
 }
 
 export function useAgentMatrix() {

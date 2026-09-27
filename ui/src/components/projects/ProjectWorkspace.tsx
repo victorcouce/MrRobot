@@ -8,7 +8,7 @@ import { choiceToAgent, monoAgentLabel } from "../../lib/agents";
 import { countLevels } from "../../lib/plan";
 import { useProject, useAppInfo } from "../../lib/hooks";
 import { PlayIcon } from "../ui/icons";
-import type { AgentSpec, ProjectBrief, Task } from "../../lib/types";
+import type { ProjectBrief, Task } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/Badge";
 import { Dialog } from "../ui/Dialog";
@@ -110,6 +110,12 @@ export function ProjectWorkspace({
     }
   }, [project?.status]);
 
+  // Elegir otro chat del mismo proyecto en la barra lateral solo cambia `?chat=`:
+  // la página no se remonta, así que se sigue la URL.
+  useEffect(() => {
+    if (initialChatId) setSelectedChatId(initialChatId);
+  }, [initialChatId]);
+
   // Sin `?chat=` se abre el chat más reciente: el composer nunca queda muerto.
   useEffect(() => {
     if (chats.length === 0) {
@@ -183,17 +189,6 @@ export function ProjectWorkspace({
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function handleUpdateAllowedAgents(agents: AgentSpec[]) {
-    if (!selectedChatId) return;
-    setActionError(null);
-    try {
-      await api.updateChatAllowedAgents(id, selectedChatId, agents);
-      await refresh();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -384,7 +379,11 @@ export function ProjectWorkspace({
             }
           : {
               briefPanel: (
-                <GrillTranscript goal={project.goal} brief={project.brief} />
+                <GrillTranscript
+                  goal={project.goal}
+                  brief={project.brief}
+                  attachments={project.attachments}
+                />
               ),
             })}
       />
@@ -394,9 +393,6 @@ export function ProjectWorkspace({
           status={project.status}
           onSendMessage={handleSendMessage}
           onPauseAndWrite={() => void requestPause()}
-          allowedAgents={selectedChat?.allowedAgents}
-          agentAvailability={info?.agents}
-          onUpdateAllowedAgents={handleUpdateAllowedAgents}
           loading={busy === "message"}
         />
       )}

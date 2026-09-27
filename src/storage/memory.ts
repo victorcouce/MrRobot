@@ -131,6 +131,17 @@ export class InMemoryStorage implements Storage {
     }
   }
 
+  async setChatMessagesProject(
+    chatId: string,
+    projectId: string | undefined,
+  ): Promise<void> {
+    for (const message of this.chatMessages) {
+      if (message.chatId !== chatId) continue;
+      if (projectId) message.projectId = projectId;
+      else delete message.projectId;
+    }
+  }
+
   async appendChatMessage(message: ChatMessage): Promise<void> {
     this.chatMessages.push(structuredClone(message));
   }

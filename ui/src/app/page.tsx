@@ -1,17 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { setPendingMessage } from "@/lib/pending-message";
 import { useAppInfo } from "@/lib/hooks";
 import { RobotLottie } from "@/components/RobotLottie";
 import { ChatAgentSelector } from "@/components/ChatAgentSelector";
+import { AttachmentUpload } from "@/components/AttachmentUpload";
 import { AutoRunToggle } from "@/components/AutoRunToggle";
 import { FastModeToggle } from "@/components/FastModeToggle";
 import { NewSpaceDialog } from "@/components/spaces/NewSpaceDialog";
 import { SpacePicker } from "@/components/spaces/SpacePicker";
 import { hasFileWritingAgent } from "@/lib/agents";
+import { PaperclipIcon } from "@/components/ui/icons";
+import { clsx } from "@/lib/cx";
 import type { AgentSpec, Space } from "@/lib/types";
+
+interface ProcessedAttachment {
+  id: string;
+  name: string;
+  type: "image" | "markdown";
+  mimeType: string;
+  size: number;
+  data: string;
+}
 
 const TITLES = [
   "¿Qué construimos hoy?",
@@ -28,8 +41,22 @@ const TITLES = [
 ];
 
 export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <Home />
+    </Suspense>
+  );
+}
+
+/**
+ * Inicio = «Nuevo chat», como en ChatGPT. Sin proyecto, el mensaje abre un chat
+ * suelto; con un proyecto elegido, se planifica y se reparte entre agentes.
+ */
+function Home() {
   const { info } = useAppInfo();
   const router = useRouter();
+  // «Nuevo proyecto» en la barra lateral llega aquí con el selector abierto.
+  const wantsProject = useSearchParams().get("nuevo") === "proyecto";
   const [goal, setGoal] = useState("");
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [space, setSpace] = useState<Space | null>(null);
@@ -37,6 +64,8 @@ export default function HomePage() {
   const [selectedAgents, setSelectedAgents] = useState<AgentSpec[]>([]);
   const [fastMode, setFastMode] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
+  const [attachments, setAttachments] = useState<ProcessedAttachment[]>([]);
+  const [showUploader, setShowUploader] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [spaceError, setSpaceError] = useState(false);
@@ -77,11 +106,40 @@ export default function HomePage() {
     el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   }, [goal]);
 
+  const outgoingAttachments = () =>
+    attachments.length > 0
+      ? attachments.map(({ id: _id, ...attachment }) => attachment)
+      : undefined;
+
+  const startChat = async () => {
+    setCreating(true);
+    setCreateError(null);
+
+    try {
+      const chat = await api.createStandaloneChat({
+        ...(selectedAgents.length > 0 ? { allowedAgents: selectedAgents } : {}),
+      });
+      const pendingAttachments = outgoingAttachments();
+      setPendingMessage(chat.id, {
+        content: goal.trim(),
+        ...(pendingAttachments ? { attachments: pendingAttachments } : {}),
+      });
+      router.push(`/chats/${chat.id}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "No se pudo crear el chat");
+      setCreating(false);
+    }
+  };
+
   const submit = async () => {
     if (!goal.trim() || creating) return;
     if (!space) {
-      setSpaceError(true);
-      setSpaceShake(true);
+      if (wantsProject) {
+        setSpaceError(true);
+        setSpaceShake(true);
+        return;
+      }
+      await startChat();
       return;
     }
 
@@ -89,11 +147,13 @@ export default function HomePage() {
     setCreateError(null);
 
     try {
+      const projectAttachments = outgoingAttachments();
       const project = await api.createProject({
         goal: goal.trim(),
         name: space.name,
         icon: space.icon,
         repoPath: space.path,
+        ...(projectAttachments ? { attachments: projectAttachments } : {}),
         ...(selectedAgents.length > 0
           ? { defaultAllowedAgents: selectedAgents }
           : {}),
@@ -135,8 +195,9 @@ export default function HomePage() {
           {title}
         </h1>
         <p className="text-base text-ink-3">
-          Describe el objetivo. MrRobot lo planifica, lo reparte entre agentes y
-          lo deja en una rama aparte.
+          {space || wantsProject
+            ? "Describe el objetivo. MrRobot lo planifica, lo reparte entre agentes y lo deja en una rama aparte."
+            : "Pregunta o da forma a una idea. Elige un proyecto cuando quieras que MrRobot lo construya."}
         </p>
       </div>
 
@@ -149,7 +210,7 @@ export default function HomePage() {
         style={{ animationDelay: "90ms" }}
       >
         <label htmlFor="goal" className="sr-only">
-          Objetivo del proyecto
+          Mensaje
         </label>
         <textarea
           id="goal"
@@ -162,17 +223,59 @@ export default function HomePage() {
               void submit();
             }
           }}
-          placeholder="Crea una calculadora web con historial y tests…"
+          placeholder={
+            space || wantsProject
+              ? "Crea una calculadora web con historial y tests…"
+              : "Pregunta lo que quieras…"
+          }
           className="w-full resize-none border-0 bg-transparent p-5 font-sans text-lg leading-normal outline-none"
         />
 
+        {(showUploader || attachments.length > 0) && (
+          <div className="border-t border-line-soft px-4 py-3">
+            <AttachmentUpload
+              attachments={attachments}
+              onAdd={(attachment) =>
+                setAttachments((current) => [...current, attachment])
+              }
+              onRemove={(attachmentId) =>
+                setAttachments((current) =>
+                  current.filter((attachment) => attachment.id !== attachmentId),
+                )
+              }
+              disabled={creating}
+              showDropzone={showUploader}
+            />
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-3 border-t border-line-soft px-4 py-3">
           <div className="flex min-w-0 items-center gap-2 text-xs text-ink-4">
+            <button
+              type="button"
+              aria-pressed={showUploader}
+              onClick={() => setShowUploader((open) => !open)}
+              disabled={creating}
+              className={clsx(
+                "focus-ring inline-flex h-7 items-center gap-1.5 rounded-[8px] border bg-surface px-2.5 text-[12.5px] text-ink-2 transition-colors disabled:opacity-50",
+                showUploader
+                  ? "border-primary ring-2 ring-primary-soft"
+                  : "border-line hover:bg-muted",
+              )}
+            >
+              <PaperclipIcon />
+              Adjuntar
+              {attachments.length > 0 && (
+                <span className="text-ink-4">({attachments.length})</span>
+              )}
+            </button>
             <SpacePicker
               spaces={spaces}
               selected={space}
               onSelect={selectSpace}
               onCreateNew={() => setNewSpaceOpen(true)}
+              onClear={() => setSpace(null)}
+              autoOpen={wantsProject}
               invalid={spaceError}
               shake={spaceShake}
               onShakeEnd={() => setSpaceShake(false)}
@@ -182,8 +285,12 @@ export default function HomePage() {
               agentAvailability={info?.agents}
               onSelect={setSelectedAgents}
             />
-            <FastModeToggle enabled={fastMode} onChange={setFastMode} />
-            <AutoRunToggle enabled={autoRun} onChange={setAutoRun} />
+            {space && (
+              <>
+                <FastModeToggle enabled={fastMode} onChange={setFastMode} />
+                <AutoRunToggle enabled={autoRun} onChange={setAutoRun} />
+              </>
+            )}
             {missingFileWriter && (
               <span className="text-danger-text">
                 Añade al menos un agente que escriba archivos (Codex, Claude o DeepSeek).
@@ -195,7 +302,7 @@ export default function HomePage() {
             disabled={!goal.trim() || missingFileWriter || creating}
             className="focus-ring inline-flex items-center justify-center gap-2 rounded-btn bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-hover disabled:opacity-50"
           >
-            {creating ? "Creando…" : "Planificar"}
+            {creating ? "Creando…" : space || wantsProject ? "Planificar" : "Enviar"}
             {creating ? (
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
             ) : (

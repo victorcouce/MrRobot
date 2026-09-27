@@ -4,10 +4,14 @@ export type ChatMessageRole = "user" | "assistant";
 
 export interface Chat {
   id: string;
-  projectId: string;
+  /** Sin proyecto es un chat suelto: conversación sin repo ni tareas. */
+  projectId?: string;
   title: string;
+  /** Prefijo de sus tareas dentro del proyecto (`C<seq>`); 0 si es suelto. */
   seq: number;
   allowedAgents?: AgentSpec[];
+  pinned?: boolean;
+  archivedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,7 +19,7 @@ export interface Chat {
 export interface ChatMessage {
   id: string;
   chatId: string;
-  projectId: string;
+  projectId?: string;
   role: ChatMessageRole;
   content: string;
   taskIds: string[];

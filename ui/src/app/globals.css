@@ -118,3 +118,39 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Barra lateral: secciones y chats que se despliegan, y resultados de búsqueda. */
+@keyframes sidebar-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sidebar-reveal {
+  animation: sidebar-reveal 150ms ease-out both;
+}
+
+@keyframes sidebar-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sidebar-fade {
+  animation: sidebar-fade 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-reveal,
+  .sidebar-fade {
+    animation: none;
+  }
+}
