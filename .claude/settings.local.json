@@ -20,7 +20,19 @@
       "Bash(git rm *)",
       "Bash(python3 - *)",
       "Bash(npx vitest *)",
-      "Bash(lsof -iTCP -sTCP:LISTEN -P)"
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(git commit -m 'Chats sueltos, sidebar y archivados: API, storage y UI *)",
+      "Bash(git pull *)",
+      "Bash(cp /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/1.webp /Users/victor/Developer/mrrobot/ui/public/logo.png)",
+      "Bash(convert /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/2.webp logo.png)",
+      "Bash(ffmpeg -i /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/2.webp -y /Users/victor/Developer/mrrobot/ui/public/logo.png)",
+      "Bash(git checkout *)",
+      "Bash(python3 -c \"import cairosvg\")",
+      "Bash(sed -i '' 's/title: \"MrRobot\"/title: \"Mr. Robot\"/' app/layout.tsx)",
+      "Bash(sed -i '' 's/>MrRobot</>Mr. Robot</; s/\"MrRobot, inicio\"/\"Mr. Robot, inicio\"/' components/sidebar/Sidebar.tsx components/layout/AppShell.tsx components/sidebar/SidebarRail.tsx)",
+      "Bash(cp \"/Users/victor/Downloads/export-1a/robot-1a-dark.svg\" /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg && wc -c /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg)",
+      "Bash(git commit -m 'Selector de proyectos: quitar opción de crear proyecto desde el buscador *)",
+      "Bash(git commit -m 'Cambios de UI y configuración *)"
     ]
   }
 }

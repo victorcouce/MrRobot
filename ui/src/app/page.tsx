@@ -50,7 +50,7 @@ function Home() {
   const { info } = useAppInfo();
   const router = useRouter();
   // «Nuevo proyecto» en la barra lateral llega aquí con el selector abierto.
-  const wantsProject = useSearchParams().get("nuevo") === "proyecto";
+  const wantsProject = useSearchParams().get("new") === "project";
   const [goal, setGoal] = useState("");
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [space, setSpace] = useState<Space | null>(null);

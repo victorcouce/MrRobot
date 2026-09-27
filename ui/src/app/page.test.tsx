@@ -222,7 +222,7 @@ describe("Inicio", () => {
   });
 
   it("desde «Nuevo proyecto» sin carpeta resalta el selector en vez de continuar", async () => {
-    mocks.search = "nuevo=proyecto";
+    mocks.search = "new=project";
     render(<HomePage />);
     await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
     // Llega con el selector abierto.

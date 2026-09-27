@@ -150,13 +150,13 @@ export function Sidebar({
         <Link
           href="/"
           onClick={onNavigate}
-          aria-label="MrRobot, inicio"
+          aria-label="Mr. Robot, inicio"
           className="focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-btn"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E1DFD8]">
-            <Image src="/logo.png" alt="" width={24} height={24} priority className="h-6 w-6" />
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+            <Image src="/logo-mark.svg" alt="" width={32} height={32} priority className="h-8 w-8" />
           </span>
-          <span className="truncate font-display text-[15px] font-semibold text-ink">MrRobot</span>
+          <span className="truncate font-display text-[15px] font-semibold text-ink">Mr. Robot</span>
         </Link>
         {onCollapse && (
           <button

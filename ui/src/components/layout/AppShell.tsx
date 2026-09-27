@@ -109,9 +109,9 @@ export function AppShell({
           >
             <Menu className="h-[18px] w-[18px]" aria-hidden />
           </button>
-          <Link href="/" aria-label="MrRobot, inicio" className="focus-ring ml-1 flex items-center gap-2 rounded-btn">
-            <Image src="/logo.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
-            <span className="font-display text-[14px] font-semibold text-ink">MrRobot</span>
+          <Link href="/" aria-label="Mr. Robot, inicio" className="focus-ring ml-1 flex items-center gap-2 rounded-btn">
+            <Image src="/logo-mark.svg" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+            <span className="font-display text-[14px] font-semibold text-ink">Mr. Robot</span>
           </Link>
           <button
             type="button"

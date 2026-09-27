@@ -19,7 +19,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MrRobot",
+  title: "Mr. Robot",
   description: "Orquestador multiagente para desarrollo de software",
 };
 
