@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, ListChecks, Play, Zap, type LucideIcon } from "lucide-react";
 import { clsx } from "@/lib/cx";
 
 export type ComposerMode = "review" | "auto" | "fast";
@@ -11,7 +11,9 @@ interface ModeOption {
   id: ComposerMode;
   label: string;
   description: string;
-  dot: string;
+  icon: LucideIcon;
+  /** Color del icono. */
+  tone: string;
 }
 
 /**
@@ -23,19 +25,22 @@ export const COMPOSER_MODES: ModeOption[] = [
     id: "review",
     label: "Revisar el plan",
     description: "Planifica y espera tu visto bueno",
-    dot: "bg-neutral-dot",
+    icon: ListChecks,
+    tone: "text-ink-4",
   },
   {
     id: "auto",
     label: "Automático",
     description: "Ejecuta en cuanto el plan está listo",
-    dot: "bg-success",
+    icon: Play,
+    tone: "text-success",
   },
   {
     id: "fast",
     label: "Rápido",
     description: "Sin tests ni reviewer, y se ejecuta solo",
-    dot: "bg-warning",
+    icon: Zap,
+    tone: "text-warning",
   },
 ];
 
@@ -108,7 +113,7 @@ export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
           isOpen && "bg-muted",
         )}
       >
-        <span aria-hidden className={clsx("h-[7px] w-[7px] rounded-full", current.dot)} />
+        <current.icon aria-hidden className={clsx("h-[15px] w-[15px] shrink-0", current.tone)} strokeWidth={1.8} />
         <span>{current.label}</span>
         <ChevronDown className="h-3 w-3 text-ink-4" strokeWidth={2} aria-hidden />
       </button>
@@ -130,9 +135,9 @@ export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
                   onChange(mode.id);
                   setIsOpen(false);
                 }}
-                className="focus-ring grid w-full grid-cols-[10px_minmax(0,1fr)_14px] items-center gap-3 rounded-btn p-2.5 text-left hover:bg-sidebar"
+                className="focus-ring grid w-full grid-cols-[16px_minmax(0,1fr)_14px] items-center gap-3 rounded-btn p-2.5 text-left hover:bg-sidebar"
               >
-                <span aria-hidden className={clsx("h-2 w-2 rounded-full", mode.dot)} />
+                <mode.icon aria-hidden className={clsx("h-4 w-4", mode.tone)} strokeWidth={1.8} />
                 <span className="flex flex-col gap-px">
                   <span className="text-[13px] text-ink">{mode.label}</span>
                   <span className="text-[11.5px] text-ink-4">{mode.description}</span>
