@@ -64,9 +64,11 @@ interface ModePickerProps {
   value: ComposerMode;
   onChange: (mode: ComposerMode) => void;
   disabled?: boolean | undefined;
+  /** Aviso bajo las opciones, p. ej. cuando el modo aún no se aplica. */
+  note?: string | undefined;
 }
 
-export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
+export function ModePicker({ value, onChange, disabled, note }: ModePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const current = COMPOSER_MODES.find((mode) => mode.id === value) ?? COMPOSER_MODES[0]!;
@@ -142,6 +144,7 @@ export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
             );
           })}
           <div className="mt-1 border-t border-line-soft px-2.5 pb-1 pt-2 text-[11.5px] leading-[1.45] text-ink-3">
+            {note && <p className="mb-1 text-ink-2">{note}</p>}
             Usa los agentes marcados en{" "}
             <Link href="/settings" className="text-primary-soft-text hover:text-ink">
               Ajustes
