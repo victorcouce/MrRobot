@@ -33,7 +33,8 @@
       "Bash(cp \"/Users/victor/Downloads/export-1a/robot-1a-dark.svg\" /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg && wc -c /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg)",
       "Bash(git commit -m 'Selector de proyectos: quitar opción de crear proyecto desde el buscador *)",
       "Bash(git commit -m 'Cambios de UI y configuración *)",
-      "Bash(git commit -m 'Sidebar: reemplazar lista de proyectos con popup desplegable *)"
+      "Bash(git commit -m 'Sidebar: reemplazar lista de proyectos con popup desplegable *)",
+      "Bash(git commit *)"
     ]
   }
 }

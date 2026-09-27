@@ -142,45 +142,6 @@ export function SidebarRail({
         <ProjectsPopup projects={projects} />
       </div>
 
-      <nav
-        aria-label="Proyectos"
-        className="flex min-h-0 w-full flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2"
-      >
-        {ordered.map((project) => {
-          const Icon = spaceIcon(project.icon);
-          const meta = PROJECT_STATUS[project.status];
-          const active = project.id === activeProjectId;
-          const label = projectLabel(project);
-          return (
-            <Tooltip key={project.id} label={label.length > 48 ? `${label.slice(0, 47)}…` : label}>
-              <Link
-                href={`/projects/${project.id}`}
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                className={clsx(
-                  RAIL_BUTTON_CLASS,
-                  "shrink-0 border bg-surface",
-                  active
-                    ? "border-ink text-ink"
-                    : "border-line text-ink-2 hover:border-ink-4 hover:text-ink",
-                )}
-              >
-                <Icon className="h-[18px] w-[18px]" aria-hidden />
-                <span
-                  className={clsx(
-                    "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-sidebar",
-                    DOT_CLASSES[meta.color],
-                    meta.pulse && "pulse-dot",
-                  )}
-                  title={meta.label}
-                />
-                <span className="sr-only">{meta.label}</span>
-              </Link>
-            </Tooltip>
-          );
-        })}
-      </nav>
-
       <div className="flex shrink-0 flex-col items-center gap-1 border-t border-line py-2">
         <RailLink href="/agents" label="Agentes" active={pathname === "/agents"}>
           <Users className="h-[18px] w-[18px]" aria-hidden />

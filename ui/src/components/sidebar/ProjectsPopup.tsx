@@ -16,6 +16,7 @@ interface ProjectsPopupProps {
   activeProjectId: string | null;
   onNewProject?: () => void;
   onNavigate?: () => void;
+  compact?: boolean;
 }
 
 export function ProjectsPopup({
@@ -24,6 +25,7 @@ export function ProjectsPopup({
   activeProjectId,
   onNewProject,
   onNavigate,
+  compact = false,
 }: ProjectsPopupProps) {
   const pathname = usePathname();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,24 +100,31 @@ export function ProjectsPopup({
       <button
         type="button"
         className={clsx(
-          ROW_CLASS,
-          "group/row justify-between",
+          compact ? "flex h-9 w-9 items-center justify-center rounded-btn" : ROW_CLASS,
+          "group/row transition-colors duration-100 focus-ring",
           active ? "bg-muted text-ink" : "text-ink-2 hover:bg-muted hover:text-ink",
         )}
         aria-expanded={isOpen}
+        title={compact ? "Proyectos" : undefined}
       >
-        <div className="flex items-center gap-2.5 flex-1">
+        {compact ? (
           <Folder className="h-4 w-4" aria-hidden />
-          <span>Proyectos</span>
-          <span className="text-[11px] text-ink-4">{projects.length}</span>
-        </div>
-        <ChevronRight
-          className={clsx(
-            "h-4 w-4 transition-transform",
-            isOpen ? "rotate-90" : "",
-          )}
-          aria-hidden
-        />
+        ) : (
+          <>
+            <div className="flex items-center gap-2.5 flex-1">
+              <Folder className="h-4 w-4" aria-hidden />
+              <span>Proyectos</span>
+              <span className="text-[11px] text-ink-4">{projects.length}</span>
+            </div>
+            <ChevronRight
+              className={clsx(
+                "h-4 w-4 transition-transform",
+                isOpen ? "rotate-90" : "",
+              )}
+              aria-hidden
+            />
+          </>
+        )}
       </button>
 
       {isOpen && (

@@ -77,12 +77,14 @@ function FooterLink({
 }
 
 export function Sidebar({
+  collapsed = false,
   onNewChat,
   onNewProject,
   onOpenSearch,
   onNavigate,
   onCollapse,
 }: {
+  collapsed?: boolean;
   onNewChat?: () => void;
   onNewProject?: () => void;
   onOpenSearch?: () => void;
@@ -187,6 +189,7 @@ export function Sidebar({
             activeProjectId={actions.activeProjectId}
             onNewProject={() => run(onNewProject)}
             onNavigate={onNavigate}
+            compact={collapsed}
           />
 
           {spaces.length > 0 && (
