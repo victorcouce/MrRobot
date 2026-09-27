@@ -253,32 +253,7 @@ describe("Inicio", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sin proyecto (solo chat)" }));
 
     expect(screen.getByRole("button", { name: /Enviar/ })).toBeInTheDocument();
-  });
-
-  it("el selector de modo está en el inicio aunque no haya proyecto", async () => {
-    render(<HomePage />);
-    await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
-
-    fireEvent.click(screen.getByRole("button", { name: "Modo: Revisar el plan. Cambiar modo" }));
-    expect(screen.getByText(/Se aplica al elegir un proyecto/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^Rápido/ }));
-
-    // Elegido antes del proyecto, se aplica al planificar.
-    fireEvent.change(screen.getByLabelText("Mensaje"), {
-      target: { value: "una calculadora" },
-    });
-    await pickCalcSpace();
-    fireEvent.click(screen.getByRole("button", { name: /Planificar/ }));
-
-    await waitFor(() => {
-      expect(mocks.createProject).toHaveBeenCalledWith({
-        goal: "una calculadora",
-        name: "Calculadora",
-        icon: "calculator",
-        repoPath: "/proyectos/calc",
-        config: { fastMode: true, autoRun: true },
-      });
-    });
+    expect(screen.queryByRole("button", { name: /^Modo:/ })).toBeNull();
   });
 
   it("usa los agentes marcados en Ajustes al crear el proyecto", async () => {

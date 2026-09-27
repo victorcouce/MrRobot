@@ -314,17 +314,8 @@ function Home() {
               shake={spaceShake}
               onShakeEnd={() => setSpaceShake(false)}
             />
-            {/* Siempre visible; un chat suelto no planifica, así que sin
-                proyecto el modo queda elegido para cuando se escoja uno. */}
-            <ModePicker
-              value={mode}
-              onChange={setMode}
-              note={
-                space
-                  ? undefined
-                  : "Se aplica al elegir un proyecto: un chat sin proyecto solo conversa."
-              }
-            />
+            {/* El modo solo aplica a proyectos: un chat suelto no planifica. */}
+            {space && <ModePicker value={mode} onChange={setMode} />}
           </div>
           <button
             type="submit"
