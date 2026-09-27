@@ -26,6 +26,7 @@ import { spaceIcon } from "@/lib/space-icons";
 import { PROJECT_STATUS } from "@/lib/status";
 import { DOT_CLASSES } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
+import { ProjectsPopup } from "./ProjectsPopup";
 
 const RAIL_BUTTON_CLASS =
   "focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn transition-colors duration-100";
@@ -92,26 +93,27 @@ export function SidebarRail({
   return (
     <div className="flex h-full w-full flex-col items-center">
       <div className="flex h-14 shrink-0 items-center">
-        <Link
-          href="/"
-          aria-label="MrRobot, inicio"
-          className="focus-ring flex h-10 w-10 items-center justify-center rounded-btn bg-[#E1DFD8]"
-        >
-          <Image src="/logo.png" alt="" width={28} height={28} priority className="h-7 w-7" />
-        </Link>
-      </div>
-
-      <div className="flex shrink-0 flex-col items-center gap-1 pb-2">
         <Tooltip label="Mostrar barra lateral">
           <button
             type="button"
             onClick={onExpand}
             aria-label="Mostrar barra lateral"
-            className={clsx(RAIL_BUTTON_CLASS, "text-ink-3 hover:bg-muted hover:text-ink")}
+            className="focus-ring relative flex h-10 w-10 items-center justify-center rounded-btn group text-ink-3 hover:text-ink"
           >
-            <PanelLeftOpen className="h-[18px] w-[18px]" aria-hidden />
+            <Image
+              src="/logo-mark.svg"
+              alt=""
+              width={32}
+              height={32}
+              priority
+              className="h-8 w-8 group-hover:opacity-0 transition-opacity"
+            />
+            <PanelLeftOpen className="h-5 w-5 absolute opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden />
           </button>
         </Tooltip>
+      </div>
+
+      <div className="flex shrink-0 flex-col items-center gap-1 pb-2">
         <Tooltip label="Nuevo chat (⌘N)">
           <button
             type="button"
@@ -135,6 +137,10 @@ export function SidebarRail({
       </div>
 
       <div className="h-px w-8 shrink-0 bg-line-strong" />
+
+      <div className="flex justify-center py-2">
+        <ProjectsPopup projects={projects} />
+      </div>
 
       <nav
         aria-label="Proyectos"
