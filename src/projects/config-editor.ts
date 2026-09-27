@@ -8,6 +8,8 @@ import type { Project } from "./types.js";
 
 const CONFIG_EDITABLE_STATUSES = new Set(["draft", "ready", "paused"]);
 
+const MODE_KEYS = new Set(["fastMode", "autoRun"]);
+
 function assertConfigEditable(project: Project): void {
   if (!CONFIG_EDITABLE_STATUSES.has(project.status)) {
     throw new Error(
@@ -27,7 +29,12 @@ export async function updateProjectConfig(
     throw new Error(`Proyecto ${projectId} no encontrado.`);
   }
 
-  assertConfigEditable(project);
+  // El modo (rápido / ejecución automática) se cambia desde el chat también en
+  // proyectos terminados o fallidos: solo afecta a lo que se planifique después.
+  const onlyMode = Object.keys(overrides).every((key) => MODE_KEYS.has(key));
+  if (!onlyMode || project.status === "running" || project.status === "planning") {
+    assertConfigEditable(project);
+  }
 
   const base = project.config ?? deps.config ?? defaultConfig;
   const config = mergeConfig(base, overrides);

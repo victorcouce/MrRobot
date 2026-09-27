@@ -109,6 +109,27 @@ test("runtime mock: con autoRun el plan se ejecuta sin esperar a run()", async (
   await runtime.shutdown();
 });
 
+test("runtime mock: con autoRun las tareas de un mensaje del chat se ejecutan solas", async () => {
+  const runtime = await Runtime.create({ mock: true });
+
+  const draft = await runtime.createProject({ goal: "librería TS con sum" });
+  await runtime.generatePlan(draft.id);
+  await waitFor(runtime, draft.id, (status) => status === "ready");
+  await runtime.run(draft.id);
+  await waitFor(runtime, draft.id, (status) => status === "completed");
+
+  // El modo se cambia desde el chat aunque el proyecto ya esté terminado.
+  await runtime.updateProjectConfig(draft.id, { autoRun: true });
+  await runtime.createChat(draft.id, { message: "añade una función resta" });
+
+  await waitFor(runtime, draft.id, (status) => status === "running" || status === "completed");
+  await waitFor(runtime, draft.id, (status) => status === "completed");
+  const events = await runtime.listEvents(draft.id);
+  assert.equal(events.filter((event) => event.type === "project.started").length, 2);
+
+  await runtime.shutdown();
+});
+
 test("runtime mock: escenario fail deja el proyecto failed", async () => {
   const runtime = await Runtime.create({ mock: true, scenario: "fail" });
 

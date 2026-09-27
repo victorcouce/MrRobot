@@ -12,6 +12,7 @@ import type { ProjectBrief, Task } from "../../lib/types";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/Badge";
 import { Dialog } from "../ui/Dialog";
+import { modeFlags, modeFromConfig } from "../ModePicker";
 import { ChatThread } from "./ChatThread";
 import { GrillThread, GrillTranscript } from "./GrillThread";
 import { ThreadComposer } from "./ThreadComposer";
@@ -394,6 +395,10 @@ export function ProjectWorkspace({
           onSendMessage={handleSendMessage}
           onPauseAndWrite={() => void requestPause()}
           loading={busy === "message"}
+          mode={modeFromConfig(project.config)}
+          onModeChange={(mode) =>
+            void run("mode", () => api.updateProjectConfig(id, modeFlags(mode)))
+          }
         />
       )}
 

@@ -46,12 +46,27 @@ export function modeConfig(mode: ComposerMode): { fastMode?: true; autoRun?: tru
   return {};
 }
 
+/** Los dos flags explícitos, para cambiar el modo de un proyecto que ya existe. */
+export function modeFlags(mode: ComposerMode): { fastMode: boolean; autoRun: boolean } {
+  return { fastMode: mode === "fast", autoRun: mode !== "review" };
+}
+
+/** Modo que corresponde a la config de un proyecto. */
+export function modeFromConfig(
+  config: { fastMode?: boolean | undefined; autoRun?: boolean | undefined } | undefined,
+): ComposerMode {
+  if (config?.fastMode) return "fast";
+  if (config?.autoRun) return "auto";
+  return "review";
+}
+
 interface ModePickerProps {
   value: ComposerMode;
   onChange: (mode: ComposerMode) => void;
+  disabled?: boolean | undefined;
 }
 
-export function ModePicker({ value, onChange }: ModePickerProps) {
+export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const current = COMPOSER_MODES.find((mode) => mode.id === value) ?? COMPOSER_MODES[0]!;
@@ -84,11 +99,12 @@ export function ModePicker({ value, onChange }: ModePickerProps) {
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
+        disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-label={`Modo: ${current.label}. Cambiar modo`}
         className={clsx(
-          "focus-ring flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-btn px-2.5 text-[13px] text-ink-2 transition-colors hover:bg-muted",
+          "focus-ring flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-btn px-2.5 text-[13px] text-ink-2 transition-colors hover:bg-muted disabled:opacity-50",
           isOpen && "bg-muted",
         )}
       >

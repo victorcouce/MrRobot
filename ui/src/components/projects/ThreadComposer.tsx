@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
 import { AttachmentUpload } from "../AttachmentUpload";
+import { ModePicker, type ComposerMode } from "../ModePicker";
 import { LockIcon, PaperclipIcon, SendIcon } from "../ui/icons";
 import { clsx } from "@/lib/cx";
 
@@ -27,6 +28,9 @@ interface ThreadComposerProps {
   /** Nota bajo el composer; por defecto la del planner. */
   hint?: string;
   placeholder?: string;
+  /** Modo del proyecto; sin él (chat suelto) no se muestra el selector. */
+  mode?: ComposerMode | undefined;
+  onModeChange?: ((mode: ComposerMode) => void) | undefined;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -47,6 +51,8 @@ export function ThreadComposer({
   loading,
   hint = "Cada mensaje pasa por el planner. Las tareas hechas nunca se reescriben.",
   placeholder = "Escribe un mensaje… (Enter para enviar, Shift+Enter para nueva línea)",
+  mode,
+  onModeChange,
 }: ThreadComposerProps) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -171,6 +177,13 @@ export function ThreadComposer({
               <PaperclipIcon />
               Adjuntar
             </button>
+            {mode && onModeChange && (
+              <ModePicker
+                value={mode}
+                onChange={onModeChange}
+                disabled={disabled || submitting}
+              />
+            )}
           </div>
 
           <button

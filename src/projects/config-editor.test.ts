@@ -90,3 +90,25 @@ test("updateProjectConfig falla si el proyecto no existe", async () => {
     /no encontrado/,
   );
 });
+
+test("updateProjectConfig: el modo se cambia también en proyectos terminados", async () => {
+  const { deps } = await setup(makeProject({ status: "completed" }));
+
+  const updated = await updateProjectConfig("p1", { fastMode: true, autoRun: true }, deps);
+  assert.equal(updated.config?.fastMode, true);
+  assert.equal(updated.config?.autoRun, true);
+
+  await assert.rejects(
+    updateProjectConfig("p1", { concurrency: 2 }, deps),
+    /No se puede editar la configuración/,
+  );
+});
+
+test("updateProjectConfig: el modo no se cambia mientras se ejecuta", async () => {
+  const { deps } = await setup(makeProject({ status: "running" }));
+
+  await assert.rejects(
+    updateProjectConfig("p1", { autoRun: true }, deps),
+    /No se puede editar la configuración/,
+  );
+});

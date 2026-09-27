@@ -969,13 +969,14 @@ export class Runtime {
     const chat = await createChatInService(projectId, input, deps);
 
     if (input.message?.trim()) {
-      await sendChatMessageInService(
+      const result = await sendChatMessageInService(
         projectId,
         chat.id,
         input.message,
         input.attachments,
         deps,
       );
+      await this.autoRunAfterChat(result.project);
     }
 
     return this.getChat(projectId, chat.id);
@@ -1006,14 +1007,31 @@ export class Runtime {
     }>,
   ) {
     await this.mustGetProject(projectId);
-    await sendChatMessageInService(
+    const result = await sendChatMessageInService(
       projectId,
       chatId,
       content,
       attachments,
       await this.depsFor(projectId),
     );
+    await this.autoRunAfterChat(result.project);
     return this.getChat(projectId, chatId);
+  }
+
+  /**
+   * Con «Automático» o «Rápido», las tareas que genera un mensaje del chat se
+   * ejecutan sin esperar a que el usuario pulse Ejecutar, igual que el plan
+   * inicial.
+   */
+  private async autoRunAfterChat(project: Project) {
+    if (
+      project.config?.autoRun &&
+      project.status === "ready" &&
+      project.tasks.some((task) => task.status !== "done") &&
+      !this.activeRuns.has(project.id)
+    ) {
+      await this.run(project.id);
+    }
   }
 
   private conversationDeps(): ConversationDeps {
