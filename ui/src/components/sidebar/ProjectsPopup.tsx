@@ -164,7 +164,7 @@ export function ProjectsPopup({
               <div className="border-t border-line pt-1 max-h-64 overflow-y-auto">
                 {visible.map((project) => {
                   const isActive = project.id === activeProjectId;
-                  const chats = chatsByProject.get(project.id) ?? [];
+                  const chats = chatsByProject?.get(project.id) ?? [];
 
                   return (
                     <div key={project.id}>
