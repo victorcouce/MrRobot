@@ -12,8 +12,6 @@ interface ModeOption {
   label: string;
   description: string;
   icon: LucideIcon;
-  /** Color del icono. */
-  tone: string;
 }
 
 /**
@@ -26,21 +24,18 @@ export const COMPOSER_MODES: ModeOption[] = [
     label: "Revisar el plan",
     description: "Planifica y espera tu visto bueno",
     icon: ListChecks,
-    tone: "text-ink-4",
   },
   {
     id: "auto",
     label: "Automático",
     description: "Ejecuta en cuanto el plan está listo",
     icon: Play,
-    tone: "text-success",
   },
   {
     id: "fast",
     label: "Rápido",
     description: "Sin tests ni reviewer, y se ejecuta solo",
     icon: Zap,
-    tone: "text-warning",
   },
 ];
 
@@ -113,7 +108,7 @@ export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
           isOpen && "bg-muted",
         )}
       >
-        <current.icon aria-hidden className={clsx("h-[15px] w-[15px] shrink-0", current.tone)} strokeWidth={1.8} />
+        <current.icon aria-hidden className="h-[15px] w-[15px] shrink-0" strokeWidth={1.8} />
         <span>{current.label}</span>
         <ChevronDown className="h-3 w-3 text-ink-4" strokeWidth={2} aria-hidden />
       </button>
@@ -137,7 +132,7 @@ export function ModePicker({ value, onChange, disabled }: ModePickerProps) {
                 }}
                 className="focus-ring grid w-full grid-cols-[16px_minmax(0,1fr)_14px] items-center gap-3 rounded-btn p-2.5 text-left hover:bg-sidebar"
               >
-                <mode.icon aria-hidden className={clsx("h-4 w-4", mode.tone)} strokeWidth={1.8} />
+                <mode.icon aria-hidden className="h-4 w-4 text-ink-2" strokeWidth={1.8} />
                 <span className="flex flex-col gap-px">
                   <span className="text-[13px] text-ink">{mode.label}</span>
                   <span className="text-[11.5px] text-ink-4">{mode.description}</span>
