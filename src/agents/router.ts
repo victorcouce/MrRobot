@@ -1,6 +1,7 @@
 import { runClaude } from "../providers/claude.js";
 import { runCodex } from "../providers/codex.js";
 import { runDeepSeek, runDeepSeekAgentic } from "../providers/deepseek.js";
+import { runLmStudio, runLmStudioAgentic } from "../providers/lmstudio.js";
 import type { RunOptions } from "../providers/types.js";
 import type { AgentSpec } from "./types.js";
 
@@ -8,7 +9,7 @@ import type { AgentSpec } from "./types.js";
  * Resuelve si un agente debe ejecutar en modo "agentic" (bucle de herramientas)
  * o "text" (chat simple).
  * - CLIs (Codex, Claude) ignoran el modo: traen su propio bucle.
- * - DeepSeek: modo explícito, sin `cwd` → text, `sandbox: read-only` → text.
+ * - DeepSeek/LM Studio: modo explícito, sin `cwd` → text, `sandbox: read-only` → text.
  */
 export function resolveRunMode(options: RunOptions): "text" | "agentic" {
   if (options.mode !== "agentic") return "text";
@@ -38,6 +39,18 @@ export function runAgent(
         }).then((result) => result.text);
       }
       return runDeepSeek(prompt, agent.model);
+    }
+    case "lmstudio": {
+      const mode = resolveRunMode(options);
+      if (mode === "agentic" && options.cwd) {
+        return runLmStudioAgentic({
+          ...options,
+          cwd: options.cwd,
+          prompt,
+          agent,
+        }).then((result) => result.text);
+      }
+      return runLmStudio(prompt, agent.model);
     }
     default: {
       const unsupported: never = agent;

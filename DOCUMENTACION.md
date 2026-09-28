@@ -72,8 +72,9 @@ tests y README"*), el motor:
 ### Filosofía de diseño
 
 - **Sin coste extra de tokens**: Codex y Claude se autentican con tu
-  **suscripción normal** (ChatGPT Plus/Pro, Claude). DeepSeek es el único que
-  requiere `DEEPSEEK_API_KEY`.
+  **suscripción normal** (ChatGPT Plus/Pro, Claude). LM Studio corre modelos en
+  local, sin coste. DeepSeek es el único proveedor que requiere
+  `DEEPSEEK_API_KEY` (de pago).
 - **Nunca destructivo**: el motor **jamás** hace merge a `main`/`master` ni
   toca el working tree principal. Todo ocurre en worktrees y branches aisladas.
 - **Backend como única fuente de verdad**: la UI reconstruye el estado desde la
@@ -181,10 +182,13 @@ claude          # la primera vez abre el flujo de autenticación
 ```
 
 - **DeepSeek** es vía HTTP; no necesita CLI, solo `DEEPSEEK_API_KEY`.
+- **LM Studio** es vía HTTP contra un modelo local; no necesita CLI ni clave,
+  solo el servidor local activo (`http://localhost:1234/v1` por defecto,
+  configurable con `LMSTUDIO_BASE_URL`).
 
 > **No hace falta contratar tokens ni una API de pago aparte.** Codex y Claude
-> usan tu suscripción normal de ChatGPT / Claude. El único proveedor con clave
-> de API es DeepSeek.
+> usan tu suscripción normal de ChatGPT / Claude. LM Studio corre en local sin
+> coste. El único proveedor con clave de API de pago es DeepSeek.
 
 Si solo quieres probar sin gastar tokens, usa el **modo mock** (ver §27) y no
 necesitas instalar ni autenticar nada.
@@ -287,6 +291,7 @@ de la global). Si no define config, usa la global.
 
 ```env
 DEEPSEEK_API_KEY=...              # requerido por el provider DeepSeek
+LMSTUDIO_BASE_URL=http://localhost:1234/v1   # opcional: URL del servidor local de LM Studio
 GITHUB_TOKEN=...                  # opcional: valida/push a repos GitHub (HTTPS)
 MRROBOT_DATA_DIR=.mrrobot/data    # directorio de datos PGlite
 MRROBOT_PORT=4000                 # puerto de la API
@@ -484,6 +489,9 @@ rondas y proyectos (`ProjectDeps.agentHealth`); sin ella, el orden de
   motivo `CLI "<command>" no encontrado en el PATH.`
 - DeepSeek: conectado si `DEEPSEEK_API_KEY` está definida; si no, motivo
   `"DEEPSEEK_API_KEY no está definida."`
+- LM Studio: conectado si `GET <LMSTUDIO_BASE_URL>/models` responde 2xx (3 s de
+  timeout, por defecto `http://localhost:1234/v1`); si no, motivo
+  `"No se pudo conectar con LM Studio en <url>."` o el código de estado recibido.
 
 ---
 
@@ -1482,6 +1490,8 @@ Mensajes destacados:
 | `Ya existe un proyecto con id X.` | Import duplicado. |
 | `Aislamiento inválido: el cwd del agente no puede ser la raíz del repositorio.` | Guard de seguridad. |
 | `[deepseek] falta DEEPSEEK_API_KEY (defínela en el archivo .env).` | Sin clave. |
+| `[lmstudio] no hay ningún modelo cargado en el servidor local (carga uno en LM Studio).` | Servidor accesible pero sin modelo cargado. |
+| `[lmstudio] falló la ejecución: ...` | Servidor local caído o URL incorrecta. |
 | `CLI "<command>" no encontrado en el PATH.` | CLI ausente. |
 | `Cuerpo de petición demasiado grande.` | Body > 1 MiB. |
 | `JSON inválido en el cuerpo de la petición.` | Body malformado. |

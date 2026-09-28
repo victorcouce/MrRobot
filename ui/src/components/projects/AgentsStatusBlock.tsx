@@ -8,6 +8,7 @@ import { clsx } from "../../lib/cx";
 interface AgentsStatusBlockProps {
   agents: AgentAvailability[];
   onConfigureDeepSeek?: () => void;
+  onConfigureLmStudio?: () => void;
   lastCheckedAt?: string;
 }
 
@@ -23,7 +24,7 @@ function StatusDot({ connected }: { connected: boolean }) {
 }
 
 function StatusPill({ connected, reason }: { connected: boolean; reason?: string }) {
-  if (!connected && reason?.includes("DEEPSEEK_API_KEY")) {
+  if (!connected && (reason?.includes("DEEPSEEK_API_KEY") || reason?.includes("LM Studio"))) {
     return null; // Will show button instead
   }
 
@@ -44,6 +45,7 @@ function StatusPill({ connected, reason }: { connected: boolean; reason?: string
 export function AgentsStatusBlock({
   agents,
   onConfigureDeepSeek,
+  onConfigureLmStudio,
   lastCheckedAt,
 }: AgentsStatusBlockProps) {
   return (
@@ -73,6 +75,7 @@ export function AgentsStatusBlock({
                     {agent.provider === "codex" && "Suscripción ChatGPT · CLI en PATH"}
                     {agent.provider === "claude" && "CLI en PATH"}
                     {agent.provider === "deepseek" && "DEEPSEEK_API_KEY"}
+                    {agent.provider === "lmstudio" && "Servidor local (LM Studio)"}
                   </>
                 )}
               </span>
@@ -84,6 +87,15 @@ export function AgentsStatusBlock({
                   size="sm"
                   variant="secondary"
                   onClick={onConfigureDeepSeek}
+                  className="text-xs"
+                >
+                  Cómo configurarla
+                </Button>
+              ) : !agent.connected && agent.provider === "lmstudio" && onConfigureLmStudio ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={onConfigureLmStudio}
                   className="text-xs"
                 >
                   Cómo configurarla

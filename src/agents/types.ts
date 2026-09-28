@@ -1,4 +1,5 @@
 import type { DeepSeekModel } from "../providers/deepseek.js";
+import type { LmStudioModel } from "../providers/lmstudio.js";
 import type { TokenUsage } from "./usage.js";
 
 export type ClaudeModel = "sonnet" | "opus" | "haiku";
@@ -6,7 +7,8 @@ export type ClaudeModel = "sonnet" | "opus" | "haiku";
 export type AgentSpec =
   | { provider: "codex" }
   | { provider: "claude"; model?: ClaudeModel }
-  | { provider: "deepseek"; model?: DeepSeekModel };
+  | { provider: "deepseek"; model?: DeepSeekModel }
+  | { provider: "lmstudio"; model?: LmStudioModel };
 
 export type AgentProvider = AgentSpec["provider"];
 

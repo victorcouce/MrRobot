@@ -150,6 +150,28 @@ export const api = {
       body: JSON.stringify({ apiKey }),
     }),
 
+  checkLmStudioConfig: (baseUrl: string) =>
+    request<{
+      ok: boolean;
+      applied: boolean;
+      persisted: false;
+      baseUrl: string;
+      models?: string[];
+      error?: string;
+    }>("/api/agents/lmstudio-config", {
+      method: "POST",
+      body: JSON.stringify({ baseUrl }),
+    }),
+
+  installCli: (provider: "codex" | "claude") =>
+    request<{ ok: boolean; output: string; error?: string }>(
+      "/api/agents/install",
+      {
+        method: "POST",
+        body: JSON.stringify({ provider }),
+      },
+    ),
+
   checkRemote: (url: string) =>
     request<RemoteCheck>("/api/fs/check-remote", {
       method: "POST",
@@ -438,6 +460,9 @@ export function agentLabel(agent: AgentSpec | undefined): string {
     if (agent.model === "opus") return "Claude Opus";
     if (agent.model === "haiku") return "Claude Haiku";
     return "Claude Sonnet";
+  }
+  if (agent.provider === "lmstudio") {
+    return agent.model ? `LM Studio (${agent.model})` : "LM Studio";
   }
   return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
 }

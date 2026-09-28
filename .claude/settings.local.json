@@ -34,7 +34,8 @@
       "Bash(git commit -m 'Selector de proyectos: quitar opción de crear proyecto desde el buscador *)",
       "Bash(git commit -m 'Cambios de UI y configuración *)",
       "Bash(git commit -m 'Sidebar: reemplazar lista de proyectos con popup desplegable *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(npm install *)"
     ]
   }
 }

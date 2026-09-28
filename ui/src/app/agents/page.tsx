@@ -5,7 +5,16 @@ import Link from "next/link";
 import { useAgentMatrix, useAppInfo, useProjects } from "@/lib/hooks";
 import { LoadingState } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { api, ApiError } from "@/lib/api";
 import type { AgentSpec, TaskComplexity, TaskType } from "@/lib/types";
+
+const INSTALLABLE_CLI_PROVIDERS = new Set(["codex", "claude"]);
+
+function isInstallableCliProvider(
+  provider: string,
+): provider is "codex" | "claude" {
+  return INSTALLABLE_CLI_PROVIDERS.has(provider);
+}
 
 const TYPE_LABELS: Record<TaskType, string> = {
   architecture: "Arquitectura",
@@ -32,6 +41,7 @@ function shortAgentLabel(agent: AgentSpec): string {
     if (agent.model === "haiku") return "Haiku";
     return "Sonnet";
   }
+  if (agent.provider === "lmstudio") return agent.model ?? "LM Studio";
   return agent.model === "deepseek-v4-pro" ? "V4 Pro" : "Flash";
 }
 
@@ -41,6 +51,8 @@ export default function AgentsPage() {
   const { matrix } = useAgentMatrix();
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState<"codex" | "claude" | null>(null);
+  const [installError, setInstallError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setLastChecked(new Date());
@@ -53,6 +65,30 @@ export default function AgentsPage() {
     await refresh();
     setLastChecked(new Date());
     setChecking(false);
+  }
+
+  async function handleInstallCli(provider: "codex" | "claude") {
+    setInstalling(provider);
+    setInstallError((prev) => ({ ...prev, [provider]: "" }));
+
+    try {
+      const result = await api.installCli(provider);
+      if (!result.ok) {
+        setInstallError((prev) => ({
+          ...prev,
+          [provider]: result.error || "No se pudo instalar la CLI.",
+        }));
+      }
+      await refresh();
+      setLastChecked(new Date());
+    } catch (error) {
+      setInstallError((prev) => ({
+        ...prev,
+        [provider]: error instanceof ApiError ? error.message : "No se pudo instalar la CLI.",
+      }));
+    } finally {
+      setInstalling(null);
+    }
   }
 
   const formatTime = (date: Date | null) => {
@@ -102,7 +138,12 @@ export default function AgentsPage() {
 
         {/* Agent cards */}
         <div className="mb-12 grid gap-4 grid-cols-1 md:grid-cols-2">
-          {info.agents.map((agent) => (
+          {info.agents.map((agent) => {
+            const installableProvider = isInstallableCliProvider(agent.provider)
+              ? agent.provider
+              : null;
+
+            return (
             <div
               key={agent.provider}
               className="rounded-2xl border border-line bg-surface p-5 space-y-3"
@@ -136,8 +177,24 @@ export default function AgentsPage() {
                   {agent.connected ? "✓ Conectado" : "No conectado"}
                 </div>
               </div>
+              {!agent.connected && installableProvider && (
+                <div className="flex flex-col items-start gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={installing === installableProvider}
+                    onClick={() => handleInstallCli(installableProvider)}
+                  >
+                    Instalar CLI
+                  </Button>
+                  {installError[installableProvider] && (
+                    <p className="text-xs text-red-600">{installError[installableProvider]}</p>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Working now */}

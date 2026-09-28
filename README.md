@@ -1,9 +1,9 @@
 # MrRobot — orquestador multiagente
 
 Motor multiagente en TypeScript que recibe un objetivo de alto nivel, lo
-descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek en
-Git worktrees aislados, revisa el resultado y deja el trabajo en una branch
-Git aislada.
+descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek /
+LM Studio en Git worktrees aislados, revisa el resultado y deja el trabajo en
+una branch Git aislada.
 
 > **No necesitas contratar tokens ni una API de pago aparte.** Codex y Claude
 > usan tu **suscripción normal** de ChatGPT / Claude (Plus, Pro, etc.). Y si un
@@ -34,11 +34,17 @@ Para ejecutar tareas reales (no en modo mock), el motor invoca los CLIs
   ```
 - **DeepSeek** — provider `deepseek` vía HTTP; no necesita CLI, sólo la
   variable `DEEPSEEK_API_KEY` (ver [Configurar las claves](#configurar-las-claves-solo-para-uso-real)).
+- **LM Studio** — provider `lmstudio` vía HTTP, contra un modelo que corre en
+  tu máquina; no necesita CLI ni clave, sólo tener
+  [LM Studio](https://lmstudio.ai) abierto con su servidor local activo
+  (`http://localhost:1234/v1` por defecto — configurable con
+  `LMSTUDIO_BASE_URL`, ver [Configurar las claves](#configurar-las-claves-solo-para-uso-real)).
 
 > **Nota:** no hace falta contratar tokens ni una API de pago aparte. Codex y
 > Claude se autentican con tu **suscripción normal** de ChatGPT / Claude (Plus,
-> Pro, etc.) y usan esa cuota. El único proveedor que necesita una clave de API
-> es DeepSeek.
+> Pro, etc.) y usan esa cuota. LM Studio corre en local y tampoco consume
+> tokens de pago. El único proveedor que necesita una clave de API de pago es
+> DeepSeek.
 >
 > Cuando un proveedor agota su cuota o alcanza su límite (rate limit, sesión,
 > etc.), el motor **pasa automáticamente al siguiente modelo configurado** de la
@@ -87,12 +93,14 @@ Crea un archivo `.env` en la raíz con tus claves:
 
 ```env
 DEEPSEEK_API_KEY=tu_clave
+LMSTUDIO_BASE_URL=http://localhost:1234/v1   # opcional, sólo si no usas el puerto por defecto
 GITHUB_TOKEN=tu_token      # opcional, para repos de GitHub
 ```
 
 Sin `MRROBOT_MOCK=1` necesitas `DEEPSEEK_API_KEY` y los CLIs `codex`/`claude`
 instalados y autenticados (ver [Requisitos previos](#requisitos-previos)) para
-que todos los agentes funcionen. Consulta la sección
+que todos los agentes funcionen. `LM Studio` sólo necesita el servidor local
+abierto con un modelo cargado. Consulta la sección
 [Variables de entorno](#variables-de-entorno) para más opciones.
 
 ## Arquitectura
@@ -200,6 +208,7 @@ config (deja de heredar del global). Si no define config, usa la global.
 
 ```env
 DEEPSEEK_API_KEY=...       # requerido por el provider DeepSeek
+LMSTUDIO_BASE_URL=http://localhost:1234/v1   # opcional, URL del servidor local de LM Studio
 GITHUB_TOKEN=...           # opcional, para validar/push a repos GitHub (HTTPS)
 MRROBOT_DATA_DIR=.mrrobot/data   # opcional, directorio de datos PGlite
 MRROBOT_PORT=4000          # puerto de la API
@@ -305,9 +314,9 @@ cuarentena dura el `retry after` del proveedor o, si no lo indica, 5 minutos
 memoria es única y sobrevive entre rondas y proyectos; sin `agentHealth` el orden
 de `getFallbackChain` no cambia.
 
-## Harness Agéntico (DeepSeek con Tool-Calling)
+## Harness Agéntico (DeepSeek / LM Studio con Tool-Calling)
 
-DeepSeek puede operar en dos modos:
+DeepSeek y LM Studio pueden operar en dos modos:
 
 ### 1. Modo texto (por defecto)
 - Una sola llamada de API
@@ -317,7 +326,7 @@ DeepSeek puede operar en dos modos:
 
 ### 2. Modo agentic (tool-calling + sandbox)
 Disponible en tareas `coding` cuando hay configuración de harness:
-- **Bucle de tool-calling**: DeepSeek llama a herramientas (`read_file`, `write_file`, `run_command`, etc.) y recibe resultados, iterando hasta terminar
+- **Bucle de tool-calling**: el proveedor llama a herramientas (`read_file`, `write_file`, `run_command`, etc.) y recibe resultados, iterando hasta terminar
 - **Sandbox local**: Las operaciones están confinadas en el worktree (`cwd`), con:
   - **Contención de rutas**: rechaza `../`, symlinks que escapan, `.git`
   - **Allowlist de comandos**: `npm`, `node`, `git` y utilidades de shell (`ls`, `cat`, `grep`, `find`, `sed`, `mkdir`, `cp`, `mv`…) + reglas de argv; en `git` se permite cualquier subcomando salvo las operaciones de red y de configuración (`push`, `fetch`, `pull`, `clone`, `remote add|set-url|remove|rename`, `config`, `credential`, `filter-branch`)
@@ -326,7 +335,7 @@ Disponible en tareas `coding` cuando hay configuración de harness:
 - **Dependencias sembradas**: el worktree recibe `node_modules` del almacén de dependencias antes de arrancar el agente (ver *Almacén de dependencias*)
 - **Commit automático**: al terminar, los cambios se commitean
 
-El harness es **agnóstico del proveedor**: OpenAI/DeepSeek/Claude que soporten tool-calling pueden usarlo. Actualmente está activado para DeepSeek.
+El harness es **agnóstico del proveedor**: cualquier API compatible con tool-calling (OpenAI, DeepSeek, Claude) puede usarlo. Actualmente está activado para DeepSeek y LM Studio.
 
 ### Configuración
 
@@ -351,7 +360,7 @@ harness?: {
 
 Las tareas `coding` automáticamente usan modo agentic si:
 - `harness` está definido en config
-- DeepSeek es elegido por la cadena de fallback
+- DeepSeek o LM Studio son elegidos por la cadena de fallback
 
 ### Errores
 

@@ -72,7 +72,7 @@ export function SpacePicker({
     ? spaces.filter(
         (space) =>
           space.name.toLowerCase().includes(needle) ||
-          space.path.toLowerCase().includes(needle),
+          ("path" in space && space.path.toLowerCase().includes(needle)),
       )
     : spaces;
 
@@ -88,7 +88,7 @@ export function SpacePicker({
         aria-label={
           selected ? `Proyecto: ${selected.name}. Cambiar proyecto` : "Seleccionar proyecto"
         }
-        title={selected?.path}
+        title={"path" in (selected ?? {}) ? (selected as any).path : selected?.name}
         onAnimationEnd={onShakeEnd}
         className={clsx(
           "focus-ring flex h-[34px] max-w-[240px] items-center gap-[7px] rounded-btn border px-2.5 text-[13px] text-ink-2 transition-colors hover:bg-muted",

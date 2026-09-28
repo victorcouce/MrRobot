@@ -629,7 +629,11 @@ export class SqlStorage implements Storage {
         ? { provider: "codex" }
         : row.provider === "claude"
           ? { provider: "claude", model: (row.model as "sonnet" | "opus" | "haiku") ?? "sonnet" }
-          : { provider: "deepseek", model: (row.model as "deepseek-flash" | "deepseek-v4-pro") ?? "deepseek-flash" };
+          : row.provider === "lmstudio"
+            ? row.model
+              ? { provider: "lmstudio", model: row.model }
+              : { provider: "lmstudio" }
+            : { provider: "deepseek", model: (row.model as "deepseek-flash" | "deepseek-v4-pro") ?? "deepseek-flash" };
 
     const attempt: TaskAttempt = {
       agent,

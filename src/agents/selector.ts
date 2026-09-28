@@ -7,6 +7,7 @@ const DEFAULT_MODEL: Record<AgentProvider, string | undefined> = {
   codex: undefined,
   claude: "sonnet",
   deepseek: "deepseek-flash",
+  lmstudio: undefined,
 };
 
 /**
@@ -35,14 +36,16 @@ export function isAgentAllowed(
 }
 
 /**
- * Codex y Claude escriben en el worktree con sus CLIs. DeepSeek escribe con el
- * harness agéntico in-process (bucle de herramientas), que las tareas de código
- * activan con `mode: "agentic"`. Los tres completan tareas de código.
+ * Codex y Claude escriben en el worktree con sus CLIs. DeepSeek y LM Studio
+ * escriben con el harness agéntico in-process (bucle de herramientas), que las
+ * tareas de código activan con `mode: "agentic"`. Los cuatro completan tareas
+ * de código.
  */
 const FILE_WRITING_PROVIDERS: ReadonlySet<AgentProvider> = new Set([
   "codex",
   "claude",
   "deepseek",
+  "lmstudio",
 ]);
 
 export function canWriteFiles(agent: AgentSpec): boolean {
@@ -55,7 +58,7 @@ export function hasFileWritingAgent(agents: AgentSpec[]): boolean {
 
 export const MISSING_FILE_WRITING_AGENT =
   "La selección de agentes debe ser válida: incluye al menos uno que escriba " +
-  "archivos (Codex, Claude o DeepSeek).";
+  "archivos (Codex, Claude, DeepSeek o LM Studio).";
 
 export function assertFileWritingAgent(agents: AgentSpec[]): void {
   if (agents.length > 0 && !hasFileWritingAgent(agents)) {

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { AgentAvailability, AgentProvider } from "../../shared/types.js";
+import { DEFAULT_LM_STUDIO_BASE_URL } from "../providers/lmstudio.js";
 
 function cliAvailable(command: string): Promise<{ connected: boolean; reason?: string }> {
   return new Promise((resolve) => {
@@ -28,12 +29,41 @@ function cliAvailable(command: string): Promise<{ connected: boolean; reason?: s
   });
 }
 
+/** Comprueba que el servidor local de LM Studio responde en `baseUrl`. */
+async function lmStudioAvailable(
+  baseUrl: string,
+): Promise<{ connected: boolean; reason?: string }> {
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!response.ok) {
+      return {
+        connected: false,
+        reason: `El servidor de LM Studio respondió ${response.status}.`,
+      };
+    }
+
+    return { connected: true };
+  } catch {
+    return {
+      connected: false,
+      reason: `No se pudo conectar con LM Studio en ${baseUrl}.`,
+    };
+  }
+}
+
 export async function checkAgentAvailability(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<AgentAvailability[]> {
-  const [codex, claude] = await Promise.all([
+  const lmStudioBaseUrl =
+    env.LMSTUDIO_BASE_URL?.trim() || DEFAULT_LM_STUDIO_BASE_URL;
+
+  const [codex, claude, lmstudio] = await Promise.all([
     cliAvailable("codex"),
     cliAvailable("claude"),
+    lmStudioAvailable(lmStudioBaseUrl),
   ]);
 
   const deepseekConnected = Boolean(env.DEEPSEEK_API_KEY);
@@ -58,6 +88,12 @@ export async function checkAgentAvailability(
       ...(deepseekConnected
         ? {}
         : { reason: "DEEPSEEK_API_KEY no está definida." }),
+    },
+    {
+      provider: "lmstudio" as AgentProvider,
+      label: "LM Studio",
+      connected: lmstudio.connected,
+      ...(lmstudio.reason ? { reason: lmstudio.reason } : {}),
     },
   ];
 }

@@ -48,6 +48,8 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
         return { provider: "deepseek", model: "deepseek-flash" };
       case "deepseek-v4-pro":
         return { provider: "deepseek", model: "deepseek-v4-pro" };
+      case "lmstudio":
+        return { provider: "lmstudio" };
       default:
         throw new Error(`Valor de agente desconocido: ${value}`);
     }
@@ -76,6 +78,13 @@ export function parseAgent(value: unknown): AgentSpec | undefined {
         provider: "deepseek",
         model: obj["model"] === "deepseek-v4-pro" ? "deepseek-v4-pro" : "deepseek-flash",
       };
+    }
+
+    if (provider === "lmstudio") {
+      const model = obj["model"];
+      return typeof model === "string" && model.trim()
+        ? { provider: "lmstudio", model: model.trim() }
+        : { provider: "lmstudio" };
     }
   }
 

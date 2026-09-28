@@ -31,12 +31,14 @@ export type TaskType =
 
 export type TaskComplexity = "low" | "medium" | "high" | "critical";
 
-export type AgentProvider = "codex" | "claude" | "deepseek";
+export type AgentProvider = "codex" | "claude" | "deepseek" | "lmstudio";
 
 export type AgentSpec =
   | { provider: "codex" }
   | { provider: "claude"; model?: "sonnet" | "opus" | "haiku" }
-  | { provider: "deepseek"; model?: "deepseek-flash" | "deepseek-v4-pro" };
+  | { provider: "deepseek"; model?: "deepseek-flash" | "deepseek-v4-pro" }
+  /** `model` es el identificador del modelo cargado en LM Studio (dinámico, sin enum fijo). */
+  | { provider: "lmstudio"; model?: string };
 
 export interface TaskAttempt {
   agent: AgentSpec;
@@ -313,7 +315,8 @@ export type AgentChoice =
   | "claude-opus"
   | "claude-haiku"
   | "deepseek"
-  | "deepseek-v4-pro";
+  | "deepseek-v4-pro"
+  | "lmstudio";
 
 export interface AgentAvailability {
   provider: AgentProvider;

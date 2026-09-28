@@ -19,6 +19,8 @@ import {
   parseTaskInstructions,
 } from "./parse.js";
 import { checkAndApplyDeepSeekKey } from "./deepseek-key.js";
+import { checkAndApplyLmStudioConfig } from "./lmstudio-config.js";
+import { installCli, isInstallableCliProvider } from "./install-cli.js";
 import { pickFolder } from "./pick-folder.js";
 import { checkFolder, checkRemote } from "../workspace/validate.js";
 import {
@@ -226,6 +228,44 @@ async function dispatch(
     }
 
     sendJson(res, 200, await checkAndApplyDeepSeekKey(apiKey));
+    return;
+  }
+
+  // /api/agents/lmstudio-config
+  if (
+    req.method === "POST" &&
+    segments[1] === "agents" &&
+    segments[2] === "lmstudio-config"
+  ) {
+    const body = await readJson(req);
+    const baseUrl = body["baseUrl"];
+
+    if (typeof baseUrl !== "string") {
+      sendJson(res, 400, { error: 'El campo "baseUrl" es obligatorio.' });
+      return;
+    }
+
+    sendJson(res, 200, await checkAndApplyLmStudioConfig(baseUrl));
+    return;
+  }
+
+  // /api/agents/install
+  if (
+    req.method === "POST" &&
+    segments[1] === "agents" &&
+    segments[2] === "install"
+  ) {
+    const body = await readJson(req);
+    const provider = body["provider"];
+
+    if (!isInstallableCliProvider(provider)) {
+      sendJson(res, 400, {
+        error: 'El campo "provider" debe ser "codex" o "claude".',
+      });
+      return;
+    }
+
+    sendJson(res, 200, await installCli(provider));
     return;
   }
 

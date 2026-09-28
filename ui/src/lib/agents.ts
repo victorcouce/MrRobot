@@ -6,11 +6,13 @@ export type AgentChoice =
   | "claude-opus"
   | "claude-haiku"
   | "deepseek"
-  | "deepseek-v4-pro";
+  | "deepseek-v4-pro"
+  | "lmstudio";
 
 export function agentToChoice(agent: AgentSpec | undefined): AgentChoice {
   if (!agent) return "claude-opus";
   if (agent.provider === "codex") return "codex";
+  if (agent.provider === "lmstudio") return "lmstudio";
   if (agent.provider === "deepseek") {
     return agent.model === "deepseek-v4-pro" ? "deepseek-v4-pro" : "deepseek";
   }
@@ -33,6 +35,8 @@ export function choiceToAgent(choice: AgentChoice): AgentSpec {
       return { provider: "deepseek", model: "deepseek-flash" };
     case "deepseek-v4-pro":
       return { provider: "deepseek", model: "deepseek-v4-pro" };
+    case "lmstudio":
+      return { provider: "lmstudio" };
   }
 }
 
@@ -43,6 +47,7 @@ export const AGENT_CHOICES: Array<{ value: AgentChoice; label: string }> = [
   { value: "claude-haiku", label: "Claude Haiku" },
   { value: "deepseek", label: "DeepSeek Flash" },
   { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+  { value: "lmstudio", label: "LM Studio (local)" },
 ];
 
 export function choiceLabel(choice: AgentChoice): string {
@@ -56,6 +61,7 @@ export function monoAgentLabel(agent: AgentSpec | undefined): string {
   if (match) return match.label;
   if (agent.provider === "codex") return "codex";
   if (agent.provider === "claude") return `claude / ${agent.model ?? "sonnet"}`;
+  if (agent.provider === "lmstudio") return `lmstudio / ${agent.model ?? "auto"}`;
   return agent.model ?? "deepseek-flash";
 }
 
@@ -63,6 +69,7 @@ export function monoAgentLabel(agent: AgentSpec | undefined): string {
 export function agentKey(agent: AgentSpec): string {
   if (agent.provider === "codex") return "codex";
   if (agent.provider === "claude") return `claude-${agent.model ?? "sonnet"}`;
+  if (agent.provider === "lmstudio") return `lmstudio-${agent.model ?? ""}`;
   return `deepseek-${agent.model ?? "deepseek-flash"}`;
 }
 
@@ -71,13 +78,14 @@ export function sameAgent(a: AgentSpec, b: AgentSpec): boolean {
 }
 
 /**
- * Codex y Claude escriben en el worktree con sus CLIs y DeepSeek con el harness
- * agéntico in-process, así que los tres completan tareas de código.
+ * Codex y Claude escriben en el worktree con sus CLIs y DeepSeek/LM Studio con
+ * el harness agéntico in-process, así que los cuatro completan tareas de código.
  */
 const FILE_WRITING_PROVIDERS: ReadonlySet<AgentProvider> = new Set([
   "codex",
   "claude",
   "deepseek",
+  "lmstudio",
 ]);
 
 export function canWriteFiles(agent: AgentSpec): boolean {
@@ -134,5 +142,11 @@ export const CHAT_AGENT_OPTIONS: ChatAgentOption[] = [
     spec: { provider: "deepseek", model: "deepseek-v4-pro" },
     label: "deepseek-v4-pro",
     hint: "máxima calidad",
+  },
+  {
+    choice: "lmstudio",
+    spec: { provider: "lmstudio" },
+    label: "lmstudio",
+    hint: "modelo local, privado",
   },
 ];

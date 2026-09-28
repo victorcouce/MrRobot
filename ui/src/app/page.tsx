@@ -74,7 +74,7 @@ function Home() {
 
   useEffect(() => {
     api
-      .listSpaces()
+      .listProjects()
       .then(setSpaces)
       .catch(() => setSpaces([]));
   }, []);

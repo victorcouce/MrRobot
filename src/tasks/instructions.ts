@@ -85,9 +85,13 @@ function renderAttempts(task: Task): string {
             : attempt.agent.model === "haiku"
               ? "Claude Haiku"
               : "Claude Sonnet"
-          : attempt.agent.model === "deepseek-v4-pro"
-            ? "DeepSeek V4 Pro"
-            : "DeepSeek Flash";
+          : attempt.agent.provider === "deepseek"
+            ? attempt.agent.model === "deepseek-v4-pro"
+              ? "DeepSeek V4 Pro"
+              : "DeepSeek Flash"
+            : attempt.agent.model
+              ? `LM Studio (${attempt.agent.model})`
+              : "LM Studio";
 
     const status = attempt.status === "success" ? "ok" : `fallo: ${attempt.error ?? "sin detalle"}`;
     return `- Intento ${attempt.attempt} (${agent}): ${status}`;

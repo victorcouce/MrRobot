@@ -33,6 +33,12 @@ export default function SettingsPage() {
     ok: boolean;
     message: string;
   } | null>(null);
+  const [lmStudioBaseUrl, setLmStudioBaseUrl] = useState("");
+  const [checkingLmStudio, setCheckingLmStudio] = useState(false);
+  const [lmStudioResult, setLmStudioResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
   const [autoChecks, setAutoChecks] = useState(true);
   const [checkCommands, setCheckCommands] = useState<string[]>(DEFAULT_CHECKS);
   const [defaultAgents, setDefaultAgents] = useState<AgentChoice[]>([]);
@@ -162,6 +168,40 @@ export default function SettingsPage() {
       });
     } finally {
       setCheckingKey(false);
+    }
+  }
+
+  async function handleCheckLmStudio() {
+    setCheckingLmStudio(true);
+    setLmStudioResult(null);
+
+    try {
+      const result = await api.checkLmStudioConfig(lmStudioBaseUrl);
+
+      setLmStudioResult(
+        result.ok
+          ? {
+              ok: true,
+              message: result.models?.length
+                ? `Servidor conectado. Modelos cargados: ${result.models.join(", ")}. Añádela a .env (LMSTUDIO_BASE_URL) para que sobreviva a un reinicio.`
+                : "Servidor conectado, pero no hay ningún modelo cargado en LM Studio.",
+            }
+          : {
+              ok: false,
+              message: result.error ?? "No se pudo conectar con el servidor.",
+            },
+      );
+
+      if (result.ok) {
+        await refresh();
+      }
+    } catch (error) {
+      setLmStudioResult({
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setCheckingLmStudio(false);
     }
   }
 
@@ -367,7 +407,7 @@ export default function SettingsPage() {
                             disabled={locksFileWriter}
                             title={
                               locksFileWriter
-                                ? "Debe quedar al menos un agente que escriba archivos (Codex, Claude o DeepSeek)."
+                                ? "Debe quedar al menos un agente que escriba archivos (Codex, Claude, DeepSeek o LM Studio)."
                                 : undefined
                             }
                             onChange={(event) => {
@@ -393,9 +433,9 @@ export default function SettingsPage() {
                       role="status"
                       className="py-3 text-xs text-danger-text"
                     >
-                      Añade Codex, Claude o DeepSeek a los marcados por defecto:
-                      sin un agente que escriba archivos, las tareas de código no
-                      podrán completarse.
+                      Añade Codex, Claude, DeepSeek o LM Studio a los marcados
+                      por defecto: sin un agente que escriba archivos, las
+                      tareas de código no podrán completarse.
                     </p>
                   )}
 
@@ -436,6 +476,46 @@ export default function SettingsPage() {
                         }`}
                       >
                         {keyResult.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 py-3">
+                    <div className="text-sm font-medium text-ink">
+                      Servidor de LM Studio
+                    </div>
+                    <div className="text-xs text-ink-3">
+                      Modelos locales, sin coste ni envío de datos fuera de tu máquina.
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="http://localhost:1234/v1"
+                        value={lmStudioBaseUrl}
+                        onChange={(event) => {
+                          setLmStudioBaseUrl(event.target.value);
+                          setLmStudioResult(null);
+                        }}
+                        className="flex-1 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-4"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        type="button"
+                        loading={checkingLmStudio}
+                        onClick={() => void handleCheckLmStudio()}
+                      >
+                        Comprobar y aplicar
+                      </Button>
+                    </div>
+                    {lmStudioResult && (
+                      <p
+                        role="status"
+                        className={`text-xs ${
+                          lmStudioResult.ok ? "text-success-text" : "text-danger-text"
+                        }`}
+                      >
+                        {lmStudioResult.message}
                       </p>
                     )}
                   </div>
@@ -531,13 +611,13 @@ export default function SettingsPage() {
                 <div className="border-b border-line px-5 py-3">
                   <h2 className="text-sm font-semibold text-ink">Harness Agéntico</h2>
                   <p className="mt-1 text-xs text-ink-3">
-                    Tool-calling + sandbox para DeepSeek en tareas coding.
+                    Tool-calling + sandbox para DeepSeek y LM Studio en tareas coding.
                   </p>
                 </div>
                 <div className="divide-y divide-line-soft px-5 py-3">
                   <SettingRow
                     label="Habilitar harness"
-                    desc="Activa tool-calling y sandbox para DeepSeek (agentic mode)."
+                    desc="Activa tool-calling y sandbox para DeepSeek y LM Studio (agentic mode)."
                   >
                     <label className="flex cursor-pointer items-center gap-2">
                       <input

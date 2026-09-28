@@ -29,8 +29,8 @@ export interface OrchestratorConfig {
   defaultAllowedAgents?: AgentCandidate[];
 
   /**
-   * Harness agéntico para DeepSeek. Ausente = valores por defecto
-   * (enabled: true, bounds y sandbox defaults).
+   * Harness agéntico para proveedores basados en API (DeepSeek, LM Studio).
+   * Ausente = valores por defecto (enabled: true, bounds y sandbox defaults).
    */
   harness?: HarnessConfig;
 

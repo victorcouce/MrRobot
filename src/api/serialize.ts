@@ -44,7 +44,11 @@ export function describeAgent(agent: DomainAgentSpec): string {
         : "Claude Sonnet";
   }
 
-  return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
+  if (agent.provider === "deepseek") {
+    return agent.model === "deepseek-v4-pro" ? "DeepSeek V4 Pro" : "DeepSeek Flash";
+  }
+
+  return agent.model ? `LM Studio (${agent.model})` : "LM Studio";
 }
 
 export function serializeAgent(agent: DomainAgentSpec) {
@@ -56,9 +60,14 @@ export function serializeAgent(agent: DomainAgentSpec) {
       ? { provider: "claude" as const, model: agent.model }
       : { provider: "claude" as const };
   }
+  if (agent.provider === "deepseek") {
+    return agent.model
+      ? { provider: "deepseek" as const, model: agent.model }
+      : { provider: "deepseek" as const };
+  }
   return agent.model
-    ? { provider: "deepseek" as const, model: agent.model }
-    : { provider: "deepseek" as const };
+    ? { provider: "lmstudio" as const, model: agent.model }
+    : { provider: "lmstudio" as const };
 }
 
 export function serializeTask(task: DomainTask): Task {
