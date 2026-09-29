@@ -14,12 +14,11 @@ import {
   Users,
 } from "lucide-react";
 import { clsx } from "@/lib/cx";
-import { useAllChats, useAppInfo, useProjects, useSpaces } from "@/lib/hooks";
+import { useAllChats, useAppInfo, useProjects } from "@/lib/hooks";
 import {
   groupChatsByProject,
   looseChats,
   orderProjects,
-  projectInSpace,
   projectLabel,
   usePersistentState,
 } from "@/lib/sidebar";
@@ -77,10 +76,7 @@ export function SidebarRail({
   const { info } = useAppInfo();
   const { projects } = useProjects();
   const { chats } = useAllChats();
-  const { spaces } = useSpaces();
-  const [spaceId] = usePersistentState<string | null>("mrrobot.sidebar.space", null);
 
-  const space = spaces.find((candidate) => candidate.id === spaceId) ?? null;
   const activeProjectId = pathname.match(/^\/projects\/([^/]+)$/)?.[1] ?? null;
   const anyAgentConnected = (info?.agents ?? []).some((agent) => agent.connected);
 
@@ -88,10 +84,10 @@ export function SidebarRail({
   const ordered = useMemo(
     () =>
       orderProjects(
-        projects.filter((project) => projectInSpace(project, space)),
+        projects,
         groupChatsByProject(chats),
       ),
-    [projects, chats, space],
+    [projects, chats],
   );
 
   const loose = useMemo(() => looseChats(chats), [chats]);

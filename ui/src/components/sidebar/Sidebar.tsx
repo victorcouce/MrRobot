@@ -15,22 +15,21 @@ import {
   X,
 } from "lucide-react";
 import { clsx } from "@/lib/cx";
+import type { ProjectSummary } from "@/lib/types";
 import { useAllChats, useAppInfo, useProjects, useSpaces } from "@/lib/hooks";
 import {
   groupChatsByProject,
   looseChats,
   orderProjects,
-  projectInSpace,
   usePersistentState,
 } from "@/lib/sidebar";
-import { NewSpaceDialog } from "../spaces/NewSpaceDialog";
 import { CHAT_DRAG_TYPE, SidebarChatItem } from "./SidebarChatItem";
-import { ProjectsPopup } from "./ProjectsPopup";
+import { SidebarProjectItem } from "./SidebarProjectItem";
+import { SidebarSpaceItem } from "./SidebarSpaceItem";
 import { SidebarSection } from "./SidebarSection";
-import { SpaceSelector } from "./SpaceSelector";
 import { useItemActions } from "./useItemActions";
 
-const OPEN_SECTIONS = { chats: true };
+const OPEN_SECTIONS = { projects: true, chats: true };
 
 const ROW_CLASS =
   "focus-ring flex h-9 w-full items-center gap-2.5 rounded-btn px-2.5 text-[13px] transition-colors duration-100";
@@ -77,14 +76,12 @@ function FooterLink({
 }
 
 export function Sidebar({
-  collapsed = false,
   onNewChat,
   onNewProject,
   onOpenSearch,
   onNavigate,
   onCollapse,
 }: {
-  collapsed?: boolean;
   onNewChat?: () => void;
   onNewProject?: () => void;
   onOpenSearch?: () => void;
@@ -97,35 +94,58 @@ export function Sidebar({
   const { projects } = useProjects();
   const { chats } = useAllChats();
   const { spaces } = useSpaces();
-  const [spaceId, setSpaceId] = usePersistentState<string | null>(
-    "mrrobot.sidebar.space",
-    null,
-  );
   const [sections, setSections] = usePersistentState(
     "mrrobot.sidebar.sections.v2",
     OPEN_SECTIONS,
   );
-  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [droppingOnChats, setDroppingOnChats] = useState(false);
   const actions = useItemActions({ projects });
 
   const anyAgentConnected = (info?.agents ?? []).some((agent) => agent.connected);
-  // Si el espacio guardado ya no existe se muestran todos.
-  const space = spaces.find((candidate) => candidate.id === spaceId) ?? null;
 
   const chatsByProject = useMemo(() => groupChatsByProject(chats), [chats]);
   const ordered = useMemo(
     () =>
-      orderProjects(
-        projects.filter((project) => projectInSpace(project, space)),
-        chatsByProject,
-      ),
-    [projects, space, chatsByProject],
+      orderProjects(projects, chatsByProject),
+    [projects, chatsByProject],
   );
   const loose = useMemo(() => looseChats(chats), [chats]);
 
+  // Cada espacio agrupa los proyectos de su carpeta; el resto van sueltos.
+  const byPath = useMemo(() => {
+    const map = new Map<string, ProjectSummary[]>();
+    for (const project of ordered) {
+      const key = project.repoPath ?? "";
+      map.set(key, [...(map.get(key) ?? []), project]);
+    }
+    return map;
+  }, [ordered]);
+  const ungrouped = ordered.filter(
+    (project) => !spaces.some((space) => space.path === project.repoPath),
+  );
+
   function chatById(id: string) {
     return chats.find((chat) => chat.id === id);
+  }
+
+  function renderProject(project: ProjectSummary) {
+    return (
+      <SidebarProjectItem
+        key={project.id}
+        project={project}
+        chats={chatsByProject.get(project.id) ?? []}
+        active={project.id === actions.activeProjectId}
+        activeChatId={project.id === actions.activeProjectId ? actions.activeChatId : null}
+        menu={(rowActions) => actions.projectMenu(project, rowActions)}
+        chatMenu={(chat, rowActions) => actions.chatMenu(chat, rowActions)}
+        onRename={(title) => void actions.renameProject(project, title)}
+        onRenameChat={(chat, title) => void actions.renameChat(chat, title)}
+        onDropChat={(chatId) => {
+          const chat = chatById(chatId);
+          if (chat) void actions.moveChat(chat, project.id);
+        }}
+      />
+    );
   }
 
   function run(fn?: () => void) {
@@ -182,27 +202,26 @@ export function Sidebar({
       </div>
 
       <nav aria-label="Proyectos y chats" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <div className="flex flex-col gap-2">
-          <ProjectsPopup
-            projects={ordered}
-            chatsByProject={chatsByProject}
-            activeProjectId={actions.activeProjectId}
-            onNewProject={() => run(onNewProject)}
-            onNavigate={onNavigate}
-            compact={collapsed}
-          />
-
-          {spaces.length > 0 && (
-            <div className="px-2.5 py-2">
-              <SpaceSelector
-                spaces={spaces}
-                current={space}
-                onChange={(next) => setSpaceId(next?.id ?? null)}
-                onCreateNew={() => setNewSpaceOpen(true)}
-              />
-            </div>
-          )}
-        </div>
+        <SidebarSection
+          title="Proyectos"
+          onAdd={() => run(onNewProject)}
+          addLabel="Nuevo proyecto"
+          open={sections.projects !== false}
+          onToggle={() => setSections({ ...sections, projects: sections.projects === false })}
+        >
+          {spaces.map((space) => (
+            <SidebarSpaceItem
+              key={space.id}
+              space={space}
+              active={(byPath.get(space.path) ?? []).some(
+                (project) => project.id === actions.activeProjectId,
+              )}
+            >
+              {(byPath.get(space.path) ?? []).map(renderProject)}
+            </SidebarSpaceItem>
+          ))}
+          {ungrouped.map(renderProject)}
+        </SidebarSection>
 
         {loose.length > 0 && (
           <div
@@ -223,7 +242,8 @@ export function Sidebar({
           >
             <SidebarSection
               title="Chats"
-              count={loose.length}
+              onAdd={() => run(onNewChat)}
+              addLabel="Nuevo chat"
               open={sections.chats !== false}
               onToggle={() => setSections({ ...sections, chats: sections.chats === false })}
             >
@@ -296,14 +316,6 @@ export function Sidebar({
 
       {actions.dialogs}
 
-      <NewSpaceDialog
-        open={newSpaceOpen}
-        onClose={() => setNewSpaceOpen(false)}
-        onCreated={(created) => {
-          setNewSpaceOpen(false);
-          setSpaceId(created.id);
-        }}
-      />
     </div>
   );
 }

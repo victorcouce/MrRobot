@@ -74,7 +74,6 @@ export function AppShell({
       >
         <Suspense fallback={null}>
           <Sidebar
-            collapsed={collapsed}
             onNewChat={onNewChat}
             onNewProject={onNewProject}
             onOpenSearch={onOpenSearch}

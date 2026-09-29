@@ -182,20 +182,6 @@ describe("AppShell", () => {
     expect(screen.queryByRole("region", { name: "Chats" })).toBeNull();
   });
 
-  it("enseña 5 proyectos y el resto tras «Ver más»", async () => {
-    mocks.projects = Array.from({ length: 7 }, (_, index) =>
-      makeProject({ id: `p${index}`, goal: `Proyecto ${index}`, updatedAt: ago(index * 1000) }),
-    );
-
-    render(<AppShell>contenido</AppShell>);
-    const region = within(screen.getByRole("region", { name: "Proyectos" }));
-    expect(region.queryByRole("link", { name: /Proyecto 6/ })).toBeNull();
-
-    await userEvent.click(region.getByRole("button", { name: "Ver más (2)" }));
-    expect(region.getByRole("link", { name: /Proyecto 6/ })).toBeTruthy();
-    expect(region.getByRole("button", { name: "Ver menos" })).toBeTruthy();
-  });
-
   it("colapsa una sección y lo recuerda", async () => {
     mocks.projects = [makeProject()];
 
@@ -239,7 +225,7 @@ describe("AppShell", () => {
     expect(screen.getByText("Sin chats aún")).toBeTruthy();
   });
 
-  it("filtra los proyectos por espacio", async () => {
+  it("lista cada espacio como un proyecto con sus objetivos dentro", async () => {
     mocks.spaces = [makeSpace()];
     mocks.projects = [
       makeProject({ id: "a", goal: "Carrito", repoPath: "/repos/tienda" }),
@@ -247,12 +233,11 @@ describe("AppShell", () => {
     ];
 
     render(<AppShell>contenido</AppShell>);
-    await userEvent.click(screen.getByRole("button", { name: /Espacio: Todos los espacios/ }));
-    await userEvent.click(screen.getByRole("option", { name: /Tienda/ }).querySelector("button")!);
+    expect(screen.getByRole("link", { name: /Otra cosa/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Carrito/ })).toBeNull();
 
+    await userEvent.click(screen.getByRole("button", { name: /Tienda/ }));
     expect(screen.getByRole("link", { name: /Carrito/ })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /Otra cosa/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /Espacio: Tienda/ })).toBeTruthy();
   });
 
   it("renombra un chat desde el menú «⋯» en la propia fila", async () => {
@@ -464,22 +449,5 @@ describe("AppShell", () => {
     await userEvent.click(within(rail).getByRole("button", { name: "Mostrar barra lateral" }));
     expect(screen.queryByRole("complementary", { name: "Barra lateral contraída" })).toBeNull();
     expect(sidebar.className).not.toContain("md:hidden");
-  });
-
-  it("la barra de iconos respeta el espacio elegido en la barra completa", async () => {
-    mocks.spaces = [makeSpace()];
-    mocks.projects = [
-      makeProject({ id: "a", goal: "Carrito", repoPath: "/repos/tienda" }),
-      makeProject({ id: "b", goal: "Otra cosa", repoPath: "/repos/otro" }),
-    ];
-
-    render(<AppShell>contenido</AppShell>);
-    await userEvent.click(screen.getByRole("button", { name: /Espacio: Todos los espacios/ }));
-    await userEvent.click(screen.getByRole("option", { name: /Tienda/ }).querySelector("button")!);
-    await userEvent.click(screen.getByRole("button", { name: "Ocultar barra lateral" }));
-
-    const rail = screen.getByRole("complementary", { name: "Barra lateral contraída" });
-    expect(within(rail).getByRole("link", { name: "Carrito" })).toBeTruthy();
-    expect(within(rail).queryByRole("link", { name: "Otra cosa" })).toBeNull();
   });
 });

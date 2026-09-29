@@ -4,7 +4,6 @@ import {
   groupChatsByProject,
   looseChats,
   orderProjects,
-  projectInSpace,
   projectLabel,
   recencyOf,
 } from "./sidebar";
@@ -119,11 +118,3 @@ describe("projectLabel", () => {
   });
 });
 
-describe("projectInSpace", () => {
-  it("usa la carpeta del espacio; sin espacio entra todo", () => {
-    const space = { path: "/repos/tienda" } as Space;
-    expect(projectInSpace(project("p", iso(0), { repoPath: "/repos/tienda" }), space)).toBe(true);
-    expect(projectInSpace(project("p", iso(0), { repoPath: "/repos/blog" }), space)).toBe(false);
-    expect(projectInSpace(project("p", iso(0)), null)).toBe(true);
-  });
-});

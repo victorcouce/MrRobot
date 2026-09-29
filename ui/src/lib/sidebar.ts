@@ -73,13 +73,6 @@ export function groupChatsByProject(
   return map;
 }
 
-export function projectInSpace(
-  project: ProjectSummary,
-  space: Space | null,
-): boolean {
-  return !space || project.repoPath === space.path;
-}
-
 export function projectLabel(
   project: Pick<ProjectSummary, "title" | "goal" | "name">,
 ): string {
