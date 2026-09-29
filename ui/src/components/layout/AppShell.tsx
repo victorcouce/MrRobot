@@ -90,7 +90,7 @@ export function AppShell({
       {collapsed && (
         <aside
           aria-label="Barra lateral contraída"
-          className="hidden w-16 shrink-0 border-r border-line bg-sidebar md:block"
+          className="hidden w-16 shrink-0 border-r border-line bg-sidebar md:block overflow-visible"
         >
           <SidebarRail
             onExpand={() => setCollapsed(false)}
