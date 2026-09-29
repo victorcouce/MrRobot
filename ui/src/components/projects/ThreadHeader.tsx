@@ -1,16 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import type { Project } from "../../lib/types";
 import { PROJECT_STATUS } from "../../lib/status";
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Chip";
-import {
-  ActivityIcon,
-  PauseIcon,
-  PlayIcon,
-  SettingsIcon,
-} from "../ui/icons";
+import { PauseIcon, PlayIcon } from "../ui/icons";
 
 interface ThreadHeaderProps {
   project: Project;
@@ -93,21 +87,6 @@ export function ThreadHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <Link
-            href="/activity"
-            className="focus-ring inline-flex h-[34px] items-center gap-2 rounded-btn px-3 text-[13px] font-medium text-ink-3 transition-colors hover:bg-muted hover:text-ink"
-          >
-            <ActivityIcon size={15} />
-            Actividad
-          </Link>
-          <Link
-            href="/settings"
-            className="focus-ring inline-flex h-[34px] items-center gap-2 rounded-btn px-3 text-[13px] font-medium text-ink-3 transition-colors hover:bg-muted hover:text-ink"
-          >
-            <SettingsIcon size={15} />
-            Ajustes
-          </Link>
-
           {project.status === "draft" && onStart && (
             <Button
               variant="primary"

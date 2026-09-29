@@ -559,14 +559,24 @@ Next.js (App Router) + TypeScript + React + Tailwind CSS, en `ui/`. Estructura:
 
 ```text
 ui/src/
-  app/                      pages (dashboard, new, [id], agents, activity, settings)
+  app/                      pages (dashboard, projects, chats, archived, agents,
+                            activity, settings)
   components/
-    layout/                 AppShell, Sidebar, ThemeToggle
+    layout/                 AppShell, LayoutContent
+    sidebar/                Sidebar, SidebarRail (modo compacto con popups de
+                            proyectos y chats), secciones con botón +,
+                            espacios listados como proyectos, menús de fila
+    spaces/                 NewSpaceDialog, SpacePicker
+    chats/                  ChatView
     ui/                     primitivas (Button, Badge, Dialog, Tabs, …)
     projects/               ProjectCard, PlanView, DagView, TaskTable,
-                            TaskDetail, TaskEditor, ExecutionView, ActivityLog, …
+                            TaskDetail, TaskEditor, ExecutionView, ThreadHeader, …
   lib/                      cliente API, hooks, SSE, status, theme
 ```
+
+Navegación: la sidebar lista proyectos y chats (los chats sin proyecto en su
+propia sección); cada proyecto enlaza a su ventana principal. Actividad y Ajustes
+se abren desde la sidebar, no desde la cabecera del proyecto.
 
 Pantallas:
 
