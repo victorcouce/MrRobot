@@ -17,6 +17,7 @@ interface ProjectsPopupProps {
   onNewProject?: () => void;
   onNavigate?: () => void;
   compact?: boolean;
+  popupAlign?: "left" | "right";
 }
 
 export function ProjectsPopup({
@@ -26,6 +27,7 @@ export function ProjectsPopup({
   onNewProject,
   onNavigate,
   compact = false,
+  popupAlign = "left",
 }: ProjectsPopupProps) {
   const pathname = usePathname();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,7 +131,10 @@ export function ProjectsPopup({
 
       {isOpen && (
         <div
-          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-line bg-surface shadow-lg"
+          className={clsx(
+            "absolute top-full z-50 mt-1 w-72 rounded-lg border border-line bg-surface shadow-lg",
+            popupAlign === "right" ? "right-0" : "left-0",
+          )}
           onMouseEnter={handlePopupMouseEnter}
           onMouseLeave={handlePopupMouseLeave}
         >

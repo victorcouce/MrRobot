@@ -141,7 +141,7 @@ export function SidebarRail({
       <div className="flex justify-center py-2">
         <Tooltip label="Proyectos">
           <div className="flex h-10 w-10 items-center justify-center">
-            <ProjectsPopup projects={projects} compact />
+            <ProjectsPopup projects={projects} compact popupAlign="right" />
           </div>
         </Tooltip>
       </div>
