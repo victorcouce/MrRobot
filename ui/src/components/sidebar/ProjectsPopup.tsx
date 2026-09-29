@@ -8,6 +8,9 @@ import { clsx } from "@/lib/cx";
 import { chatTitle } from "./useItemActions";
 import type { ChatSummary, ProjectSummary } from "@/lib/types";
 
+/** Solo un popup de la barra abierto a la vez. */
+export const POPUP_OPEN_EVENT = "mrrobot:sidebar-popup-open";
+
 const ROW_CLASS =
   "focus-ring flex h-9 w-full items-center gap-2.5 rounded-btn px-2.5 text-[13px] transition-colors duration-100";
 
@@ -37,10 +40,19 @@ export function ProjectsPopup({
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
+    const closeIfOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== "projects") setIsOpen(false);
+    };
+    window.addEventListener(POPUP_OPEN_EVENT, closeIfOther);
+    return () => window.removeEventListener(POPUP_OPEN_EVENT, closeIfOther);
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) {
       setQuery("");
       return;
     }
+    window.dispatchEvent(new CustomEvent(POPUP_OPEN_EVENT, { detail: "projects" }));
 
     const handleClickOutside = (event: MouseEvent) => {
       if (

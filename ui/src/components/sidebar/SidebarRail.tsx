@@ -146,14 +146,14 @@ export function SidebarRail({
       <div className="h-px w-8 shrink-0 bg-line-strong" />
 
       <div className="flex flex-col items-center gap-1 py-2">
-        <Tooltip label="Chats">
-          <div className="flex h-10 w-10 items-center justify-center">
-            <ChatsPopup chats={loose} activeChatId={activeChatId} />
-          </div>
-        </Tooltip>
         <Tooltip label="Proyectos">
           <div className="flex h-10 w-10 items-center justify-center">
             <ProjectsPopup projects={projects} compact popupAlign="right" onNewProject={onNewProject} />
+          </div>
+        </Tooltip>
+        <Tooltip label="Chats">
+          <div className="flex h-10 w-10 items-center justify-center">
+            <ChatsPopup chats={loose} activeChatId={activeChatId} />
           </div>
         </Tooltip>
       </div>

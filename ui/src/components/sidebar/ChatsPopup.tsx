@@ -6,6 +6,7 @@ import { MessageSquare, Search } from "lucide-react";
 import { clsx } from "@/lib/cx";
 import { chatHref } from "@/lib/sidebar";
 import type { ChatSummary } from "@/lib/types";
+import { POPUP_OPEN_EVENT } from "./ProjectsPopup";
 import { chatTitle } from "./useItemActions";
 
 const ROW_CLASS =
@@ -25,10 +26,19 @@ export function ChatsPopup({
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    const closeIfOther = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== "chats") setIsOpen(false);
+    };
+    window.addEventListener(POPUP_OPEN_EVENT, closeIfOther);
+    return () => window.removeEventListener(POPUP_OPEN_EVENT, closeIfOther);
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) {
       setQuery("");
       return;
     }
+    window.dispatchEvent(new CustomEvent(POPUP_OPEN_EVENT, { detail: "chats" }));
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
