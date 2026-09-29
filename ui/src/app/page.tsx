@@ -50,7 +50,10 @@ function Home() {
   const { info } = useAppInfo();
   const router = useRouter();
   // «Nuevo proyecto» en la barra lateral llega aquí con el modal de creación abierto.
-  const wantsProject = useSearchParams().get("new") === "project";
+  const searchParams = useSearchParams();
+  const wantsProject = searchParams.get("new") === "project";
+  // Un proyecto vacío de la barra lateral llega aquí con su espacio elegido.
+  const spaceParam = searchParams.get("space");
   const [goal, setGoal] = useState("");
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [space, setSpace] = useState<Space | null>(null);
@@ -105,6 +108,12 @@ function Home() {
     setAttachmentError(null);
     setAttachments((current) => current.filter((att) => att.id !== id));
   };
+
+  useEffect(() => {
+    if (!spaceParam) return;
+    const wanted = spaces.find((candidate) => candidate.id === spaceParam);
+    if (wanted) setSpace(wanted);
+  }, [spaceParam, spaces]);
 
   const selectSpace = (next: Space) => {
     setSpace(next);

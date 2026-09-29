@@ -225,7 +225,7 @@ describe("AppShell", () => {
     expect(screen.getByText("Sin chats aún")).toBeTruthy();
   });
 
-  it("lista cada espacio como un proyecto con sus objetivos dentro", async () => {
+  it("lista cada espacio como un proyecto que lleva a su último objetivo", () => {
     mocks.spaces = [makeSpace()];
     mocks.projects = [
       makeProject({ id: "a", goal: "Carrito", repoPath: "/repos/tienda" }),
@@ -235,9 +235,7 @@ describe("AppShell", () => {
     render(<AppShell>contenido</AppShell>);
     expect(screen.getByRole("link", { name: /Otra cosa/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /Carrito/ })).toBeNull();
-
-    await userEvent.click(screen.getByRole("button", { name: /Tienda/ }));
-    expect(screen.getByRole("link", { name: /Carrito/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Tienda/ }).getAttribute("href")).toBe("/projects/a");
   });
 
   it("renombra un chat desde el menú «⋯» en la propia fila", async () => {

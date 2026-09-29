@@ -209,17 +209,21 @@ export function Sidebar({
           open={sections.projects !== false}
           onToggle={() => setSections({ ...sections, projects: sections.projects === false })}
         >
-          {spaces.map((space) => (
-            <SidebarSpaceItem
-              key={space.id}
-              space={space}
-              active={(byPath.get(space.path) ?? []).some(
-                (project) => project.id === actions.activeProjectId,
-              )}
-            >
-              {(byPath.get(space.path) ?? []).map(renderProject)}
-            </SidebarSpaceItem>
-          ))}
+          {spaces.map((space) => {
+            // Más reciente primero: `ordered` ya viene por actividad.
+            const latest = (byPath.get(space.path) ?? [])[0];
+            return (
+              <SidebarSpaceItem
+                key={space.id}
+                space={space}
+                href={latest ? `/projects/${latest.id}` : `/?space=${space.id}`}
+                active={(byPath.get(space.path) ?? []).some(
+                  (project) => project.id === actions.activeProjectId,
+                )}
+                onNavigate={onNavigate}
+              />
+            );
+          })}
           {ungrouped.map(renderProject)}
         </SidebarSection>
 
