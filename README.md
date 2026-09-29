@@ -80,6 +80,14 @@ cd ui && npm run dev
 
 Luego abre **http://localhost:3000** en el navegador.
 
+La primera vez se abre el **asistente de configuración** (`/onboarding`): comprueba
+qué agentes tienes, instala las CLIs de Codex/Claude, valida y guarda la clave de
+DeepSeek, la URL de LM Studio y el `GITHUB_TOKEN`, y elige los agentes por
+defecto. Las claves se guardan en `.env` y la config global en
+`.mrrobot/config.json`, así que sobreviven a un reinicio del backend. El
+asistente vuelve a aparecer si no queda ningún agente conectado que escriba
+código, y se puede reabrir desde *Ajustes → Asistente de configuración*.
+
 ### 3. (Opcional) Probar sin gastar tokens
 
 Si no quieres usar modelos reales ni tocar Git, arranca el backend en modo mock:
@@ -221,6 +229,8 @@ MRROBOT_MOCK_SCENARIO=success|replan|fail
 MRROBOT_MOCK_DELAY_MS=0    # retardo artificial por ejecución de agente
 MRROBOT_LOG_DIR=.mrrobot/logs   # opcional, directorio de los ficheros .log de monitorización
 MRROBOT_CLAUDE_PERMISSION_MODE=acceptEdits   # permisos del CLI de Claude al ejecutar tareas
+MRROBOT_ENV_FILE=.env      # opcional, fichero donde la UI guarda las claves
+MRROBOT_SETTINGS_FILE=.mrrobot/config.json   # opcional, config global y estado del asistente inicial
 ```
 
 `MRROBOT_CLAUDE_PERMISSION_MODE` (`default`, `acceptEdits`, `bypassPermissions`

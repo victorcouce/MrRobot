@@ -7,6 +7,7 @@ import type {
   ChatSummary,
   ConfigInfo,
   FolderCheck,
+  GitHubTokenCheck,
   GrillMessage,
   GrillResponse,
   MetricsSummary,
@@ -143,7 +144,7 @@ export const api = {
     request<{
       ok: boolean;
       applied: boolean;
-      persisted: false;
+      persisted: boolean;
       error?: string;
     }>("/api/agents/deepseek-key", {
       method: "POST",
@@ -154,13 +155,24 @@ export const api = {
     request<{
       ok: boolean;
       applied: boolean;
-      persisted: false;
+      persisted: boolean;
       baseUrl: string;
       models?: string[];
       error?: string;
     }>("/api/agents/lmstudio-config", {
       method: "POST",
       body: JSON.stringify({ baseUrl }),
+    }),
+
+  checkGitHubToken: (token: string) =>
+    request<GitHubTokenCheck>("/api/github-token", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
+  completeOnboarding: () =>
+    request<{ completed: true }>("/api/onboarding/complete", {
+      method: "POST",
     }),
 
   installCli: (provider: "codex" | "claude") =>

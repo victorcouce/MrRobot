@@ -1,15 +1,13 @@
 import OpenAI from "openai";
+import { applyAndPersistEnvVar } from "../config/persist.js";
 import { DEFAULT_LM_STUDIO_BASE_URL } from "../providers/lmstudio.js";
 
 export interface LmStudioConfigCheck {
   ok: boolean;
   /** La URL queda aplicada al proceso del backend. */
   applied: boolean;
-  /**
-   * El proceso no la recuerda tras reiniciarse: hay que dejarla en .env para
-   * que sobreviva.
-   */
-  persisted: false;
+  /** La URL quedó guardada en .env y sobrevive a un reinicio. */
+  persisted: boolean;
   baseUrl: string;
   /** Modelos que el servidor local tiene cargados en este momento. */
   models?: string[];
@@ -19,8 +17,7 @@ export interface LmStudioConfigCheck {
 /**
  * Comprueba que el servidor local de LM Studio responde en `baseUrl` y, si
  * responde, la aplica al proceso del backend para que los agentes puedan
- * usarla de inmediato. No se escribe en disco: guardar la URL en .env es
- * decisión de quien administra el equipo.
+ * usarla de inmediato y la guarda en .env para que sobreviva a un reinicio.
  */
 export async function checkAndApplyLmStudioConfig(
   baseUrl: string,
@@ -30,13 +27,12 @@ export async function checkAndApplyLmStudioConfig(
   try {
     const client = new OpenAI({ apiKey: "lm-studio", baseURL: trimmed });
     const models = await client.models.list();
-
-    process.env.LMSTUDIO_BASE_URL = trimmed;
+    const saved = await applyAndPersistEnvVar("LMSTUDIO_BASE_URL", trimmed);
 
     return {
       ok: true,
       applied: true,
-      persisted: false,
+      ...saved,
       baseUrl: trimmed,
       models: models.data.map((model) => model.id),
     };

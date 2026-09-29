@@ -107,7 +107,7 @@ describe("Ajustes", () => {
     });
   });
 
-  it("comprueba la clave de DeepSeek y dice que no persiste", async () => {
+  it("comprueba la clave de DeepSeek y avisa si no se pudo guardar en .env", async () => {
     vi.mocked(api.checkDeepSeekKey).mockResolvedValue({
       ok: true,
       applied: true,
@@ -120,8 +120,9 @@ describe("Ajustes", () => {
     fireEvent.change(screen.getByPlaceholderText("DEEPSEEK_API_KEY"), {
       target: { value: "sk-test" },
     });
+    // DeepSeek es el primero de los dos «Comprobar y aplicar» (luego LM Studio).
     fireEvent.click(
-      screen.getByRole("button", { name: /Comprobar y aplicar/ }),
+      screen.getAllByRole("button", { name: /Comprobar y aplicar/ })[0]!,
     );
 
     await waitFor(() => {

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { applyAndPersistEnvVar } from "../config/persist.js";
 
 const BASE_URL = "https://api.deepseek.com";
 
@@ -6,18 +7,15 @@ export interface DeepSeekKeyCheck {
   ok: boolean;
   /** La clave queda aplicada al proceso del backend. */
   applied: boolean;
-  /**
-   * El proceso no la recuerda tras reiniciarse: hay que dejarla en .env para
-   * que sobreviva.
-   */
-  persisted: false;
+  /** La clave quedó guardada en .env y sobrevive a un reinicio. */
+  persisted: boolean;
   error?: string;
 }
 
 /**
  * Comprueba la clave contra DeepSeek y, si responde, la aplica al proceso del
- * backend para que los agentes puedan usarla de inmediato. No se escribe en
- * disco: guardar un secreto en .env es decisión de quien administra el equipo.
+ * backend para que los agentes puedan usarla de inmediato y la guarda en .env
+ * para que sobreviva a un reinicio.
  */
 export async function checkAndApplyDeepSeekKey(
   apiKey: string,
@@ -48,7 +46,7 @@ export async function checkAndApplyDeepSeekKey(
     };
   }
 
-  process.env.DEEPSEEK_API_KEY = trimmed;
+  const saved = await applyAndPersistEnvVar("DEEPSEEK_API_KEY", trimmed);
 
-  return { ok: true, applied: true, persisted: false };
+  return { ok: true, applied: true, ...saved };
 }

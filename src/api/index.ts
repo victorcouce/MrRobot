@@ -12,6 +12,10 @@ const scenario =
 const mockDelayMs = Number(process.env.MRROBOT_MOCK_DELAY_MS ?? 0);
 const repoCwd = process.env.MRROBOT_REPO;
 const dataDir = process.env.MRROBOT_DATA_DIR ?? ".mrrobot/data";
+// En modo mock los ajustes no se guardan: no deben pisar la config real.
+const settingsFile = mock
+  ? undefined
+  : (process.env.MRROBOT_SETTINGS_FILE ?? ".mrrobot/config.json");
 
 const options: StartOptions = {
   port,
@@ -20,6 +24,7 @@ const options: StartOptions = {
   scenario,
   mockDelayMs: Number.isFinite(mockDelayMs) ? mockDelayMs : 0,
   dataDir,
+  ...(settingsFile ? { settingsFile } : {}),
   ...(repoCwd ? { repoCwd } : {}),
 };
 

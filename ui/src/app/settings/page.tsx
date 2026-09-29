@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import {
   AGENT_CHOICES,
@@ -10,6 +11,11 @@ import {
   type AgentChoice,
 } from "@/lib/agents";
 import { useAppInfo } from "@/lib/hooks";
+import {
+  describeDeepSeekResult,
+  describeLmStudioResult,
+  useAgentSetup,
+} from "@/lib/agent-setup";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/Badge";
 
@@ -46,6 +52,8 @@ export default function SettingsPage() {
   const [maxIterations, setMaxIterations] = useState(24);
   const [maxToolCalls, setMaxToolCalls] = useState(60);
   const [harnessTimeoutMs, setHarnessTimeoutMs] = useState(300000);
+  const [githubToken, setGithubToken] = useState("");
+  const setup = useAgentSetup(refresh);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,15 +155,7 @@ export default function SettingsPage() {
     try {
       const result = await api.checkDeepSeekKey(deepseekKey);
 
-      setKeyResult(
-        result.ok
-          ? {
-              ok: true,
-              message:
-                "Clave válida y aplicada al backend. Añádela a .env para que sobreviva a un reinicio.",
-            }
-          : { ok: false, message: result.error ?? "La clave no es válida." },
-      );
+      setKeyResult(describeDeepSeekResult(result));
 
       if (result.ok) {
         setDeepseekKey("");
@@ -178,19 +178,7 @@ export default function SettingsPage() {
     try {
       const result = await api.checkLmStudioConfig(lmStudioBaseUrl);
 
-      setLmStudioResult(
-        result.ok
-          ? {
-              ok: true,
-              message: result.models?.length
-                ? `Servidor conectado. Modelos cargados: ${result.models.join(", ")}. Añádela a .env (LMSTUDIO_BASE_URL) para que sobreviva a un reinicio.`
-                : "Servidor conectado, pero no hay ningún modelo cargado en LM Studio.",
-            }
-          : {
-              ok: false,
-              message: result.error ?? "No se pudo conectar con el servidor.",
-            },
-      );
+      setLmStudioResult(describeLmStudioResult(result));
 
       if (result.ok) {
         await refresh();
@@ -232,6 +220,14 @@ export default function SettingsPage() {
           <p className="text-xs text-ink-3">Se aplican a todos los proyectos y chats</p>
         </div>
         <div className="flex items-center gap-3">
+          {!hasChanges && (
+            <Link
+              href="/onboarding"
+              className="text-xs font-medium text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+            >
+              Asistente de configuración
+            </Link>
+          )}
           {saved && !hasChanges && (
             <span className="text-xs font-medium text-success-text">Guardado</span>
           )}
@@ -714,6 +710,39 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </SettingRow>
+                <div className="space-y-2 border-t border-line-soft px-5 py-4">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={githubToken}
+                      onChange={(event) => setGithubToken(event.target.value)}
+                      placeholder="GITHUB_TOKEN"
+                      aria-label="Token de GitHub"
+                      autoComplete="off"
+                      className="h-8 flex-1 rounded-lg border border-line-strong bg-surface px-3 font-mono text-xs text-ink outline-none focus:border-primary"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={setup.busy === "github"}
+                      disabled={!githubToken.trim()}
+                      onClick={async () => {
+                        const result = await setup.checkGitHub(githubToken);
+                        if (result.ok) setGithubToken("");
+                      }}
+                    >
+                      Validar y guardar
+                    </Button>
+                  </div>
+                  {setup.results.github && (
+                    <p
+                      role="status"
+                      className={`text-xs ${setup.results.github.ok ? "text-success-text" : "text-danger-text"}`}
+                    >
+                      {setup.results.github.message}
+                    </p>
+                  )}
+                </div>
               </section>
             )}
           </form>

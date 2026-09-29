@@ -4,12 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/api/index.ts",
-    "api": "tsx --env-file=.env src/api/index.ts",
-    "demo": "tsx --env-file=.env src/index.ts",
-    "mrrobot": "tsx --env-file=.env src/cli/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/api/index.ts",
+    "api": "tsx --env-file-if-exists=.env src/api/index.ts",
+    "demo": "tsx --env-file-if-exists=.env src/index.ts",
+    "mrrobot": "tsx --env-file-if-exists=.env src/cli/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "MRROBOT_LOG_DIR=${TMPDIR:-/tmp}/mrrobot-test-logs tsx --test --test-isolation=none src/agents/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/sandbox/*.test.ts src/harness/*.test.ts src/planner/*.test.ts src/grill/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/chats/*.test.ts src/graph/*.test.ts src/api/*.test.ts src/preview/*.test.ts src/tasks/*.test.ts src/checks/*.test.ts src/providers/*.test.ts"
+    "test": "MRROBOT_LOG_DIR=${TMPDIR:-/tmp}/mrrobot-test-logs tsx --test --test-isolation=none src/agents/*.test.ts src/config/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/sandbox/*.test.ts src/harness/*.test.ts src/planner/*.test.ts src/grill/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/chats/*.test.ts src/graph/*.test.ts src/api/*.test.ts src/preview/*.test.ts src/tasks/*.test.ts src/checks/*.test.ts src/providers/*.test.ts"
   },
   "keywords": [],
   "author": "",

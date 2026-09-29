@@ -33,6 +33,12 @@ import type { OrchestratorConfig } from "../config/index.js";
 import { runGrill } from "../grill/grill.js";
 import type { GrillMessage, GrillOutcome } from "../grill/types.js";
 import { loadConfig, mergeConfig } from "../config/index.js";
+import {
+  loadSettings,
+  saveSettings,
+  type PersistedSettings,
+} from "../config/persist.js";
+import { parseConfigOverrides } from "./parse.js";
 import type { Project, ProjectBrief } from "../projects/types.js";
 import {
   cancelProject,
@@ -115,9 +121,33 @@ export interface RuntimeOptions {
   scenario?: MockScenario;
   mockDelayMs?: number;
   repoCwd?: string;
+  /**
+   * JSON con la config global y el estado del asistente inicial. Sin él, los
+   * ajustes viven solo en memoria (tests y modo mock).
+   */
+  settingsFile?: string;
 }
 
 export class ProjectNotFoundError extends Error {}
+
+/** Config guardada en disco; si ya no es válida se ignora en vez de romper el arranque. */
+function persistedOverrides(
+  settings: PersistedSettings,
+): Partial<OrchestratorConfig> {
+  if (!settings.config) return {};
+  try {
+    const overrides = parseConfigOverrides(settings.config);
+    if (overrides.defaultAllowedAgents) {
+      assertFileWritingAgent(overrides.defaultAllowedAgents);
+    }
+    return overrides;
+  } catch (error) {
+    console.warn(
+      `[config] Se ignora la config guardada: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return {};
+  }
+}
 
 /** Recorte de ~120 caracteres alrededor de la coincidencia. */
 export function searchSnippet(content: string, query: string): string {
@@ -194,12 +224,15 @@ export class Runtime {
   private readonly mockDelayMs: number;
   private readonly repoCwd: string | undefined;
   private readonly mockDeps: ProjectDeps | undefined;
+  private readonly settingsFile: string | undefined;
+  private settings: PersistedSettings;
   private closed = false;
 
   private constructor(
     storage: Storage,
     workspace: WorkspaceManager,
     options: RuntimeOptions,
+    settings: PersistedSettings = {},
   ) {
     this.mock = options.mock ?? false;
     this.scenario = options.scenario ?? "success";
@@ -216,7 +249,9 @@ export class Runtime {
       void appendProjectLog(event);
     });
     this.workspace = workspace;
-    this.config = loadConfig();
+    this.settingsFile = options.settingsFile;
+    this.settings = settings;
+    this.config = loadConfig(persistedOverrides(settings));
     this.mockDeps = this.mock
       ? createMockDeps(this.storage, this.scenario, this.mockDelayMs)
       : undefined;
@@ -224,11 +259,14 @@ export class Runtime {
 
   static async create(options: RuntimeOptions = {}): Promise<Runtime> {
     const mock = options.mock ?? false;
+    const settings = options.settingsFile
+      ? await loadSettings(options.settingsFile)
+      : {};
 
     if (mock) {
       const storage = new InMemoryStorage();
       await storage.init();
-      return new Runtime(storage, createMockWorkspace(), options);
+      return new Runtime(storage, createMockWorkspace(), options, settings);
     }
 
     if (options.dataDir) {
@@ -240,6 +278,7 @@ export class Runtime {
       storage,
       createGitWorkspaceManager(options.repoCwd),
       options,
+      settings,
     );
     runtime.close = close;
     return runtime;
@@ -330,6 +369,7 @@ export class Runtime {
       agents: await checkAgentAvailability(),
       config: this.configInfo(),
       githubToken: Boolean(process.env.GITHUB_TOKEN),
+      onboarding: { completed: Boolean(this.settings.onboardingCompletedAt) },
     };
   }
 
@@ -353,6 +393,35 @@ export class Runtime {
 
     this.config = mergeConfig(this.config, overrides);
     return this.configInfo();
+  }
+
+  /**
+   * `PUT /api/config`: valida el cuerpo, lo aplica y lo guarda en disco tal
+   * cual llegó, para volver a validarlo con las mismas reglas al arrancar.
+   */
+  async updateConfigFromBody(body: Record<string, unknown>): Promise<ConfigInfo> {
+    const info = this.updateConfig(parseConfigOverrides(body));
+    await this.persistSettings({
+      ...this.settings,
+      config: { ...this.settings.config, ...body },
+    });
+    return info;
+  }
+
+  /** Marca el asistente de configuración inicial como completado. */
+  async completeOnboarding(): Promise<{ completed: true }> {
+    await this.persistSettings({
+      ...this.settings,
+      onboardingCompletedAt: new Date().toISOString(),
+    });
+    return { completed: true };
+  }
+
+  private async persistSettings(next: PersistedSettings): Promise<void> {
+    this.settings = next;
+    if (this.settingsFile) {
+      await saveSettings(this.settingsFile, next);
+    }
   }
 
   /** Fuente real de la tabla "Asignación: Tipo × Complejidad" de Agentes. */

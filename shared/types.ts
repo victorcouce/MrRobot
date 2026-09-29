@@ -373,6 +373,17 @@ export interface AppInfo {
   config: ConfigInfo;
   /** Si GITHUB_TOKEN está definido en el proceso del backend. */
   githubToken: boolean;
+  /** Si el usuario ya pasó por el asistente de configuración inicial. */
+  onboarding: { completed: boolean };
+}
+
+export interface GitHubTokenCheck {
+  ok: boolean;
+  /** El token quedó guardado en .env y sobrevive a un reinicio. */
+  persisted: boolean;
+  /** Usuario de GitHub al que pertenece el token. */
+  login?: string;
+  error?: string;
 }
 
 /** Fila de la matriz tipo × complejidad, derivada de `selectAgent`. */

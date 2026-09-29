@@ -1226,3 +1226,77 @@ test("api server: GET /api/search encuentra chats y tareas de todos los proyecto
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await runtime.shutdown();
 });
+
+test("runtime: la config global y el onboarding se guardan y se recargan de disco", async () => {
+  const settingsFile = join(
+    await mkdtemp(join(tmpdir(), "mrrobot-settings-")),
+    "config.json",
+  );
+
+  const first = await Runtime.create({ mock: true, settingsFile });
+  const server = buildApiServer(first);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+
+  const before = await (await fetch(`${base}/api/info`)).json();
+  assert.deepEqual(before.onboarding, { completed: false });
+
+  const updated = await fetch(`${base}/api/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      concurrency: 5,
+      defaultAllowedAgents: [{ provider: "claude", model: "sonnet" }],
+    }),
+  });
+  assert.equal(updated.status, 200);
+
+  const completed = await fetch(`${base}/api/onboarding/complete`, {
+    method: "POST",
+  });
+  assert.deepEqual(await completed.json(), { completed: true });
+
+  const after = await (await fetch(`${base}/api/info`)).json();
+  assert.deepEqual(after.onboarding, { completed: true });
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await first.shutdown();
+
+  // Un backend nuevo arranca con lo guardado.
+  const second = await Runtime.create({ mock: true, settingsFile });
+  const info = await second.info();
+  assert.equal(info.config.concurrency, 5);
+  assert.deepEqual(
+    info.config.defaultAllowedAgents.map((agent) => agent.provider),
+    ["claude"],
+  );
+  assert.deepEqual(info.onboarding, { completed: true });
+  await second.shutdown();
+});
+
+test("api server: POST /api/github-token exige el campo token", async () => {
+  const runtime = await Runtime.create({ mock: true });
+  const server = buildApiServer(runtime);
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/api/github-token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  assert.equal(response.status, 400);
+
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await runtime.shutdown();
+});

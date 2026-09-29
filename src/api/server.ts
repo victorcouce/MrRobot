@@ -21,6 +21,7 @@ import {
 import { checkAndApplyDeepSeekKey } from "./deepseek-key.js";
 import { checkAndApplyLmStudioConfig } from "./lmstudio-config.js";
 import { installCli, isInstallableCliProvider } from "./install-cli.js";
+import { checkAndApplyGitHubToken } from "./github-token.js";
 import { pickFolder } from "./pick-folder.js";
 import { checkFolder, checkRemote } from "../workspace/validate.js";
 import {
@@ -163,7 +164,31 @@ async function dispatch(
   // /api/config
   if (req.method === "PUT" && segments[1] === "config") {
     const body = await readJson(req);
-    sendJson(res, 200, runtime.updateConfig(parseConfigOverrides(body)));
+    sendJson(res, 200, await runtime.updateConfigFromBody(body));
+    return;
+  }
+
+  // /api/onboarding/complete
+  if (
+    req.method === "POST" &&
+    segments[1] === "onboarding" &&
+    segments[2] === "complete"
+  ) {
+    sendJson(res, 200, await runtime.completeOnboarding());
+    return;
+  }
+
+  // /api/github-token
+  if (req.method === "POST" && segments[1] === "github-token") {
+    const body = await readJson(req);
+    const token = body["token"];
+
+    if (typeof token !== "string") {
+      sendJson(res, 400, { error: 'El campo "token" es obligatorio.' });
+      return;
+    }
+
+    sendJson(res, 200, await checkAndApplyGitHubToken(token));
     return;
   }
 
