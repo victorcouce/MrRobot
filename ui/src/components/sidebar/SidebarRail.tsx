@@ -139,7 +139,11 @@ export function SidebarRail({
       <div className="h-px w-8 shrink-0 bg-line-strong" />
 
       <div className="flex justify-center py-2">
-        <ProjectsPopup projects={projects} />
+        <Tooltip label="Proyectos">
+          <div className="flex h-10 w-10 items-center justify-center">
+            <ProjectsPopup projects={projects} compact />
+          </div>
+        </Tooltip>
       </div>
 
       <div className="flex shrink-0 flex-col items-center gap-1 border-t border-line py-2">
