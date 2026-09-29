@@ -180,7 +180,7 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col gap-px px-2 pb-2">
+      <div className="flex shrink-0 flex-col gap-px px-2 pb-2 mb-2">
         <button
           type="button"
           onClick={() => run(onNewChat)}
@@ -282,7 +282,7 @@ export function Sidebar({
         </div>
       )}
 
-      <div className="flex shrink-0 flex-col gap-px border-t border-line px-2 py-2">
+      <div className="flex shrink-0 flex-col gap-px px-2 py-2">
         <FooterLink
           href="/agents"
           label="Agentes"
