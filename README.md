@@ -1,5 +1,7 @@
 # MrRobot — orquestador multiagente
 
+![MrRobot hero image](branding/hero.png)
+
 Motor multiagente en TypeScript que recibe un objetivo de alto nivel, lo
 descompone en un DAG de tareas, las ejecuta con Codex / Claude / DeepSeek /
 LM Studio en Git worktrees aislados, revisa el resultado y deja el trabajo en

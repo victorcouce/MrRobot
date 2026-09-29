@@ -35,7 +35,8 @@
       "Bash(git commit -m 'Cambios de UI y configuración *)",
       "Bash(git commit -m 'Sidebar: reemplazar lista de proyectos con popup desplegable *)",
       "Bash(git commit *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(cp /private/tmp/claude-501/-Users-victor-Developer-MrRobot/976e3654-8a5a-431f-bd95-a6b9ba2db4a1/images/1.png /Users/victor/Developer/MrRobot/branding/hero.png)"
     ]
   }
 }
