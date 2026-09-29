@@ -1,0 +1,5 @@
+node_modules/
+.env
+.worktrees/
+.mrrobot/
+.DS_Store

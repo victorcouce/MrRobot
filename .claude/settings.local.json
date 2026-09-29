@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(kill -9 8097)",
+      "Bash(curl -s http://localhost:4000/health)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(grep -n \"^export\\\\|^  [a-zA-Z]*\\(.*{$\\\\|^  async [a-zA-Z]*\" src/projects/service.ts)",
+      "Bash(npx tsc *)",
+      "Bash(npm test *)",
+      "Bash(python3 -)",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs npx tsx --test --test-isolation=none --test-name-pattern=\"chat suelto|renombrar, fijar|búsqueda encuentra|chats\" src/api/api.test.ts)",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs timeout 90 npx tsx --test --test-isolation=none --test-name-pattern=\"chat suelto\" src/api/api.test.ts)",
+      "Read(//tmp/claude-501/**)",
+      "Bash(pkill -f \"test-name-pattern=chat suelto\")",
+      "Bash(MRROBOT_LOG_DIR=/tmp/mrrobot-test-logs npx tsx --test --test-isolation=none src/storage/storage.test.ts)",
+      "Bash(git rm *)",
+      "Bash(python3 - *)",
+      "Bash(npx vitest *)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(git commit -m 'Chats sueltos, sidebar y archivados: API, storage y UI *)",
+      "Bash(git pull *)",
+      "Bash(cp /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/1.webp /Users/victor/Developer/mrrobot/ui/public/logo.png)",
+      "Bash(convert /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/2.webp logo.png)",
+      "Bash(ffmpeg -i /private/tmp/claude-501/-Users-victor-Developer-mrrobot/f39000a6-73fd-425a-aeb1-6453de79e5f1/images/2.webp -y /Users/victor/Developer/mrrobot/ui/public/logo.png)",
+      "Bash(git checkout *)",
+      "Bash(python3 -c \"import cairosvg\")",
+      "Bash(sed -i '' 's/title: \"MrRobot\"/title: \"Mr. Robot\"/' app/layout.tsx)",
+      "Bash(sed -i '' 's/>MrRobot</>Mr. Robot</; s/\"MrRobot, inicio\"/\"Mr. Robot, inicio\"/' components/sidebar/Sidebar.tsx components/layout/AppShell.tsx components/sidebar/SidebarRail.tsx)",
+      "Bash(cp \"/Users/victor/Downloads/export-1a/robot-1a-dark.svg\" /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg && wc -c /Users/victor/Developer/mrrobot/ui/public/logo-mark.svg)",
+      "Bash(git commit -m 'Selector de proyectos: quitar opción de crear proyecto desde el buscador *)",
+      "Bash(git commit -m 'Cambios de UI y configuración *)",
+      "Bash(git commit -m 'Sidebar: reemplazar lista de proyectos con popup desplegable *)",
+      "Bash(git commit *)",
+      "Bash(npm install *)",
+      "Bash(cp /private/tmp/claude-501/-Users-victor-Developer-MrRobot/976e3654-8a5a-431f-bd95-a6b9ba2db4a1/images/1.png /Users/victor/Developer/MrRobot/branding/hero.png)"
+    ]
+  }
+}

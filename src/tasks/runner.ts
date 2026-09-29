@@ -1,0 +1,633 @@
+import { relative } from "node:path";
+import { renderAttachments } from "../agents/attachments.js";
+import { classifyAvailability } from "../agents/availability.js";
+import { renderPreviousFailures } from "../agents/failure.js";
+import {
+  errorMessage,
+  getFallbackChain,
+  isRetryableError,
+  MAX_RETRIES_PER_AGENT,
+} from "../agents/fallback.js";
+import { type AgentHealth, skipAccountLimited } from "../agents/health.js";
+import { runAgent } from "../agents/router.js";
+import {
+  type TokenUsage,
+  usageOrUndefined,
+  withUsageMeter,
+} from "../agents/usage.js";
+import {
+  isLimitReason,
+  limitRetryDelayMs,
+  parseRetryAfterMs,
+  resolveLimitRetry,
+  sleep,
+  type LimitRetryPolicy,
+} from "../agents/limit-retry.js";
+import { agentKey, canWriteFiles, describeAgent } from "../agents/selector.js";
+import type { AgentCandidate, Attachment, OnAgentEvent } from "../agents/types.js";
+import { primeDependencies, saveDependencies } from "../checks/deps-store.js";
+import type { RunOptions } from "../providers/types.js";
+import { gitWorkspaceManager } from "../workspace/manager.js";
+import type { TaskWorkspace, WorkspaceManager } from "../workspace/types.js";
+import { normalizeCriteria } from "./criteria.js";
+import type { Task, TaskAttempt } from "./types.js";
+
+export type AgentExecutor = (
+  prompt: string,
+  agent: AgentCandidate,
+  options?: RunOptions,
+) => Promise<string>;
+
+export interface RunTaskOptions {
+  execute?: AgentExecutor | undefined;
+  workspace?: WorkspaceManager | undefined;
+  baseRef?: string | undefined;
+  /**
+   * Punto de partida del worktree. Por defecto `baseRef`; en los ciclos de fix
+   * apunta al commit del intento anterior para que el agente continúe ese trabajo.
+   */
+  startRef?: string | undefined;
+  extraPrompt?: string | undefined;
+  /**
+   * Describe el worktree recién creado (archivos, scripts) para el prompt: el
+   * agente arranca sabiendo qué hay en vez de gastar sus primeras llamadas en
+   * listar y leer (de media 11-23 antes de la primera escritura el 21-09).
+   */
+  describeWorkspace?: ((dir: string) => Promise<string | undefined>) | undefined;
+  maxRetriesPerAgent?: number | undefined;
+  /**
+   * Agentes que pasan al final de la cadena en esta ejecución: el ciclo de fix
+   * no empieza por el agente cuyo resultado acaba de fallar los checks (el
+   * 22-09, Haiku gastó 4m22s y 942k tokens en un fix que no cambió nada).
+   */
+  demoteAgents?: AgentCandidate[] | undefined;
+  /** Reintento de la cadena completa cuando todos caen por límite. */
+  limitRetry?: Partial<LimitRetryPolicy> | undefined;
+  /** Agentes permitidos del chat. Vacío o ausente = sin restricción. */
+  allowedAgents?: AgentCandidate[] | undefined;
+  /**
+   * Memoria compartida de agentes agotados por límite. Cuando se pasa, el
+   * agente que cae por rate limit/cuota pasa al final de la cadena en las
+   * siguientes tareas hasta que se reponga, de modo que no se vuelve a empezar
+   * por el que falló. Sin ella, el orden es siempre el de `getFallbackChain`.
+   */
+  agentHealth?: AgentHealth | undefined;
+  /** Adjuntos que la tarea referencia, ya resueltos. */
+  attachments?: Attachment[] | undefined;
+  signal?: AbortSignal | undefined;
+  /** Recibe la salida del agente en vivo (stdout/stderr). */
+  onOutput?: ((chunk: string) => void) | undefined;
+  /**
+   * Notifica el inicio/éxito/fallo de cada intento de agente, con su duración.
+   * Pensado para monitorización (fichero .log, consola del navegador vía SSE),
+   * no cambia el flujo de ejecución.
+   */
+  onAgentEvent?: OnAgentEvent | undefined;
+  /**
+   * Se ejecuta en el worktree del intento exitoso, antes de eliminarlo. Sirve
+   * para correr los checks allí y reutilizar el `node_modules` que el agente ya
+   * haya instalado, evitando un worktree y una instalación extra. `changed`
+   * indica si el intento escribió algo: sin cambios no hay nada que verificar.
+   */
+  onWorkspaceSuccess?:
+    | ((
+        workspace: TaskWorkspace,
+        changed: boolean,
+        result: { commit?: string; output: string },
+      ) => Promise<void> | void)
+    | undefined;
+  /** Modo de ejecución: "text" (respuesta) o "agentic" (tool-calling con harness). */
+  mode?: "text" | "agentic" | undefined;
+  /** Configuración del harness (sandbox + tool-calling loop). */
+  harness?: import("../harness/types.js").HarnessConfig | undefined;
+}
+
+function buildPrompt(
+  task: Task,
+  attachments: Attachment[],
+  repoRoot?: string,
+): string {
+  const criteria = normalizeCriteria(task.acceptanceCriteria ?? [], repoRoot);
+
+  const criteriaBlock =
+    criteria.length > 0
+      ? `\n\nCRITERIOS DE ACEPTACIÓN\n${criteria.map((item) => `- ${item}`).join("\n")}`
+      : "";
+
+  const attachmentsBlock =
+    attachments.length > 0
+      ? `\n${renderAttachments(attachments, { refs: false }).join("\n")}`
+      : "";
+
+  return `Eres un agente ejecutor dentro de un sistema multiagente.
+
+TAREA
+ID: ${task.id}
+
+Título: ${task.title}
+
+DESCRIPCIÓN
+${task.description}${criteriaBlock}${attachmentsBlock}
+
+Completa exclusivamente esta tarea.
+
+Verifica al terminar, no después de cada cambio: ejecuta una vez los comandos que exigen los criterios y, si alguno falla, corrige y repite solo ese.
+
+Devuelve un resultado claro y directamente utilizable.`;
+}
+
+/** Mueve al final los agentes indicados, conservando el orden del resto. */
+function demote(
+  chain: AgentCandidate[],
+  demoted: AgentCandidate[],
+): AgentCandidate[] {
+  const keys = new Set(demoted.map(agentKey));
+  const kept = chain.filter((agent) => !keys.has(agentKey(agent)));
+  return kept.length === 0 || kept.length === chain.length
+    ? chain
+    : [...kept, ...chain.filter((agent) => keys.has(agentKey(agent)))];
+}
+
+function withPreviousFailures(prompt: string, attempts: TaskAttempt[]): string {
+  const block = renderPreviousFailures(attempts);
+  return block ? `${prompt}\n\n${block}` : prompt;
+}
+
+function failTask(
+  task: Task,
+  attempts: TaskAttempt[],
+  error: string,
+): Task {
+  return {
+    ...task,
+    status: "failed",
+    error,
+    attempts,
+    finishedAt: new Date(),
+  };
+}
+
+interface TaskRunOutcome {
+  task: Task;
+  /** Todos los candidatos cayeron por límite del proveedor (rate/usage). */
+  allLimited: boolean;
+  limitError?: unknown;
+}
+
+/**
+ * Ejecuta una tarea con reintento automático cuando *todos* los agentes de la
+ * cadena se agotan por límite. Entre reintentos espera el `retry after` del
+ * proveedor o un backoff exponencial.
+ */
+export async function runTask(
+  task: Task,
+  options: RunTaskOptions = {},
+): Promise<Task> {
+  const limitRetry = resolveLimitRetry(options.limitRetry);
+  const carry: { attempts: TaskAttempt[]; workspaceAttempt: number } = {
+    attempts: [],
+    workspaceAttempt: 0,
+  };
+
+  for (let cycle = 0; ; cycle++) {
+    const outcome = await runTaskOnce(task, options, carry);
+
+    if (
+      outcome.task.status === "done" ||
+      !outcome.allLimited ||
+      cycle >= limitRetry.maxLimitRetries
+    ) {
+      return outcome.task;
+    }
+
+    // Si el proveedor anuncia una reposición posterior al tope de espera, los
+    // reintentos solo ocuparían el hueco de concurrencia para fallar igual.
+    const retryAfter = parseRetryAfterMs(outcome.limitError);
+
+    if (retryAfter !== undefined && retryAfter > limitRetry.maxDelayMs) {
+      console.log(
+        `⏳ todos los agentes al límite hasta dentro de ${Math.round(retryAfter / 60_000)} min; no se espera.`,
+      );
+      return outcome.task;
+    }
+
+    const delay = limitRetryDelayMs(cycle, outcome.limitError, limitRetry);
+    console.log(
+      `⏳ todos los agentes al límite; reintentando la cadena en ${Math.round(delay / 1000)}s (${cycle + 1}/${limitRetry.maxLimitRetries}).`,
+    );
+
+    try {
+      await sleep(delay, options.signal);
+    } catch (error) {
+      return failTask(outcome.task, carry.attempts, errorMessage(error));
+    }
+  }
+}
+
+async function runTaskOnce(
+  task: Task,
+  options: RunTaskOptions,
+  carry: { attempts: TaskAttempt[]; workspaceAttempt: number },
+): Promise<TaskRunOutcome> {
+  const execute = options.execute ?? runAgent;
+  const workspaceManager = options.workspace ?? gitWorkspaceManager;
+  const maxRetries = options.maxRetriesPerAgent ?? MAX_RETRIES_PER_AGENT;
+
+  if (task.status !== "ready") {
+    throw new Error(
+      `La tarea ${task.id} no se puede ejecutar (estado actual: ${task.status}). Se esperaba "ready".`,
+    );
+  }
+
+  const fullChain = getFallbackChain(task, options.allowedAgents ?? []);
+
+  // Las tareas de código solo las pueden completar agentes que escriben en el
+  // worktree: Codex y Claude con su CLI y DeepSeek con el harness agéntico. Si
+  // la restricción del chat dejara solo agentes que no escriben, se conserva la
+  // cadena y el guard de "sin cambios" dará el error explicativo.
+  const baseChain =
+    task.type === "coding" && fullChain.some(canWriteFiles)
+      ? fullChain.filter(canWriteFiles)
+      : fullChain;
+
+  // Los agentes en cuarentena por límite se relegan al final: la siguiente
+  // tarea sigue con el agente que funcionó en vez de repetir el que falló.
+  const chain = demote(
+    options.agentHealth?.order(baseChain) ?? baseChain,
+    options.demoteAgents ?? [],
+  );
+
+  const running: Task = {
+    ...task,
+    status: "running",
+    startedAt: new Date(),
+  };
+
+  // Un reintento parte de cero: el error/bloqueo de la ejecución anterior no
+  // debe sobrevivir a un resultado exitoso (la UI lo mostraría como fallo).
+  delete running.error;
+  delete running.blockedReason;
+  delete running.integrationError;
+
+  console.log(`▶ ${running.id} - ${running.title}`);
+  console.log(`Tipo: ${running.type}`);
+  console.log(`Complejidad: ${running.complexity}`);
+  console.log(`\nCadena:`);
+  chain.forEach((candidate, index) => {
+    console.log(`${index + 1}. ${describeAgent(candidate)}`);
+  });
+
+  let repoRoot: string;
+  let baseRef: string;
+
+  try {
+    repoRoot = await workspaceManager.getRepoRoot();
+    baseRef = options.baseRef ?? (await workspaceManager.resolveBaseRef());
+  } catch (error) {
+    const message = errorMessage(error);
+    console.log(`✗ No se pudo preparar el aislamiento: ${message}`);
+    return { task: failTask(running, [], message), allLimited: false };
+  }
+
+  console.log(`\nBase commit:\n${baseRef}`);
+
+  if (await workspaceManager.isDirty()) {
+    console.log(`\nAviso: el repositorio principal tiene cambios sin commit.`);
+    console.log(
+      `Esos cambios NO forman parte del workspace (base ${baseRef.slice(0, 7)}).`,
+    );
+  }
+
+  // El prompt se construye con la raíz ya resuelta: los criterios con rutas
+  // absolutas dentro del repo se reanclan a relativas para que el agente
+  // escriba en el worktree y no en la copia principal.
+  const basePrompt = buildPrompt(task, options.attachments ?? [], repoRoot);
+  const prompt = options.extraPrompt
+    ? `${basePrompt}\n\n${options.extraPrompt}`
+    : basePrompt;
+
+  const startRef = options.startRef ?? baseRef;
+
+  if (startRef !== baseRef) {
+    console.log(`\nContinuando desde el intento anterior:\n${startRef}`);
+  }
+
+  const attempts = carry.attempts;
+  // Intentos de ejecuciones anteriores de la tarea (reanudación): `carry`
+  // empieza vacío en cada `runTask`.
+  const previousAttempts = carry.attempts.length === 0 ? (task.attempts ?? []) : [];
+  let lastError: string | undefined;
+  let allLimited = chain.length > 0;
+  let limitError: unknown;
+
+  for (const [index, candidate] of chain.entries()) {
+    if (skipAccountLimited(candidate, chain, options.agentHealth)) {
+      console.log(`\n${describeAgent(candidate)}: cuenta sin cuota, se salta.`);
+      continue;
+    }
+
+    if (options.signal?.aborted) {
+      return {
+        task: failTask(running, attempts, "Ejecución cancelada por el usuario."),
+        allLimited: false,
+      };
+    }
+
+    const label = describeAgent(candidate);
+    console.log(`\n[${index + 1}/${chain.length}] ${label}`);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (options.signal?.aborted) {
+        return {
+          task: failTask(running, attempts, "Ejecución cancelada por el usuario."),
+          allLimited: false,
+        };
+      }
+
+      carry.workspaceAttempt += 1;
+      const startedAt = new Date();
+
+      let workspace;
+      try {
+        workspace = await workspaceManager.create(
+          running.id,
+          carry.workspaceAttempt,
+          startRef,
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        console.log(`✗ No se pudo crear el workspace: ${message}`);
+
+        attempts.push({
+          agent: candidate,
+          attempt: attempt + 1,
+          startedAt,
+          finishedAt: new Date(),
+          status: "failed",
+          error: message,
+          baseRef,
+        });
+
+        return {
+          task: failTask(running, attempts, message),
+          allLimited: false,
+        };
+      }
+
+      if (workspace.path === repoRoot) {
+        throw new Error(
+          `Aislamiento inválido: el cwd del agente no puede ser la raíz del repositorio (${running.id}).`,
+        );
+      }
+
+      console.log(`\nCreando workspace:\n${relative(repoRoot, workspace.path)}`);
+      console.log(`Branch:\n${workspace.branchName}`);
+
+      // El worktree nace sin `node_modules` (no está commiteado). Sembrarlo
+      // desde el almacén antes de arrancar al agente le ahorra la instalación
+      // completa, que es lo más lento de todo el intento.
+      const primed = await primeDependencies(workspace.path);
+
+      if (primed === "hit") {
+        console.log(`Dependencias:\nreutilizadas del almacén`);
+      }
+
+      const workspaceMap = await options
+        .describeWorkspace?.(workspace.path)
+        .catch(() => undefined);
+
+      console.log(`Agente:\n${label}`);
+      console.log(`Intento ${attempt + 1}`);
+
+      await options.onAgentEvent?.({
+        phase: "start",
+        agent: candidate,
+        attempt: attempt + 1,
+        chainIndex: index,
+        chainLength: chain.length,
+      });
+
+      let attemptUsage: TokenUsage | undefined;
+
+      try {
+        const attemptPrompt = withPreviousFailures(
+          workspaceMap ? `${prompt}\n\n${workspaceMap}` : prompt,
+          [...previousAttempts, ...attempts],
+        );
+        const metered = await withUsageMeter(() =>
+          execute(attemptPrompt, candidate, {
+            cwd: workspace.path,
+            ...(options.signal ? { signal: options.signal } : {}),
+            ...(options.onOutput ? { onOutput: options.onOutput } : {}),
+            ...(options.mode ? { mode: options.mode } : {}),
+            ...(options.harness ? { harness: options.harness } : {}),
+          }),
+        );
+        attemptUsage = usageOrUndefined(metered.usage);
+        if ("error" in metered) throw metered.error;
+        const output = metered.result;
+
+        const commitMessage = `agent(${running.id}): ${running.title}`;
+        const committed = await workspaceManager.commit(workspace, commitMessage);
+
+        // Una tarea de código sin cambios no ha hecho su trabajo, ni en el
+        // primer intento ni en los ciclos de fix. Ocurre, por ejemplo, cuando
+        // el agente no puede escribir en el worktree (DeepSeek sin harness, o
+        // un CLI sin permiso). Sin esto, un ciclo de fix daría por buena la
+        // tarea con el commit del intento anterior y el reviewer compararía el
+        // informe del agente con un diff que no le corresponde.
+        if (running.type === "coding" && committed === undefined) {
+          throw new Error(
+            `${label} no creó ni modificó ningún archivo en el workspace. ` +
+              `Revisa que el agente pueda escribir en disco: Codex y Claude con su CLI ` +
+              `y DeepSeek con el harness agéntico habilitado. Si era Codex o Claude, ` +
+              `el CLI no tenía permiso para escribir: revisa su configuración ` +
+              `(en Claude, MRROBOT_CLAUDE_PERMISSION_MODE).`,
+          );
+        }
+
+        // En los ciclos de fix el worktree parte del commit anterior: se aplana
+        // el árbol final en un único commit sobre la base de integración, para
+        // que el cherry-pick de la tarea siga siendo un solo commit.
+        let resultCommit = committed;
+
+        if (startRef !== baseRef) {
+          if (committed !== undefined) {
+            resultCommit = await workspaceManager.squash(
+              workspace,
+              baseRef,
+              commitMessage,
+            );
+          } else {
+            // Tarea no-code sin cambios nuevos: se conserva el trabajo del
+            // intento anterior, pero el commit no es de este agente.
+            resultCommit = startRef;
+          }
+        }
+
+        // La duración del worker se corta aquí: `onWorkspaceSuccess` corre los
+        // checks y el reviewer, y contarlos inflaba el tiempo del agente (el
+        // 23-09, TASK-004 figuraba con 1m31s cuando el worker tardó 1m16s).
+        const workerDurationMs = Date.now() - startedAt.getTime();
+
+        if (options.onWorkspaceSuccess) {
+          await options.onWorkspaceSuccess(workspace, committed !== undefined, {
+            ...(resultCommit !== undefined ? { commit: resultCommit } : {}),
+            output,
+          });
+        }
+
+        // El almacén solo se llenaba desde los checks: sin ellos (modo rápido,
+        // proyectos sin scripts) cada tarea reinstalaba desde cero. Va después
+        // de los checks para que, si corren, guarde su instalación completa.
+        if (await saveDependencies(workspace.path)) {
+          console.log(`Dependencias:\nguardadas en el almacén`);
+        }
+
+        await workspaceManager.remove(workspace, {
+          deleteBranch: committed === undefined,
+        });
+
+        const attemptRecord: TaskAttempt = {
+          agent: candidate,
+          attempt: attempt + 1,
+          startedAt,
+          finishedAt: new Date(),
+          status: "success",
+          workspacePath: workspace.path,
+          branchName: workspace.branchName,
+          baseRef,
+        };
+
+        // Solo se atribuye el commit al intento si este lo produjo. En un
+        // ciclo de fix sin cambios, `resultCommit` es el commit anterior (de
+        // otro agente) y no debe figurar como trabajo de este intento.
+        if (committed !== undefined) {
+          attemptRecord.commitSha = resultCommit ?? committed;
+        }
+
+        attempts.push(attemptRecord);
+
+        await options.onAgentEvent?.({
+          phase: "success",
+          agent: candidate,
+          attempt: attempt + 1,
+          chainIndex: index,
+          chainLength: chain.length,
+          durationMs: workerDurationMs,
+          ...(attemptUsage ? { usage: attemptUsage } : {}),
+        });
+
+        console.log(`\n✓ tarea completada`);
+
+        if (resultCommit !== undefined) {
+          console.log(`Commit:\n${resultCommit}`);
+        } else {
+          console.log(`Sin cambios que commitear (no se creó commit).`);
+        }
+
+        console.log(`\n${running.id} → DONE`);
+
+        options.agentHealth?.recordSuccess(candidate);
+
+        const done: Task = {
+          ...running,
+          status: "done",
+          executedBy: candidate,
+          output,
+          attempts,
+          finishedAt: new Date(),
+        };
+
+        if (resultCommit !== undefined) {
+          done.resultCommit = resultCommit;
+        }
+
+        return { task: done, allLimited: false };
+      } catch (error) {
+        const message = errorMessage(error);
+        lastError = message;
+
+        await workspaceManager.remove(workspace, { deleteBranch: true });
+
+        attempts.push({
+          agent: candidate,
+          attempt: attempt + 1,
+          startedAt,
+          finishedAt: new Date(),
+          status: "failed",
+          error: message,
+          workspacePath: workspace.path,
+          branchName: workspace.branchName,
+          baseRef,
+        });
+
+        console.log(`✗ intento fallido: ${message}`);
+        console.log(`Limpiando workspace...`);
+
+        const availability = classifyAvailability(error);
+
+        await options.onAgentEvent?.({
+          phase: "failed",
+          agent: candidate,
+          attempt: attempt + 1,
+          chainIndex: index,
+          chainLength: chain.length,
+          durationMs: Date.now() - startedAt.getTime(),
+          error: message,
+          ...(availability.available ? {} : { reason: availability.reason }),
+          ...(attemptUsage ? { usage: attemptUsage } : {}),
+        });
+
+        if (!availability.available) {
+          if (isLimitReason(availability.reason)) {
+            limitError = error;
+            const cooldown = options.agentHealth?.markLimited(candidate, error);
+
+            if (cooldown) {
+              console.log(
+                `En cuarentena ${Math.round(cooldown / 1000)}s: seguirá al final de la cadena.`,
+              );
+            }
+          } else {
+            allLimited = false;
+          }
+          console.log(
+            `Agente no disponible (${availability.reason}), se pasa al siguiente candidato.`,
+          );
+          break;
+        }
+
+        // Cualquier fallo que no sea límite descarta el reintento de cadena.
+        allLimited = false;
+
+        if (!isRetryableError(error)) {
+          console.log(`Error no reintentable, se pasa al siguiente candidato.`);
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          console.log(`\nRetry ${label}\n`);
+        }
+      }
+    }
+
+    const next = chain[index + 1];
+
+    if (next) {
+      console.log(`\nFallback → ${describeAgent(next)}\n`);
+    }
+  }
+
+  console.log(`${running.id} → FAILED`);
+
+  return {
+    task: failTask(
+      running,
+      attempts,
+      lastError ?? "Ningún candidato pudo completar la tarea.",
+    ),
+    allLimited,
+    ...(limitError !== undefined ? { limitError } : {}),
+  };
+}

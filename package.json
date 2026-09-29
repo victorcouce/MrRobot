@@ -1,0 +1,30 @@
+{
+  "name": "mrrobot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/api/index.ts",
+    "api": "tsx --env-file-if-exists=.env src/api/index.ts",
+    "demo": "tsx --env-file-if-exists=.env src/index.ts",
+    "mrrobot": "tsx --env-file-if-exists=.env src/cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "MRROBOT_LOG_DIR=${TMPDIR:-/tmp}/mrrobot-test-logs tsx --test --test-isolation=none src/agents/*.test.ts src/config/*.test.ts src/workspace/*.test.ts src/scheduler/*.test.ts src/storage/*.test.ts src/sandbox/*.test.ts src/harness/*.test.ts src/planner/*.test.ts src/grill/*.test.ts src/reviewer/*.test.ts src/supervisor/*.test.ts src/projects/*.test.ts src/chats/*.test.ts src/graph/*.test.ts src/api/*.test.ts src/preview/*.test.ts src/tasks/*.test.ts src/checks/*.test.ts src/providers/*.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@langchain/core": "^1.2.11",
+    "@langchain/langgraph": "^1.4.15",
+    "openai": "^7.15.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3"
+  }
+}
