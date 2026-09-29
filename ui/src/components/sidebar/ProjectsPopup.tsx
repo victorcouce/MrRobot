@@ -5,15 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Folder, FolderPlus, Search } from "lucide-react";
 import { clsx } from "@/lib/cx";
-import type { Chat, Project } from "@/types";
+import { chatTitle } from "./useItemActions";
+import type { ChatSummary, ProjectSummary } from "@/lib/types";
 
 const ROW_CLASS =
   "focus-ring flex h-9 w-full items-center gap-2.5 rounded-btn px-2.5 text-[13px] transition-colors duration-100";
 
 interface ProjectsPopupProps {
-  projects: Project[];
-  chatsByProject: Map<string, Chat[]>;
-  activeProjectId: string | null;
+  projects: ProjectSummary[];
+  chatsByProject?: Map<string, ChatSummary[]>;
+  activeProjectId?: string | null;
   onNewProject?: () => void;
   onNavigate?: () => void;
   compact?: boolean;
@@ -23,7 +24,7 @@ interface ProjectsPopupProps {
 export function ProjectsPopup({
   projects,
   chatsByProject,
-  activeProjectId,
+  activeProjectId = null,
   onNewProject,
   onNavigate,
   compact = false,
@@ -33,7 +34,7 @@ export function ProjectsPopup({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const hoverTimeoutRef = useRef<NodeJS.Timeout>();
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (!isOpen) {
@@ -132,8 +133,8 @@ export function ProjectsPopup({
       {isOpen && (
         <div
           className={clsx(
-            "absolute top-full z-50 mt-1 w-72 rounded-lg border border-line bg-surface shadow-lg",
-            popupAlign === "right" ? "left-full ml-2" : "left-0",
+            "absolute z-50 w-72 rounded-lg border border-line bg-surface shadow-lg",
+            popupAlign === "right" ? "left-full top-2 ml-2" : "left-0 top-full mt-1",
           )}
           onMouseEnter={handlePopupMouseEnter}
           onMouseLeave={handlePopupMouseLeave}
@@ -221,7 +222,7 @@ export function ProjectsPopup({
                                   : "text-ink-4 hover:bg-muted hover:text-ink-2",
                               )}
                             >
-                              <span className="truncate">{chat.name}</span>
+                              <span className="truncate">{chatTitle(chat)}</span>
                             </Link>
                           ))}
                           {chats.length > 5 && (

@@ -49,7 +49,7 @@ export default function HomePage() {
 function Home() {
   const { info } = useAppInfo();
   const router = useRouter();
-  // «Nuevo proyecto» en la barra lateral llega aquí con el selector abierto.
+  // «Nuevo proyecto» en la barra lateral llega aquí con el modal de creación abierto.
   const wantsProject = useSearchParams().get("new") === "project";
   const [goal, setGoal] = useState("");
   const [spaces, setSpaces] = useState<Space[]>([]);
@@ -73,8 +73,15 @@ function Home() {
   const selectedAgents = info?.config?.defaultAllowedAgents ?? [];
 
   useEffect(() => {
+    if (!wantsProject) return;
+    setNewSpaceOpen(true);
+    // Se quita el parámetro para que volver a pulsar el botón lo reabra.
+    router.replace("/");
+  }, [wantsProject, router]);
+
+  useEffect(() => {
     api
-      .listProjects()
+      .listSpaces()
       .then(setSpaces)
       .catch(() => setSpaces([]));
   }, []);
@@ -145,11 +152,6 @@ function Home() {
   const submit = async () => {
     if (!goal.trim() || creating) return;
     if (!space) {
-      if (wantsProject) {
-        setSpaceError(true);
-        setSpaceShake(true);
-        return;
-      }
       await startChat();
       return;
     }
@@ -199,7 +201,7 @@ function Home() {
           {title}
         </h1>
         <p className="text-base text-ink-3">
-          {space || wantsProject
+          {space
             ? "Describe el objetivo. MrRobot lo planifica, lo reparte entre agentes y lo deja en una rama aparte."
             : "Pregunta o da forma a una idea. Elige un proyecto cuando quieras que MrRobot lo construya."}
         </p>
@@ -256,7 +258,7 @@ function Home() {
             }
           }}
           placeholder={
-            space || wantsProject
+            space
               ? "Crea una calculadora web con historial y tests…"
               : "Pregunta lo que quieras…"
           }
@@ -309,7 +311,6 @@ function Home() {
               onSelect={selectSpace}
               onCreateNew={() => setNewSpaceOpen(true)}
               onClear={() => setSpace(null)}
-              autoOpen={wantsProject}
               invalid={spaceError}
               shake={spaceShake}
               onShakeEnd={() => setSpaceShake(false)}
@@ -322,7 +323,7 @@ function Home() {
             disabled={!goal.trim() || missingFileWriter || creating}
             className="focus-ring inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-btn bg-primary px-4 text-sm font-medium text-ink hover:bg-primary-hover disabled:opacity-50"
           >
-            {creating ? "Creando…" : space || wantsProject ? "Planificar" : "Enviar"}
+            {creating ? "Creando…" : space ? "Planificar" : "Enviar"}
             {creating ? (
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
             ) : (

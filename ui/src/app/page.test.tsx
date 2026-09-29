@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   search: "",
   createProject: vi.fn(),
   createStandaloneChat: vi.fn(),
-  listSpaces: vi.fn(),
+  listProjects: vi.fn(),
   createSpace: vi.fn(),
   info: {
     agents: [] as AgentAvailability[],
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mocks.push }),
+  useRouter: () => ({ push: mocks.push, replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
 
@@ -43,7 +43,7 @@ vi.mock("@/lib/api", () => ({
     pickFolder: vi.fn(),
     createProject: mocks.createProject,
     createStandaloneChat: mocks.createStandaloneChat,
-    listSpaces: mocks.listSpaces,
+    listProjects: mocks.listProjects,
     createSpace: mocks.createSpace,
   },
 }));
@@ -79,8 +79,8 @@ describe("Inicio", () => {
     mocks.createProject.mockResolvedValue({ id: "p1" });
     mocks.info.agents = [];
     mocks.info.config.defaultAllowedAgents = [];
-    mocks.listSpaces.mockReset();
-    mocks.listSpaces.mockResolvedValue([CALC_SPACE]);
+    mocks.listProjects.mockReset();
+    mocks.listProjects.mockResolvedValue([CALC_SPACE]);
     mocks.createSpace.mockReset();
     vi.mocked(api.pickFolder).mockReset();
   });
@@ -206,7 +206,7 @@ describe("Inicio", () => {
 
   it("sin proyecto abre un chat suelto y le pasa el mensaje", async () => {
     render(<HomePage />);
-    await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.listProjects).toHaveBeenCalled());
 
     fireEvent.change(screen.getByLabelText("Mensaje"), {
       target: { value: "¿qué stack me recomiendas?" },
@@ -221,26 +221,11 @@ describe("Inicio", () => {
     expect(takePendingMessage("c9")).toBeUndefined();
   });
 
-  it("desde «Nuevo proyecto» sin carpeta resalta el selector en vez de continuar", async () => {
+  it("desde «Nuevo proyecto» abre el modal de creación", async () => {
     mocks.search = "new=project";
     render(<HomePage />);
-    await waitFor(() => expect(mocks.listSpaces).toHaveBeenCalled());
-    // Llega con el selector abierto.
-    expect(await screen.findByRole("dialog", { name: "Proyectos" })).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "Escape" });
-
-    fireEvent.change(screen.getByLabelText("Mensaje"), {
-      target: { value: "una calculadora" },
-    });
-
-    const planificar = screen.getByRole("button", { name: /Planificar/ });
-    const proyecto = screen.getByRole("button", { name: "Seleccionar proyecto" });
-
-    fireEvent.click(planificar);
-    expect(mocks.createProject).not.toHaveBeenCalled();
-    expect(mocks.createStandaloneChat).not.toHaveBeenCalled();
-    expect(proyecto.className).toContain("shake-x");
-    expect(proyecto.className).toContain("border-ink");
+    expect(await screen.findByRole("button", { name: "Crear proyecto" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Proyectos" })).not.toBeInTheDocument();
   });
 
   it("con un proyecto elegido se puede volver a solo chat", async () => {

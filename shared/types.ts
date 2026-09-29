@@ -339,6 +339,11 @@ export interface ConfigInfo {
   fastMode?: boolean;
   /** Ejecuta el plan inicial en cuanto se genera, sin pedir confirmación. */
   autoRun?: boolean;
+  /** Loop de tool-calling de los proveedores locales. */
+  harness?: {
+    enabled?: boolean;
+    bounds?: { maxIterations?: number; maxToolCalls?: number; timeoutMs?: number };
+  };
 }
 
 export interface FolderCheck {

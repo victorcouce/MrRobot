@@ -747,10 +747,12 @@ function Stepper({
   value,
   onChange,
   min = 0,
+  max = Infinity,
 }: {
   value: number;
   onChange: (v: number) => void;
   min?: number;
+  max?: number;
 }) {
   return (
     <div className="inline-flex items-center gap-1 rounded-lg border border-line-strong bg-surface">
@@ -767,13 +769,13 @@ function Stepper({
         value={value}
         onChange={(e) => {
           const parsed = Number(e.target.value);
-          if (Number.isFinite(parsed)) onChange(Math.max(min, parsed));
+          if (Number.isFinite(parsed)) onChange(Math.min(max, Math.max(min, parsed)));
         }}
         className="w-12 text-center font-medium text-sm border-l border-r border-line-strong outline-none bg-surface"
       />
       <button
         type="button"
-        onClick={() => onChange(value + 1)}
+        onClick={() => onChange(Math.min(max, value + 1))}
         className="h-9 w-9 flex items-center justify-center text-ink-2 hover:bg-muted rounded-r-md"
       >
         +

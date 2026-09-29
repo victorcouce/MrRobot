@@ -17,6 +17,7 @@ import { clsx } from "@/lib/cx";
 import { useAllChats, useAppInfo, useProjects, useSpaces } from "@/lib/hooks";
 import {
   groupChatsByProject,
+  looseChats,
   orderProjects,
   projectInSpace,
   projectLabel,
@@ -26,6 +27,7 @@ import { spaceIcon } from "@/lib/space-icons";
 import { PROJECT_STATUS } from "@/lib/status";
 import { DOT_CLASSES } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
+import { ChatsPopup } from "./ChatsPopup";
 import { ProjectsPopup } from "./ProjectsPopup";
 
 const RAIL_BUTTON_CLASS =
@@ -63,10 +65,12 @@ function RailLink({
 export function SidebarRail({
   onExpand,
   onNewChat,
+  onNewProject,
   onOpenSearch,
 }: {
   onExpand: () => void;
   onNewChat?: () => void;
+  onNewProject?: () => void;
   onOpenSearch?: () => void;
 }) {
   const pathname = usePathname();
@@ -89,6 +93,9 @@ export function SidebarRail({
       ),
     [projects, chats, space],
   );
+
+  const loose = useMemo(() => looseChats(chats), [chats]);
+  const activeChatId = pathname.match(/^\/chats\/([^/]+)$/)?.[1] ?? null;
 
   return (
     <div className="flex h-full w-full flex-col items-center">
@@ -138,15 +145,22 @@ export function SidebarRail({
 
       <div className="h-px w-8 shrink-0 bg-line-strong" />
 
-      <div className="flex justify-center py-2">
+      <div className="flex flex-col items-center gap-1 py-2">
+        <Tooltip label="Chats">
+          <div className="flex h-10 w-10 items-center justify-center">
+            <ChatsPopup chats={loose} activeChatId={activeChatId} />
+          </div>
+        </Tooltip>
         <Tooltip label="Proyectos">
           <div className="flex h-10 w-10 items-center justify-center">
-            <ProjectsPopup projects={projects} compact popupAlign="right" />
+            <ProjectsPopup projects={projects} compact popupAlign="right" onNewProject={onNewProject} />
           </div>
         </Tooltip>
       </div>
 
-      <div className="flex shrink-0 flex-col items-center gap-1 border-t border-line py-2">
+      <div className="mt-auto flex w-full shrink-0 flex-col items-center">
+        <div className="h-px w-8 shrink-0 bg-line-strong" />
+        <div className="flex flex-col items-center gap-1 py-2">
         <RailLink href="/agents" label="Agentes" active={pathname === "/agents"}>
           <Users className="h-[18px] w-[18px]" aria-hidden />
           {anyAgentConnected && (
@@ -162,6 +176,7 @@ export function SidebarRail({
         <RailLink href="/settings" label="Ajustes" active={pathname === "/settings"}>
           <SlidersHorizontal className="h-[18px] w-[18px]" aria-hidden />
         </RailLink>
+        </div>
       </div>
     </div>
   );

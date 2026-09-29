@@ -95,6 +95,7 @@ export function AppShell({
           <SidebarRail
             onExpand={() => setCollapsed(false)}
             onNewChat={onNewChat}
+            onNewProject={onNewProject}
             onOpenSearch={onOpenSearch}
           />
         </aside>
