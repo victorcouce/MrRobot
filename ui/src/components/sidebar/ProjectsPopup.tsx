@@ -133,7 +133,7 @@ export function ProjectsPopup({
         <div
           className={clsx(
             "absolute top-full z-50 mt-1 w-72 rounded-lg border border-line bg-surface shadow-lg",
-            popupAlign === "right" ? "right-0" : "left-0",
+            popupAlign === "right" ? "left-full ml-2" : "left-0",
           )}
           onMouseEnter={handlePopupMouseEnter}
           onMouseLeave={handlePopupMouseLeave}
